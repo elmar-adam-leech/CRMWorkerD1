@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -23,6 +23,25 @@ export default function SignUp() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
+  const passwordStrength = useMemo(() => {
+    const p = formData.password;
+    if (!p) return { score: 0, label: "", color: "bg-muted" };
+
+    let score = 0;
+    if (p.length >= 8) score += 1;
+    if (p.length >= 12) score += 1;
+    if (/[a-z]/.test(p)) score += 1;
+    if (/[A-Z]/.test(p)) score += 1;
+    if (/[0-9]/.test(p)) score += 1;
+    if (/[^a-zA-Z0-9]/.test(p)) score += 1;
+
+    const finalScore = Math.min(score, 4);
+    const labels = ["Too Short", "Weak", "Fair", "Good", "Strong"];
+    const colors = ["bg-red-500", "bg-orange-500", "bg-yellow-500", "bg-blue-500", "bg-green-500"];
+
+    return { score: finalScore, label: labels[finalScore], color: colors[finalScore] };
+  }, [formData.password]);
+
   // Generate username suggestion from name
   useEffect(() => {
     if (formData.name && !usernameTouched) {
@@ -45,7 +64,6 @@ export default function SignUp() {
     e.preventDefault();
     setError("");
     
-    // Validation
     if (formData.password !== formData.confirmPassword) {
       setError("Passwords do not match");
       return;
@@ -75,7 +93,6 @@ export default function SignUp() {
       });
 
       if (response.ok) {
-        // Registration successful, redirect to login
         setLocation("/");
       } else {
         const errorData = await response.json();
@@ -184,7 +201,7 @@ export default function SignUp() {
                   <Input
                     id="password"
                     type={showPassword ? "text" : "password"}
-                    placeholder="Min. 6 characters"
+                    placeholder="Create a strong password"
                     value={formData.password}
                     onChange={(e) => handleInputChange("password", e.target.value)}
                     className="pl-8 pr-9"
@@ -239,6 +256,37 @@ export default function SignUp() {
                 </div>
               </div>
             </div>
+
+            {formData.password && (
+              <div
+                role="progressbar"
+                aria-valuenow={passwordStrength.score}
+                aria-valuemin={0}
+                aria-valuemax={4}
+                aria-label={`Password strength: ${passwordStrength.label}`}
+                className="space-y-1.5"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">Password strength</span>
+                  <span className="text-xs font-medium">{passwordStrength.label}</span>
+                </div>
+                <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-300 ${passwordStrength.color}`}
+                    style={{ width: `${(passwordStrength.score / 4) * 100}%` }}
+                  />
+                </div>
+                {passwordStrength.score < 3 && (
+                  <ul className="text-xs text-muted-foreground space-y-0.5 list-disc pl-4">
+                    {formData.password.length < 8 && <li>At least 8 characters</li>}
+                    {!/[A-Z]/.test(formData.password) && <li>One uppercase letter</li>}
+                    {!/[a-z]/.test(formData.password) && <li>One lowercase letter</li>}
+                    {!/[0-9]/.test(formData.password) && <li>One number</li>}
+                    {!/[^a-zA-Z0-9]/.test(formData.password) && <li>One special character (!@#$ etc.)</li>}
+                  </ul>
+                )}
+              </div>
+            )}
 
             <Button 
               type="submit" 
