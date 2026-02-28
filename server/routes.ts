@@ -199,7 +199,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      const userRole: 'admin' | 'user' = 'admin'; // First user of new contractor is admin
+      const userRole: 'user' = 'user'; // New users start with minimal access; super_admin promotes as needed
 
       // SECURITY: Verify all credentials/data BEFORE creating contractor to prevent domain squatting
       if (existingUser) {
@@ -791,14 +791,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Update user role (admin only)
+  // Update user role (admin only; only super_admin can assign admin role)
   app.patch("/api/users/:userId/role", requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { userId } = req.params;
       const { role } = req.body;
 
-      if (!role || !['user', 'manager', 'admin'].includes(role)) {
-        res.status(400).json({ message: "Invalid role. Must be user, manager, or admin" });
+      const isSuperAdmin = req.user!.role === 'super_admin';
+      const allowedRoles = isSuperAdmin ? ['user', 'manager', 'admin'] : ['user', 'manager'];
+
+      if (!role || !allowedRoles.includes(role)) {
+        const rolesDescription = isSuperAdmin ? 'user, manager, or admin' : 'user or manager';
+        res.status(400).json({ message: `Invalid role. Must be ${rolesDescription}` });
         return;
       }
 
