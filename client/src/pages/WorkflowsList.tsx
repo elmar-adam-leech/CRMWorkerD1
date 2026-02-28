@@ -1,0 +1,541 @@
+import { useState, useMemo, useEffect } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { useLocation } from "wouter";
+import { Check, X, Eye, Edit, Play, AlertCircle, Search, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { PageLayout } from "@/components/ui/page-layout";
+
+type WorkflowApprovalStatus = "approved" | "pending_approval" | "rejected";
+
+type Workflow = {
+  id: string;
+  contractorId: string;
+  name: string;
+  description: string | null;
+  isActive: boolean;
+  triggerType: string;
+  approvalStatus: WorkflowApprovalStatus;
+  approvedBy: string | null;
+  approvedAt: string | null;
+  rejectionReason: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type UserData = {
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+    contractorId: string;
+  };
+};
+
+export default function WorkflowsList() {
+  const [, navigate] = useLocation();
+  const { toast } = useToast();
+  const [statusFilter, setStatusFilter] = useState<"all" | "pending_approval">("all");
+  const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
+  const [rejectingWorkflowId, setRejectingWorkflowId] = useState<string | null>(null);
+  const [rejectionReason, setRejectionReason] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [deletingWorkflowId, setDeletingWorkflowId] = useState<string | null>(null);
+  const itemsPerPage = 15;
+
+  // Get current user to check if admin
+  const { data: currentUser } = useQuery<UserData>({
+    queryKey: ['/api/auth/me'],
+  });
+
+  const isAdmin = currentUser?.user?.role === 'admin' 
+    || currentUser?.user?.role === 'super_admin' 
+    || currentUser?.user?.role === 'manager';
+
+  // Fetch workflows with server-side filtering
+  const { data: workflows = [], isLoading } = useQuery<Workflow[]>({
+    queryKey: ['/api/workflows', { approvalStatus: statusFilter === 'all' ? undefined : statusFilter }],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (statusFilter !== 'all') {
+        params.append('approvalStatus', statusFilter);
+      }
+      const url = `/api/workflows${params.toString() ? `?${params.toString()}` : ''}`;
+      const response = await fetch(url, { credentials: 'include' });
+      if (!response.ok) {
+        throw new Error(`${response.status}: ${response.statusText}`);
+      }
+      return await response.json();
+    },
+  });
+
+  // Approve mutation
+  const approveMutation = useMutation({
+    mutationFn: async (workflowId: string) => {
+      return await apiRequest('POST', `/api/workflows/${workflowId}/approve`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/workflows'], exact: false });
+      toast({
+        title: "Workflow Approved",
+        description: "The workflow has been approved and can now be activated.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Approval Failed",
+        description: error.message || "Failed to approve workflow",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Reject mutation
+  const rejectMutation = useMutation({
+    mutationFn: async ({ workflowId, reason }: { workflowId: string; reason: string }) => {
+      return await apiRequest('POST', `/api/workflows/${workflowId}/reject`, { rejectionReason: reason });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/workflows'], exact: false });
+      setRejectDialogOpen(false);
+      setRejectionReason("");
+      setRejectingWorkflowId(null);
+      toast({
+        title: "Workflow Rejected",
+        description: "The workflow has been rejected.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Rejection Failed",
+        description: error.message || "Failed to reject workflow",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Delete mutation
+  const deleteMutation = useMutation({
+    mutationFn: async (workflowId: string) => {
+      await apiRequest('DELETE', `/api/workflows/${workflowId}`);
+    },
+    onSuccess: () => {
+      toast({
+        title: "Workflow deleted",
+        description: "The workflow has been deleted successfully.",
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/workflows'], exact: false });
+      setDeletingWorkflowId(null);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error deleting workflow",
+        description: error.message,
+        variant: "destructive",
+      });
+      setDeletingWorkflowId(null);
+    },
+  });
+
+  const handleApprove = (workflowId: string) => {
+    approveMutation.mutate(workflowId);
+  };
+
+  const handleRejectClick = (workflowId: string) => {
+    setRejectingWorkflowId(workflowId);
+    setRejectDialogOpen(true);
+  };
+
+  const handleRejectConfirm = () => {
+    if (rejectingWorkflowId) {
+      rejectMutation.mutate({ 
+        workflowId: rejectingWorkflowId, 
+        reason: rejectionReason 
+      });
+    }
+  };
+
+  const handleDelete = (workflowId: string) => {
+    setDeletingWorkflowId(workflowId);
+    deleteMutation.mutate(workflowId);
+  };
+
+  // Filter and paginate workflows
+  const filteredWorkflows = useMemo(() => {
+    if (!workflows) return [];
+    
+    // Filter by search query
+    return workflows.filter(workflow => 
+      workflow.name.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [workflows, searchQuery]);
+
+  // Pagination logic
+  const totalPages = Math.ceil(filteredWorkflows.length / itemsPerPage);
+  
+  // Clamp current page to valid range
+  const clampedPage = Math.max(1, Math.min(currentPage, totalPages || 1));
+  const startIndex = (clampedPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedWorkflows = filteredWorkflows.slice(startIndex, endIndex);
+
+  // Auto-adjust page when filter changes or results shrink
+  useEffect(() => {
+    if (currentPage > totalPages && totalPages > 0) {
+      setCurrentPage(totalPages);
+    } else if (currentPage !== clampedPage) {
+      setCurrentPage(clampedPage);
+    }
+  }, [totalPages, currentPage, clampedPage]);
+
+  // Reset to page 1 when search or status filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, statusFilter]);
+
+  // Reset to page 1 when search changes
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value);
+  };
+
+  const getStatusBadge = (status: WorkflowApprovalStatus) => {
+    switch (status) {
+      case "approved":
+        return (
+          <Badge variant="default" data-testid={`badge-status-approved`}>
+            <Check className="h-3 w-3 mr-1" />
+            Approved
+          </Badge>
+        );
+      case "pending_approval":
+        return (
+          <Badge variant="secondary" data-testid={`badge-status-pending`}>
+            <AlertCircle className="h-3 w-3 mr-1" />
+            Pending Approval
+          </Badge>
+        );
+      case "rejected":
+        return (
+          <Badge variant="destructive" data-testid={`badge-status-rejected`}>
+            <X className="h-3 w-3 mr-1" />
+            Rejected
+          </Badge>
+        );
+    }
+  };
+
+  return (
+    <PageLayout>
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold">Workflows</h1>
+            <p className="text-muted-foreground">
+              Manage and approve workflow automations
+            </p>
+          </div>
+          <Button
+            variant="default"
+            data-testid="button-create-workflow"
+            onClick={() => navigate('/workflows/new')}
+          >
+            Create Workflow
+          </Button>
+        </div>
+
+        {/* Search Bar */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            type="text"
+            placeholder="Search workflows by name..."
+            value={searchQuery}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            className="pl-10"
+            data-testid="input-search-workflows"
+          />
+        </div>
+
+        {/* Filters */}
+        <Tabs value={statusFilter} onValueChange={(v) => setStatusFilter(v as "all" | "pending_approval")}>
+          <TabsList>
+            <TabsTrigger value="all" data-testid="tab-all-workflows">
+              All Workflows
+            </TabsTrigger>
+            {isAdmin && (
+              <TabsTrigger value="pending_approval" data-testid="tab-pending-approval">
+                Pending Approval
+              </TabsTrigger>
+            )}
+          </TabsList>
+        </Tabs>
+
+        {/* Workflows List */}
+        {isLoading ? (
+          <div className="space-y-4">
+            {[1, 2, 3].map((i) => (
+              <Card key={i}>
+                <CardContent className="p-6">
+                  <div className="space-y-3">
+                    <div className="h-6 bg-muted rounded w-1/3"></div>
+                    <div className="h-4 bg-muted rounded w-2/3"></div>
+                    <div className="h-4 bg-muted rounded w-1/4"></div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : filteredWorkflows.length === 0 ? (
+          <Card>
+            <CardContent className="p-12">
+              <div className="text-center text-muted-foreground">
+                {searchQuery ? "No workflows match your search" : 
+                 statusFilter === "pending_approval" 
+                  ? "No workflows pending approval" 
+                  : "No workflows created yet"}
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-4">
+            {paginatedWorkflows.map((workflow: Workflow) => (
+              <Card key={workflow.id} data-testid={`card-workflow-${workflow.id}`}>
+                <CardHeader>
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 space-y-2">
+                      <div className="flex items-center gap-3">
+                        <CardTitle data-testid={`text-workflow-name-${workflow.id}`}>
+                          {workflow.name}
+                        </CardTitle>
+                        {getStatusBadge(workflow.approvalStatus)}
+                        {workflow.isActive && workflow.approvalStatus === "approved" && (
+                          <Badge variant="outline" data-testid={`badge-active-${workflow.id}`}>
+                            Active
+                          </Badge>
+                        )}
+                      </div>
+                      {workflow.description && (
+                        <p className="text-sm text-muted-foreground" data-testid={`text-workflow-description-${workflow.id}`}>
+                          {workflow.description}
+                        </p>
+                      )}
+                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                        <span>Trigger: {workflow.triggerType}</span>
+                        <span>Created: {new Date(workflow.createdAt).toLocaleDateString()}</span>
+                        {workflow.approvedAt && (
+                          <span>Approved: {new Date(workflow.approvedAt).toLocaleDateString()}</span>
+                        )}
+                      </div>
+                      {workflow.rejectionReason && (
+                        <div className="mt-2 p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+                          <p className="text-sm text-destructive" data-testid={`text-rejection-reason-${workflow.id}`}>
+                            <strong>Rejection Reason:</strong> {workflow.rejectionReason}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      {/* Admin Actions for Pending Workflows */}
+                      {isAdmin && workflow.approvalStatus === "pending_approval" && (
+                        <>
+                          <Button
+                            variant="default"
+                            size="sm"
+                            data-testid={`button-approve-${workflow.id}`}
+                            onClick={() => handleApprove(workflow.id)}
+                            disabled={approveMutation.isPending}
+                          >
+                            <Check className="h-4 w-4 mr-1" />
+                            Approve
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            data-testid={`button-reject-${workflow.id}`}
+                            onClick={() => handleRejectClick(workflow.id)}
+                            disabled={rejectMutation.isPending}
+                          >
+                            <X className="h-4 w-4 mr-1" />
+                            Reject
+                          </Button>
+                        </>
+                      )}
+                      
+                      {/* Edit Button */}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        data-testid={`button-edit-${workflow.id}`}
+                        onClick={() => navigate(`/workflows/${workflow.id}/edit`)}
+                      >
+                        <Edit className="h-4 w-4 mr-1" />
+                        Edit
+                      </Button>
+                      
+                      {/* View Executions */}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        data-testid={`button-view-executions-${workflow.id}`}
+                        onClick={() => navigate(`/workflows/${workflow.id}/executions`)}
+                      >
+                        <Eye className="h-4 w-4 mr-1" />
+                        Executions
+                      </Button>
+
+                      {/* Delete Button */}
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            data-testid={`button-delete-${workflow.id}`}
+                            disabled={deleteMutation.isPending && deletingWorkflowId === workflow.id}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete Workflow</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Are you sure you want to delete "{workflow.name}"? This action cannot be undone.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => handleDelete(workflow.id)}
+                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            >
+                              Delete
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
+                  </div>
+                </CardHeader>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {/* Pagination */}
+        {!isLoading && filteredWorkflows.length > itemsPerPage && (
+          <div className="flex items-center justify-between border-t pt-4">
+            <div className="text-sm text-muted-foreground">
+              Showing {startIndex + 1}-{Math.min(endIndex, filteredWorkflows.length)} of {filteredWorkflows.length} workflows
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                data-testid="button-previous-page"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Previous
+              </Button>
+              <div className="flex items-center gap-1">
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                  <Button
+                    key={page}
+                    variant={currentPage === page ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setCurrentPage(page)}
+                    className="w-10"
+                    data-testid={`button-page-${page}`}
+                  >
+                    {page}
+                  </Button>
+                ))}
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                data-testid="button-next-page"
+              >
+                Next
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Rejection Dialog */}
+      <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
+        <DialogContent data-testid="dialog-reject-workflow">
+          <DialogHeader>
+            <DialogTitle>Reject Workflow</DialogTitle>
+            <DialogDescription>
+              Please provide a reason for rejecting this workflow. This will help the creator understand why their workflow was not approved.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="rejection-reason">Rejection Reason</Label>
+              <Textarea
+                id="rejection-reason"
+                data-testid="input-rejection-reason"
+                placeholder="Enter reason for rejection..."
+                value={rejectionReason}
+                onChange={(e) => setRejectionReason(e.target.value)}
+                rows={4}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              data-testid="button-cancel-reject"
+              onClick={() => {
+                setRejectDialogOpen(false);
+                setRejectionReason("");
+                setRejectingWorkflowId(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              data-testid="button-confirm-reject"
+              onClick={handleRejectConfirm}
+              disabled={!rejectionReason.trim() || rejectMutation.isPending}
+            >
+              {rejectMutation.isPending ? "Rejecting..." : "Reject Workflow"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </PageLayout>
+  );
+}
