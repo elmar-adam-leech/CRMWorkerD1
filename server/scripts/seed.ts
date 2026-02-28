@@ -1,34 +1,86 @@
 import { db, pool } from '../db.js';
-import { users } from '../../shared/schema.js';
-import { eq } from 'drizzle-orm';
+import { users, contractors, userContractors } from '../../shared/schema.js';
+import { eq, isNull } from 'drizzle-orm';
 import bcrypt from 'bcrypt';
 
 async function seed() {
   try {
-    const existing = await db
+    let contractorId: string;
+    let userId: string;
+
+    // Check if admin user already exists
+    const existingUser = await db
       .select()
       .from(users)
-      .where(eq(users.username, 'admin'))
+      .where(eq(users.email, 'admin@example.com'))
       .limit(1);
 
-    if (existing.length > 0) {
-      console.log('Admin user already exists. Skipping creation.');
+    if (existingUser.length > 0 && existingUser[0].contractorId) {
+      console.log('Admin user already exists with a contractor. Skipping.');
       return;
     }
 
-    const hashedPassword = await bcrypt.hash('password', 10);
+    // Create a default contractor
+    console.log('Creating default contractor...');
+    const [contractor] = await db
+      .insert(contractors)
+      .values({
+        name: 'Default Company',
+        domain: 'default.local',
+      })
+      .returning();
 
-    await db.insert(users).values({
-      username: 'admin',
-      password: hashedPassword,
-      name: 'Admin User',
-      email: 'admin@example.com',
-      role: 'super_admin',
-    });
+    contractorId = contractor.id;
+    console.log(`Contractor created: ${contractorId}`);
 
-    console.log('Default admin user created successfully.');
-    console.log('Username: admin');
-    console.log('Password: password');
+    if (existingUser.length > 0) {
+      // User exists but has no contractor — update it
+      console.log('Updating existing admin user with contractor...');
+      userId = existingUser[0].id;
+      await db
+        .update(users)
+        .set({ contractorId })
+        .where(eq(users.id, userId));
+    } else {
+      // Create fresh admin user
+      console.log('Creating admin user...');
+      const hashedPassword = await bcrypt.hash('password', 10);
+      const [user] = await db
+        .insert(users)
+        .values({
+          username: 'admin',
+          password: hashedPassword,
+          name: 'Admin User',
+          email: 'admin@example.com',
+          role: 'super_admin',
+          contractorId,
+        })
+        .returning();
+      userId = user.id;
+      console.log(`User created: ${userId}`);
+    }
+
+    // Link user to contractor in user_contractors table
+    const existingLink = await db
+      .select()
+      .from(userContractors)
+      .where(eq(userContractors.userId, userId))
+      .limit(1);
+
+    if (existingLink.length === 0) {
+      console.log('Linking user to contractor...');
+      await db.insert(userContractors).values({
+        userId,
+        contractorId,
+        role: 'super_admin',
+        canManageIntegrations: true,
+      });
+    }
+
+    console.log('');
+    console.log('Seed complete! Sign in with:');
+    console.log('  Email:    admin@example.com');
+    console.log('  Password: password');
   } catch (error) {
     console.error('Seed error:', error);
     process.exit(1);
