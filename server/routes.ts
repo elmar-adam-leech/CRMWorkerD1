@@ -190,14 +190,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // SECURITY: Check if user already exists and verify credentials BEFORE creating contractor
       // This prevents domain squatting attacks where attackers create contractors with other users' emails
-      let existingUser = await storage.getUserByUsername(userData.username);
-      if (!existingUser && userData.email) {
-        // Also check by email in case username is different
-        const userByEmail = await storage.getUserByEmail(userData.email);
-        if (userByEmail) {
-          existingUser = userByEmail;
-        }
+      const userByUsername = await storage.getUserByUsername(userData.username);
+      const userByEmail = userData.email ? await storage.getUserByEmail(userData.email) : undefined;
+
+      // If username is taken by someone other than the email holder, block with a clear message
+      if (userByUsername && (!userByEmail || userByUsername.id !== userByEmail.id)) {
+        res.status(400).json({ 
+          message: "Username already taken. Please choose a different username." 
+        });
+        return;
       }
+
+      // Existing user = same person matched by email (username may or may not also match)
+      const existingUser = userByEmail || null;
 
       const userRole: 'user' = 'user'; // New users start with minimal access; super_admin promotes as needed
 
@@ -206,7 +211,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // For existing users: verify password before proceeding
         if (!userData.password) {
           res.status(400).json({ 
-            message: "Password is required for existing accounts" 
+            message: "Password is required to add a new company to your existing account." 
           });
           return;
         }
@@ -214,7 +219,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const verifiedUser = await storage.verifyPassword(existingUser.id, userData.password);
         if (!verifiedUser) {
           res.status(401).json({ 
-            message: "Invalid password" 
+            message: "Incorrect password for the account associated with this email. Please enter your existing account password." 
           });
           return;
         }
