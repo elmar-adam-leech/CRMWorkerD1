@@ -33,9 +33,22 @@ export function SyncStatusProvider({ children }: { children: ReactNode }) {
   const previousSyncStatus = useRef<SyncStatus>({ isRunning: false });
   const toastId = useRef<string | null>(null);
 
-  // Adaptive polling: fast when sync is running, slow when idle, paused in background tabs
+  // Read user role from cache (no extra network request — auth/me is fetched on app load)
+  const { data: authData } = useQuery<{ user: { role: string; canManageIntegrations?: boolean } }>({
+    queryKey: ['/api/auth/me'],
+  });
+  const user = authData?.user;
+  const canReceiveSyncUpdates =
+    user?.role === 'admin' ||
+    user?.role === 'super_admin' ||
+    user?.role === 'manager' ||
+    user?.canManageIntegrations === true;
+
+  // Adaptive polling: fast when sync is running, slow when idle, paused in background tabs.
+  // Disabled entirely for regular users who cannot trigger or manage syncs.
   const { data: currentSyncStatus } = useQuery({
     queryKey: ['/api/sync-status'],
+    enabled: canReceiveSyncUpdates,
     refetchInterval: (query) => query.state.data?.isRunning ? 2000 : 30000,
     refetchIntervalInBackground: false,
     staleTime: 0,
