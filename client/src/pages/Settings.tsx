@@ -686,13 +686,13 @@ export default function Settings() {
     );
   }
 
-  if (error) {
+  if (error && userCanManageIntegrations) {
     return (
       <div className="p-6">
         <Alert variant="destructive">
           <XCircle className="h-4 w-4" />
           <AlertDescription>
-            Failed to load settings. Please try again later.
+            Failed to load integrations. Please try again later.
           </AlertDescription>
         </Alert>
       </div>

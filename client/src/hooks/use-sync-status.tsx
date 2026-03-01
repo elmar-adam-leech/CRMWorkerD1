@@ -33,12 +33,12 @@ export function SyncStatusProvider({ children }: { children: ReactNode }) {
   const previousSyncStatus = useRef<SyncStatus>({ isRunning: false });
   const toastId = useRef<string | null>(null);
 
-  // Always poll for sync status to detect background sync operations
+  // Adaptive polling: fast when sync is running, slow when idle, paused in background tabs
   const { data: currentSyncStatus } = useQuery({
     queryKey: ['/api/sync-status'],
-    refetchInterval: 3000, // Check every 3 seconds
-    refetchIntervalInBackground: true,
-    staleTime: 0, // Always fetch fresh data
+    refetchInterval: (query) => query.state.data?.isRunning ? 2000 : 30000,
+    refetchIntervalInBackground: false,
+    staleTime: 0,
   });
 
   useEffect(() => {

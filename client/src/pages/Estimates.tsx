@@ -132,9 +132,19 @@ export default function Estimates() {
   const estimates = estimatesData?.pages.flatMap(page => page.data) || [];
   const totalEstimates = estimatesData?.pages[0]?.pagination.total || 0;
 
-  // Check if Housecall Pro integration is configured
+  // Get user role to guard admin-only queries
+  const { data: currentUser } = useQuery<{ user: { role: string; canManageIntegrations?: boolean } }>({
+    queryKey: ['/api/auth/me'],
+  });
+  const canManageIntegrations = currentUser?.user?.role === 'admin'
+    || currentUser?.user?.role === 'super_admin'
+    || currentUser?.user?.role === 'manager'
+    || currentUser?.user?.canManageIntegrations === true;
+
+  // Check if Housecall Pro integration is configured (admin/manager only)
   const { data: integrations = [] } = useQuery<any[]>({
     queryKey: ['/api/integrations'],
+    enabled: canManageIntegrations,
   });
 
   const housecallProIntegration = Array.isArray(integrations) 

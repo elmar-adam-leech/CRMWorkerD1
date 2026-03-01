@@ -25,7 +25,7 @@ export function NotificationDropdown() {
   // Fetch unread notifications for the badge count
   const { data: unreadNotifications = [] } = useQuery<Notification[]>({
     queryKey: ['/api/notifications/unread'],
-    refetchInterval: 30000, // Refresh every 30 seconds
+    refetchInterval: 60000, // Refresh every 60 seconds
   });
 
   // Fetch all recent notifications
