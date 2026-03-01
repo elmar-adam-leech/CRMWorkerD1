@@ -83,11 +83,11 @@ export default function Settings() {
   const { toast } = useToast();
   const { syncStatus, startSync } = useSyncStatus();
   
-  // Get tab from URL params or default to 'integrations'
+  // Get tab from URL params or default to 'account' (safe for all roles)
   const urlParams = new URLSearchParams(window.location.search);
   const urlTab = urlParams.get('tab') as 'integrations' | 'account' | 'security' | 'targets' | 'webhooks' | 'salespeople' | null;
   const urlProvider = urlParams.get('provider');
-  const [activeTab, setActiveTab] = useState<'integrations' | 'account' | 'security' | 'targets' | 'webhooks' | 'salespeople'>(urlTab || 'integrations');
+  const [activeTab, setActiveTab] = useState<'integrations' | 'account' | 'security' | 'targets' | 'webhooks' | 'salespeople'>(urlTab || 'account');
   const [selectedEmailProvider, setSelectedEmailProvider] = useState<string>('');
   const [credentialInputs, setCredentialInputs] = useState<Record<string, string>>({});
   const [editingIntegration, setEditingIntegration] = useState<string | null>(null);
@@ -170,9 +170,10 @@ export default function Settings() {
     queryKey: ['/api/providers'],
   });
 
-  // Fetch current business targets
+  // Fetch current business targets (admin-only endpoint)
   const { data: currentTargets, isLoading: targetsLoading } = useQuery({
     queryKey: ['/api/business-targets'],
+    enabled: userCanManageIntegrations,
   });
 
   // Get terminology settings
@@ -276,7 +277,7 @@ export default function Settings() {
 
   // Redirect users without integration permission away from integrations tab
   useEffect(() => {
-    if (currentUser?.user) {
+    if (!userLoading && currentUser?.user) {
       const canViewIntegrations = currentUser.user.role === 'admin' 
         || currentUser.user.role === 'super_admin' 
         || currentUser.user.role === 'manager'
@@ -287,7 +288,7 @@ export default function Settings() {
         navigate('/settings?tab=account');
       }
     }
-  }, [currentUser, activeTab, navigate]);
+  }, [currentUser, userLoading, activeTab, navigate]);
 
   const enableIntegrationMutation = useMutation({
     mutationFn: async ({ integrationName, enable }: { integrationName: string; enable: boolean }) => {
