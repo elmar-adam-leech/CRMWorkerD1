@@ -18,7 +18,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Textarea } from "@/components/ui/textarea";
 import { PageHeader } from "@/components/ui/page-header-v2";
 import { PageLayout } from "@/components/ui/page-layout";
-import { CalendarIcon, Plus, Search, Filter, MessageSquare, Download, Upload, FileText, UserPlus, Users, AlertCircle, CheckCircle, Loader2, LayoutGrid, List } from "lucide-react";
+import { CalendarIcon, Plus, Search, Filter, Download, Upload, UserPlus, Users, AlertCircle, CheckCircle, Loader2, LayoutGrid, List } from "lucide-react";
 import { LeadKanbanBoard } from "@/components/LeadKanbanBoard";
 import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -40,19 +40,6 @@ import { useBulkSelection } from "@/contexts/BulkSelectionContext";
 import { FilterPanel, type FilterState } from "@/components/FilterPanel";
 import { EmptyState } from "@/components/EmptyState";
 import { TagManager } from "@/components/TagManager";
-
-// Helper function to ensure URL has a protocol
-function ensureUrlProtocol(url: string | null | undefined): string {
-  if (!url) return '';
-  
-  // If URL already has a protocol, return as is
-  if (url.startsWith('http://') || url.startsWith('https://')) {
-    return url;
-  }
-  
-  // Otherwise, add https:// prefix
-  return `https://${url}`;
-}
 
 export default function Leads({ externalSearch = "" }: { externalSearch?: string }) {
   const [location] = useLocation();
@@ -99,12 +86,10 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
     serviceAccountEmail: "",
     privateKey: ""
   });
-  const [hasStoredCredentials, setHasStoredCredentials] = useState(false);
   const [googleSheetsHeaders, setGoogleSheetsHeaders] = useState<string[]>([]);
   const [columnMapping, setColumnMapping] = useState<Record<string, string>>({});
   const [sheetInfo, setSheetInfo] = useState<any>(null);
   const [isLoadingSheets, setIsLoadingSheets] = useState(false);
-  const [sheetsImporting, setSheetsImporting] = useState(false);
   const [showCredentialsForm, setShowCredentialsForm] = useState(false);
   const [previewData, setPreviewData] = useState<{ headers: string[]; rows: any[][] } | null>(null);
 
@@ -163,42 +148,19 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
 
   // Subscribe to WebSocket for real-time updates (page-level subscription persists during modal transitions)
   useEffect(() => {
-    console.log('[Leads Page] Setting up WebSocket subscription for real-time updates');
     const unsubscribe = subscribe((message) => {
-      console.log('[Leads Page] WebSocket message received:', message.type);
-      
-      // Invalidate activity queries when new activities are created
       if (message.type === 'new_activity' || message.type === 'activity_update') {
-        console.log('[Leads Page] Invalidating activity queries for real-time update');
-        queryClient.invalidateQueries({ 
-          queryKey: ['/api/activities']
-        });
+        queryClient.invalidateQueries({ queryKey: ['/api/activities'] });
       }
-      
-      // Invalidate message/conversation queries for SMS updates
       if (message.type === 'new_message' || message.type === 'message_update' || message.type === 'message_updated') {
-        console.log('[Leads Page] Invalidating conversation queries for real-time update');
-        queryClient.invalidateQueries({ 
-          queryKey: ['/api/conversations']
-        });
+        queryClient.invalidateQueries({ queryKey: ['/api/conversations'] });
       }
-      
-      // Invalidate contact/lead queries when contacts are created, updated, or deleted
       if (message.type === 'contact_created' || message.type === 'contact_updated' || message.type === 'contact_deleted') {
-        console.log('[Leads Page] Invalidating contact queries for real-time update');
-        queryClient.invalidateQueries({ 
-          queryKey: ['/api/contacts/paginated']
-        });
-        queryClient.invalidateQueries({ 
-          queryKey: ['/api/contacts/status-counts']
-        });
+        queryClient.invalidateQueries({ queryKey: ['/api/contacts/paginated'] });
+        queryClient.invalidateQueries({ queryKey: ['/api/contacts/status-counts'] });
       }
     });
-
-    return () => {
-      console.log('[Leads Page] Cleaning up WebSocket subscription');
-      unsubscribe();
-    };
+    return () => unsubscribe();
   }, [subscribe, queryClient]);
 
   // Check URL parameters to auto-open modal
@@ -323,26 +285,25 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
       delete (payload as any).email;
       delete (payload as any).phone;
       
+      // Uses raw fetch (not apiRequest) to parse JSON from error responses —
+      // apiRequest reads text() before throwing, losing the structured duplicate-
+      // detection fields (.isDuplicate, .duplicateContactId, .duplicateContactName).
       const response = await fetch('/api/contacts', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify(payload),
       });
-      
+
+      const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        // Throw with additional context for duplicate detection
-        const error: any = new Error(errorData.message || 'Failed to create contact');
-        error.isDuplicate = errorData.isDuplicate;
-        error.duplicateContactId = errorData.duplicateContactId;
-        error.duplicateContactName = errorData.duplicateContactName;
+        const error: any = new Error(data.message || 'Failed to create contact');
+        error.isDuplicate = data.isDuplicate;
+        error.duplicateContactId = data.duplicateContactId;
+        error.duplicateContactName = data.duplicateContactName;
         throw error;
       }
-      
-      return await response.json();
+      return data;
     },
     onSuccess: () => {
       toast({
@@ -516,13 +477,10 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
         description: data.message || "CSV data imported successfully",
       });
       
-      // Show detailed results if there were any errors
       if (data.errors && data.errors.length > 0) {
-        const failedCount = data.errors.length;
-        console.log("Import errors:", data.errors);
         toast({
           title: "Some rows had errors",
-          description: `${failedCount} rows failed validation. Check console for details.`,
+          description: `${data.errors.length} rows failed validation and were skipped.`,
           variant: "destructive",
         });
       }
@@ -538,7 +496,6 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
       }
     },
     onError: (error: any) => {
-      console.error('CSV upload failed:', error);
       toast({
         title: "CSV Import Failed",
         description: error.message || "Failed to import CSV data",
@@ -560,12 +517,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
     },
   });
 
-  // Update hasStoredCredentials when credentialStatus changes
-  useEffect(() => {
-    if (credentialStatus) {
-      setHasStoredCredentials(credentialStatus.configured);
-    }
-  }, [credentialStatus]);
+  const hasStoredCredentials = credentialStatus?.configured ?? false;
 
   // Google Sheets credential storage mutation
   const storeCredentialsMutation = useMutation({
@@ -587,7 +539,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
         title: "Credentials Stored Successfully",
         description: "Your Google Sheets credentials have been stored securely.",
       });
-      setHasStoredCredentials(true);
+      queryClient.invalidateQueries({ queryKey: ['/api/leads/google-sheets/credentials/status'] });
       setShowCredentialsForm(false);
       setCredentialsConfig({ serviceAccountEmail: "", privateKey: "" });
     },
@@ -678,16 +630,14 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
       });
       
       if (data.errors && data.errors.length > 0) {
-        console.log("Import errors:", data.errors);
         toast({
           title: "Some rows had errors",
-          description: `${data.errors.length} rows failed validation. Check console for details.`,
+          description: `${data.errors.length} rows failed validation and were skipped.`,
           variant: "destructive",
         });
       }
       
       queryClient.invalidateQueries({ queryKey: ['/api/contacts/paginated'] });
-      setSheetsImporting(false);
       setAddContactModal(false);
       
       // Reset Google Sheets state
@@ -703,7 +653,6 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
         description: error.message || "Failed to import from Google Sheets",
         variant: "destructive",
       });
-      setSheetsImporting(false);
     }
   });
 
@@ -799,7 +748,6 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
       return;
     }
 
-    setSheetsImporting(true);
     try {
       await googleSheetsImportMutation.mutateAsync({
         ...googleSheetsConfig,
@@ -810,85 +758,8 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
     }
   };
 
-  // TODO: remove mock functionality
-  const mockLeads = [
-    {
-      id: "1",
-      customerName: "Sarah Johnson",
-      email: "sarah.johnson@email.com",
-      phone: "(555) 123-4567",
-      address: "123 Main St, Anytown, ST 12345",
-      source: "Website",
-      status: "new" as const,
-      estimatedValue: 3500,
-      priority: "high" as const,
-      notes: "Interested in HVAC system upgrade",
-      utmSource: "google",
-      utmMedium: "cpc",
-      utmCampaign: "winter_heating_2024",
-      utmTerm: "hvac repair near me",
-      utmContent: "text_ad_1",
-      pageUrl: "https://company.com/landing/heating-repair",
-    },
-    {
-      id: "2",
-      customerName: "Mike Davis",
-      email: "mike.davis@email.com",
-      phone: "(555) 987-6543",
-      address: "456 Oak Ave, Somewhere, ST 67890",
-      source: "Referral",
-      status: "scheduled" as const,
-      estimatedValue: 2200,
-      scheduledDate: "Dec 15, 2024",
-      priority: "medium" as const,
-      notes: "Commercial maintenance contract",
-    },
-    {
-      id: "3",
-      customerName: "Emily Wilson",
-      email: "emily.wilson@email.com",
-      phone: "(555) 555-0123",
-      address: "789 Pine St, Anyplace, ST 54321",
-      source: "Phone Call",
-      status: "cancelled" as const,
-      estimatedValue: 850,
-      scheduledDate: "Dec 10, 2024",
-      priority: "high" as const,
-      utmSource: "facebook",
-      utmMedium: "social",
-      utmCampaign: "emergency_services",
-      pageUrl: "https://company.com/emergency-hvac",
-      notes: "Emergency repair needed",
-    },
-    {
-      id: "4",
-      customerName: "Robert Brown",
-      email: "robert.brown@email.com",
-      phone: "(555) 246-8101",
-      address: "321 Elm St, Nowhere, ST 98765",
-      source: "Google Ads",
-      status: "new" as const,
-      estimatedValue: 1200,
-      priority: "low" as const,
-      notes: "Routine inspection request",
-    },
-    {
-      id: "5",
-      customerName: "Lisa Martinez",
-      email: "lisa.martinez@email.com",
-      phone: "(555) 369-2580",
-      address: "654 Maple Dr, Somewhere Else, ST 13579",
-      source: "Social Media",
-      status: "scheduled" as const,
-      estimatedValue: 4200,
-      scheduledDate: "Dec 18, 2024",
-      priority: "medium" as const,
-      notes: "New installation project",
-    },
-  ];
-
   // Fetch status counts from backend (filtered by type=lead)
-  const { data: statusCountsData, isLoading: statusCountsLoading, error: statusCountsError } = useQuery<{
+  const { data: statusCountsData, isLoading: statusCountsLoading } = useQuery<{
     all: number;
     new: number;
     contacted: number;
@@ -921,19 +792,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
   };
   
   
-  // Only use mock data when we have no real data loaded AND we're not loading
-  // This prevents showing mock data when a filter returns 0 results
-  const shouldUseMockData = !leadsData && !leadsLoading;
-  
-  const filteredMockLeads = shouldUseMockData 
-    ? (filterStatus === 'all' ? mockLeads : mockLeads.filter(lead => lead.status === filterStatus))
-    : [];
-  
-  // Use real data from API, or mock data only when no real data has been loaded
-  const dataToUse = shouldUseMockData ? filteredMockLeads : leads;
-  
-  // For paginated data, filtering is handled server-side
-  const filteredLeads = dataToUse;
+  const dataToUse = leads;
 
   // Infinite scroll handler
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
@@ -1232,7 +1091,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
           ))}
           
           {/* Actual leads */}
-          {!leadsLoading && filteredLeads.map((lead) => (
+          {!leadsLoading && dataToUse.map((lead) => (
             <LeadCard
               key={lead.id}
               lead={lead}
@@ -1252,7 +1111,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
         </div>
       ) : (
         <LeadKanbanBoard
-          leads={filteredLeads}
+          leads={dataToUse}
           onStatusChange={handleStatusChange}
           onViewDetails={handleViewDetails}
           onEdit={handleEdit}
@@ -1929,10 +1788,10 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
                   </Button>
                   <Button
                     onClick={handleImportFromSheets}
-                    disabled={sheetsImporting || !sheetInfo || Object.keys(columnMapping).length === 0}
+                    disabled={googleSheetsImportMutation.isPending || !sheetInfo || Object.keys(columnMapping).length === 0}
                     data-testid="button-import-sheets"
                   >
-                    {sheetsImporting ? "Importing..." : "Import Leads"}
+                    {googleSheetsImportMutation.isPending ? "Importing..." : "Import Leads"}
                   </Button>
                 </div>
               </div>
