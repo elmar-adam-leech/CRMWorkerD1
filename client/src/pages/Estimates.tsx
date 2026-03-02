@@ -25,7 +25,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertEstimateSchema } from "@shared/schema";
 import { z } from "zod";
-import type { Estimate, PaginatedEstimates } from "@shared/schema";
+import type { Estimate, PaginatedEstimates, TerminologySettings, Contact, EstimateSummary } from "@shared/schema";
 import { useWebSocketContext } from "@/contexts/WebSocketContext";
 import { useCommunicationActions } from "@/hooks/useCommunicationActions";
 import { useGlobalShortcuts } from "@/hooks/use-keyboard-shortcuts";
@@ -33,6 +33,28 @@ import { BulkActionToolbar } from "@/components/BulkActionToolbar";
 import { FilterPanel, type FilterState } from "@/components/FilterPanel";
 import { EmptyState } from "@/components/EmptyState";
 import { CreateEstimateForm } from "@/components/CreateEstimateForm";
+
+const estimateFormSchema = insertEstimateSchema.pick({
+  title: true,
+  description: true,
+  amount: true,
+  status: true,
+});
+
+type EstimateListItem = {
+  id: string;
+  title: string;
+  contactId: string;
+  contactName: string;
+  status: EstimateSummary['status'] | 'cancelled';
+  value: number;
+  createdDate: string;
+  expiryDate: string;
+  description: string;
+  priority: 'high' | 'medium' | 'low';
+  externalSource?: string;
+  externalId?: string;
+};
 
 export default function Estimates({ externalSearch = "" }: { externalSearch?: string }) {
   const [location] = useLocation();
@@ -59,7 +81,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
   
   const [editModal, setEditModal] = useState<{
     isOpen: boolean;
-    estimate?: any;
+    estimate?: EstimateSummary;
   }>({ isOpen: false });
 
   const [addModal, setAddModal] = useState<{
@@ -68,7 +90,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
 
   const [detailsModal, setDetailsModal] = useState<{
     isOpen: boolean;
-    estimate?: any;
+    estimate?: EstimateListItem;
   }>({ isOpen: false });
 
   const [importDateModal, setImportDateModal] = useState<{
@@ -79,13 +101,13 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
 
   const [followUpModal, setFollowUpModal] = useState<{
     isOpen: boolean;
-    estimate?: any;
+    estimate?: EstimateListItem;
   }>({ isOpen: false });
 
   const [followUpDate, setFollowUpDate] = useState<Date | undefined>(undefined);
 
   // Fetch terminology settings
-  const { data: terminology } = useQuery<any>({
+  const { data: terminology } = useQuery<TerminologySettings>({
     queryKey: ['/api/terminology'],
   });
 
@@ -95,8 +117,8 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
   });
 
   // Fetch contact data for details modal
-  const { data: detailsContact } = useQuery<any>({
-    queryKey: [`/api/contacts/${detailsModal.estimate?.contactId}`],
+  const { data: detailsContact } = useQuery<Contact>({
+    queryKey: ['/api/contacts', detailsModal.estimate?.contactId],
     enabled: detailsModal.isOpen && !!detailsModal.estimate?.contactId,
   });
 
@@ -152,9 +174,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
     enabled: canManageIntegrations,
   });
 
-  const housecallProIntegration = Array.isArray(integrations) 
-    ? integrations.find(i => i.name === 'housecall-pro')
-    : integrations?.integrations?.find((i: any) => i.name === 'housecall-pro');
+  const housecallProIntegration = integrations.find(i => i.name === 'housecall-pro');
   
   const isHousecallProConfigured = housecallProIntegration?.hasCredentials && housecallProIntegration?.isEnabled;
 
@@ -185,7 +205,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
 
   // Subscribe to WebSocket updates for estimates
   useEffect(() => {
-    const unsubscribe = subscribe((message: any) => {
+    const unsubscribe = subscribe((message: { type: string }) => {
       if (message.type === 'new_estimate' || message.type === 'estimate_created' || message.type === 'estimate_updated' || message.type === 'estimate_deleted') {
         queryClient.invalidateQueries({ queryKey: ['/api/estimates/paginated'] });
         queryClient.invalidateQueries({ queryKey: ['/api/estimates/status-counts'] });
@@ -202,14 +222,6 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
     }
   }, [syncStartDateData]);
   
-  // Form schema for estimate editing (only editable fields)
-  const estimateFormSchema = insertEstimateSchema.pick({ 
-    title: true, 
-    description: true, 
-    amount: true, 
-    status: true 
-  });
-  
   // Form for estimate editing
   const editForm = useForm<z.infer<typeof estimateFormSchema>>({
     resolver: zodResolver(estimateFormSchema),
@@ -222,19 +234,18 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
   });
 
 
-  // Transform paginated estimates data
-  const allEstimates = (estimates || []).map(e => ({
+  // Transform paginated estimates data (EstimateSummary) into display-friendly EstimateListItem
+  const allEstimates: EstimateListItem[] = (estimates || []).map(e => ({
     id: e.id,
     title: e.title,
     contactId: e.contactId,
+    contactName: e.contactName,
     status: e.status,
     value: parseFloat(e.amount),
     createdDate: new Date(e.createdAt).toLocaleDateString(),
     expiryDate: e.validUntil ? new Date(e.validUntil).toLocaleDateString() : 'No expiry',
-    description: e.description || '',
+    description: '',
     priority: 'medium' as const,
-    externalSource: (e as any).externalSource,
-    externalId: (e as any).externalId
   }));
 
 
@@ -304,10 +315,10 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
         title: "Import Successful",
         description: `Successfully imported estimates from Housecall Pro.${data.newEstimates ? ` Added ${data.newEstimates} new estimates.` : ''}`,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Import Failed",
-        description: error.message || "Failed to import estimates from Housecall Pro",
+        description: error instanceof Error ? error.message : "Failed to import estimates from Housecall Pro",
         variant: "destructive",
       });
     } finally {
@@ -333,103 +344,64 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
     }
   };
 
+  // Shared helper: fetch a contact by ID with error handling
+  const fetchContact = async (contactId: string): Promise<Contact | null> => {
+    const response = await fetch(`/api/contacts/${contactId}`, { credentials: 'include' });
+    if (!response.ok) {
+      toast({
+        title: "Error",
+        description: "Failed to load contact information",
+        variant: "destructive",
+      });
+      return null;
+    }
+    return response.json() as Promise<Contact>;
+  };
+
   // Wrapper functions to adapt estimateId-based calls to entity-based calls
   const handleContactById = async (estimateId: string, method: "phone" | "email") => {
     const estimate = (allEstimates || []).find(e => e.id === estimateId);
     if (!estimate) return;
 
-    const contactResponse = await fetch(`/api/contacts/${estimate.contactId}`, { credentials: 'include' });
-    if (!contactResponse.ok) {
-      toast({
-        title: "Error",
-        description: "Failed to load contact information",
-        variant: "destructive",
-      });
-      return;
-    }
-    const contact = await contactResponse.json();
+    const contact = await fetchContact(estimate.contactId);
+    if (!contact) return;
     
-    // Create activity record for this interaction
-    const activityData = {
+    // Log activity (best-effort)
+    apiRequest('POST', '/api/activities', {
       type: method === 'phone' ? 'call' : 'email',
       content: `${method === 'phone' ? 'Called' : 'Emailed'} ${contact.name} regarding ${estimate.title}`,
       estimateId: estimateId,
-    };
-    
-    // Log activity
-    apiRequest('POST', '/api/activities', activityData).then(() => {
+    }).then(() => {
       queryClient.invalidateQueries({ queryKey: ['/api/activities'] });
-    }).catch(() => {
-      // Activity logging failed, but continue with action
-    });
+    }).catch(() => {});
     
+    const entity = { name: contact.name, emails: contact.emails, phones: contact.phones, id: estimate.id };
+
     if (method === 'phone') {
-      const phone = contact.phones?.[0];
-      if (phone) {
-        handleContact({ name: contact.name, emails: contact.emails, phones: contact.phones, id: estimate.id }, method);
+      if (contact.phones?.[0]) {
+        handleContact(entity, method);
       } else {
-        toast({
-          title: "No phone number",
-          description: `${contact.name} doesn't have a phone number on file.`,
-          variant: "destructive",
-        });
+        toast({ title: "No phone number", description: `${contact.name} doesn't have a phone number on file.`, variant: "destructive" });
       }
-    } else if (method === 'email') {
-      const email = contact.emails?.[0];
-      if (email) {
-        handleContact({ name: contact.name, emails: contact.emails, phones: contact.phones, id: estimate.id }, method);
+    } else {
+      if (contact.emails?.[0]) {
+        handleContact(entity, method);
       } else {
-        toast({
-          title: "No email address",
-          description: `${contact.name} doesn't have an email address on file.`,
-          variant: "destructive",
-        });
+        toast({ title: "No email address", description: `${contact.name} doesn't have an email address on file.`, variant: "destructive" });
       }
     }
   };
 
-  const handleSendTextByEntity = async (estimate: any) => {
-    const contactResponse = await fetch(`/api/contacts/${estimate.contactId}`, { credentials: 'include' });
-    if (!contactResponse.ok) {
-      toast({
-        title: "Error",
-        description: "Failed to load contact information",
-        variant: "destructive",
-      });
-      return;
-    }
-    const contact = await contactResponse.json();
-    
-    // Convert to entity format
-    const entity = {
-      id: estimate.id,
-      name: contact.name,
-      emails: contact.emails,
-      phones: contact.phones,
-    };
-    handleSendText(entity, 'estimate');
+  const handleSendTextByEntity = async (estimate: EstimateListItem) => {
+    const contact = await fetchContact(estimate.contactId);
+    if (!contact) return;
+    handleSendText({ id: estimate.id, name: contact.name, emails: contact.emails, phones: contact.phones }, 'estimate');
   };
 
-  const handleSendEmailByEntity = async (estimate: any) => {
-    const contactResponse = await fetch(`/api/contacts/${estimate.contactId}`, { credentials: 'include' });
-    if (!contactResponse.ok) {
-      toast({
-        title: "Error",
-        description: "Failed to load contact information",
-        variant: "destructive",
-      });
-      return;
-    }
-    const contact = await contactResponse.json();
-    
-    // Convert to entity format
-    const entity = {
-      id: estimate.id,
-      name: contact.name,
-      emails: contact.emails,
-      phones: contact.phones,
-    };
-    handleSendEmail(entity, 'estimate');
+  const handleSendEmailByEntity = async (estimate: EstimateListItem) => {
+    const contact = await fetchContact(estimate.contactId);
+    if (!contact) return;
+    handleSendEmail({ id: estimate.id, name: contact.name, emails: contact.emails, phones: contact.phones }, 'estimate');
   };
 
   const handleConvertToJob = (_estimateId: string) => {
@@ -442,8 +414,8 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
       // Populate the edit form
       editForm.reset({
         title: estimate.title || "",
-        description: estimate.description || "",
-        amount: ((estimate as any).value || (estimate as any).amount)?.toString() || "0",
+        description: "",
+        amount: estimate.amount?.toString() || "0",
         status: ["sent", "pending", "approved", "rejected"].includes(estimate.status) ? estimate.status as "sent" | "pending" | "approved" | "rejected" : "pending",
       });
       setEditModal({ isOpen: true, estimate });
@@ -508,14 +480,9 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
     },
   });
 
-  const handleSetFollowUp = (estimate: any) => {
+  const handleSetFollowUp = (estimate: EstimateListItem) => {
     setFollowUpModal({ isOpen: true, estimate });
-    // Set the current follow-up date if it exists
-    if (estimate.followUpDate) {
-      setFollowUpDate(new Date(estimate.followUpDate));
-    } else {
-      setFollowUpDate(undefined);
-    }
+    setFollowUpDate(undefined);
   };
 
   const handleFollowUpSubmit = () => {
@@ -542,7 +509,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
       queryClient.invalidateQueries({ queryKey: ['/api/estimates/status-counts'] });
       queryClient.invalidateQueries({ queryKey: ['/api/estimates'] });
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast({
         title: "Failed to Delete Estimate",
         description: error.message || "Something went wrong.",
@@ -842,15 +809,16 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
             </DialogDescription>
           </DialogHeader>
           
-          {detailsModal.estimate && (
-            <div className="grid gap-6 md:grid-cols-2">
+          {detailsModal.estimate && (() => {
+            const detailsEst = detailsModal.estimate!;
+            return (<div className="grid gap-6 md:grid-cols-2">
               {/* Estimate Information */}
               <div className="space-y-4">
                 <div className="grid gap-3">
                   <div className="flex items-center gap-2">
                     <User className="h-4 w-4 text-muted-foreground" />
                     <span className="font-medium">Customer:</span>
-                    <span>{detailsContact?.name || detailsModal.estimate.contactName || 'Not provided'}</span>
+                    <span>{detailsContact?.name || detailsEst.contactName || 'Not provided'}</span>
                   </div>
                   
                   <div className="flex items-center gap-2">
@@ -876,19 +844,19 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
                   <div className="flex items-center gap-2">
                     <Calendar className="h-4 w-4 text-muted-foreground" />
                     <span className="font-medium">Created:</span>
-                    <span>{detailsModal.estimate.createdDate}</span>
+                    <span>{detailsEst.createdDate}</span>
                   </div>
                   
                   <div className="flex items-center gap-2">
                     <Calendar className="h-4 w-4 text-muted-foreground" />
                     <span className="font-medium">Expires:</span>
-                    <span>{detailsModal.estimate.expiryDate}</span>
+                    <span>{detailsEst.expiryDate}</span>
                   </div>
                   
                   <div className="pt-4">
                     <span className="font-medium">Description:</span>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      {detailsModal.estimate.description || 'No description provided'}
+                      {detailsEst.description || 'No description provided'}
                     </p>
                   </div>
                   
@@ -897,7 +865,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => handleContact({ name: detailsContact.name, emails: detailsContact.emails, phones: detailsContact.phones, id: detailsModal.estimate.id }, "phone")}
+                        onClick={() => handleContact({ name: detailsContact.name, emails: detailsContact.emails, phones: detailsContact.phones, id: detailsEst.id }, "phone")}
                       >
                         <Phone className="h-4 w-4 mr-1" />
                         Call
@@ -907,7 +875,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => handleContact({ name: detailsContact.name, emails: detailsContact.emails, phones: detailsContact.phones, id: detailsModal.estimate.id }, "email")}
+                        onClick={() => handleContact({ name: detailsContact.name, emails: detailsContact.emails, phones: detailsContact.phones, id: detailsEst.id }, "email")}
                       >
                         <Mail className="h-4 w-4 mr-1" />
                         Email
@@ -918,7 +886,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
                         variant="outline"
                         size="sm"
                         onClick={() => handleSendText({
-                          id: detailsModal.estimate.id,
+                          id: detailsEst.id,
                           name: detailsContact.name,
                           emails: detailsContact.emails,
                           phones: detailsContact.phones,
@@ -934,11 +902,11 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
               
               {/* Activities */}
               <ActivityList
-                estimateId={detailsModal.estimate.id}
+                estimateId={detailsEst.id}
                 className="md:col-span-1"
               />
-            </div>
-          )}
+            </div>);
+          })()}
         </DialogContent>
       </Dialog>
 
@@ -957,8 +925,8 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
       <EmailComposerModal
         isOpen={emailModal.isOpen}
         onClose={closeEmailModal}
-        recipientName={emailModal.estimate?.name || emailModal.estimate?.customer?.name || ''}
-        recipientEmail={emailModal.estimate?.emails?.[0] || emailModal.estimate?.customer?.email || ''}
+        recipientName={emailModal.estimate?.name || ''}
+        recipientEmail={emailModal.estimate?.emails?.[0] || emailModal.estimate?.email || ''}
         companyName=""
         estimateId={emailModal.estimate?.id}
       />
@@ -1126,9 +1094,9 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
             ['Title', 'Customer', 'Email', 'Phone', 'Status', 'Value', 'Created Date', 'Expiry Date'].join(','),
             ...(selectedEstimates || []).map(est => [
               est.title || '',
-              est.customer?.name || '',
-              est.customer?.email || '',
-              est.customer?.phone || '',
+              est.contactName || '',
+              '',
+              '',
               est.status || '',
               est.value || '',
               est.createdDate || '',

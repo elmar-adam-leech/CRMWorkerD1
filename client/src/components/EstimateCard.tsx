@@ -29,7 +29,7 @@ type EstimateCardProps = {
     id: string;
     title: string;
     contactId: string;
-    status: "draft" | "sent" | "approved" | "rejected" | "cancelled";
+    status: "draft" | "sent" | "pending" | "approved" | "rejected" | "cancelled";
     value: number;
     createdDate: string;
     expiryDate: string;

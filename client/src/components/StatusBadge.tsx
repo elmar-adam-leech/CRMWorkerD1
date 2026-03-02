@@ -2,7 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 type StatusBadgeProps = {
-  status: "new" | "draft" | "scheduled" | "sent" | "approved" | "rejected" | "in_progress" | "completed" | "cancelled" | "contacted" | "disqualified";
+  status: "new" | "draft" | "pending" | "scheduled" | "sent" | "approved" | "rejected" | "in_progress" | "completed" | "cancelled" | "contacted" | "disqualified";
   className?: string;
 };
 
@@ -23,6 +23,10 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
     scheduled: {
       label: "Scheduled",
       variant: "default" as const,
+    },
+    pending: {
+      label: "Pending",
+      variant: "secondary" as const,
     },
     sent: {
       label: "Sent",
