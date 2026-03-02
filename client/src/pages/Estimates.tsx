@@ -25,7 +25,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertEstimateSchema } from "@shared/schema";
 import { z } from "zod";
-import type { Estimate, EstimateSummary, PaginatedEstimates } from "@shared/schema";
+import type { Estimate, PaginatedEstimates } from "@shared/schema";
 import { useWebSocketContext } from "@/contexts/WebSocketContext";
 import { useCommunicationActions } from "@/hooks/useCommunicationActions";
 import { useGlobalShortcuts } from "@/hooks/use-keyboard-shortcuts";
@@ -176,15 +176,9 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
 
   // Check URL parameters to auto-open modal
   useEffect(() => {
-    console.log('🔍 Estimates page useEffect triggered, location:', location);
-    console.log('🔍 Current URL:', window.location.href);
     const urlParams = new URLSearchParams(window.location.search);
-    const shouldAdd = urlParams.get('add');
-    console.log('🔍 URL params shouldAdd:', shouldAdd);
-    if (shouldAdd === 'true') {
-      console.log('✅ Opening add modal for estimates');
+    if (urlParams.get('add') === 'true') {
       setAddModal({ isOpen: true });
-      // Clean URL after opening modal
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, [location]);
@@ -192,17 +186,12 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
   // Subscribe to WebSocket updates for estimates
   useEffect(() => {
     const unsubscribe = subscribe((message: any) => {
-      console.log('[Estimates] WebSocket message received:', message);
-      
-      // When estimates are created, updated, or deleted, invalidate queries to refresh
       if (message.type === 'new_estimate' || message.type === 'estimate_created' || message.type === 'estimate_updated' || message.type === 'estimate_deleted') {
-        console.log('[Estimates] Invalidating estimate queries for real-time update');
         queryClient.invalidateQueries({ queryKey: ['/api/estimates/paginated'] });
         queryClient.invalidateQueries({ queryKey: ['/api/estimates/status-counts'] });
         queryClient.invalidateQueries({ queryKey: ['/api/estimates'] });
       }
     });
-
     return unsubscribe;
   }, [subscribe, queryClient]);
 
@@ -248,8 +237,6 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
     externalId: (e as any).externalId
   }));
 
-  // Server-side filtering is now handled by the query, so no client-side filtering needed
-  const filteredEstimates = allEstimates || [];
 
   // Fetch status counts from backend
   const { data: statusCountsData } = useQuery<{
@@ -280,7 +267,6 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
   };
 
   const handleAddEstimate = () => {
-    console.log("Add estimate clicked");
     setAddModal({ isOpen: true });
   };
 
@@ -292,63 +278,55 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
 
   // Handle actual import with selected date
   const handleConfirmImport = async () => {
-    try {
-      setImportDateModal({ isOpen: false });
-      
-      toast({
-        title: "Import Started",
-        description: "Importing estimates from Housecall Pro...",
-      });
+    setImportDateModal({ isOpen: false });
 
-      // Temporarily update sync start date if different from current
-      const originalSyncDate = syncStartDateData?.syncStartDate;
-      const selectedDateISO = selectedImportDate?.toISOString();
-      
-      if (selectedDateISO && selectedDateISO !== originalSyncDate) {
+    toast({
+      title: "Import Started",
+      description: "Importing estimates from Housecall Pro...",
+    });
+
+    const originalSyncDate = syncStartDateData?.syncStartDate;
+    const selectedDateISO = selectedImportDate?.toISOString();
+    const dateChanged = selectedDateISO && selectedDateISO !== originalSyncDate;
+
+    try {
+      if (dateChanged) {
         await apiRequest('POST', '/api/housecall-pro/sync-start-date', {
           syncStartDate: selectedDateISO
         });
       }
 
       const response = await apiRequest('POST', '/api/housecall-pro/sync');
-      
-      // Restore original sync date if we changed it
-      if (selectedDateISO && selectedDateISO !== originalSyncDate) {
-        await apiRequest('POST', '/api/housecall-pro/sync-start-date', {
-          syncStartDate: originalSyncDate
-        });
-      }
-      
-      if (response.ok) {
-        const data = await response.json();
-        
-        // Refresh estimates data
-        queryClient.invalidateQueries({ queryKey: ['/api/estimates/paginated'] });
-        
-        toast({
-          title: "Import Successful",
-          description: `Successfully imported estimates from Housecall Pro. ${data.newEstimates ? `Added ${data.newEstimates} new estimates.` : ''}`,
-        });
-      } else {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Import failed');
-      }
+      const data = await response.json();
+
+      queryClient.invalidateQueries({ queryKey: ['/api/estimates/paginated'] });
+      toast({
+        title: "Import Successful",
+        description: `Successfully imported estimates from Housecall Pro.${data.newEstimates ? ` Added ${data.newEstimates} new estimates.` : ''}`,
+      });
     } catch (error: any) {
-      console.error('Failed to import from Housecall Pro:', error);
       toast({
         title: "Import Failed",
         description: error.message || "Failed to import estimates from Housecall Pro",
         variant: "destructive",
       });
+    } finally {
+      // Always restore the original sync date if we changed it
+      if (dateChanged) {
+        await apiRequest('POST', '/api/housecall-pro/sync-start-date', {
+          syncStartDate: originalSyncDate
+        }).catch(() => {
+          // Best-effort restore; don't surface a secondary error
+        });
+      }
     }
   };
 
-  const handleSend = (estimateId: string) => {
-    console.log(`Sending estimate ${estimateId}`);
+  const handleSend = (_estimateId: string) => {
+    toast({ title: "Sending estimates is not yet available" });
   };
 
   const handleViewDetails = (estimateId: string) => {
-    console.log(`Viewing details for estimate ${estimateId}`);
     const estimate = (allEstimates || []).find(e => e.id === estimateId);
     if (estimate) {
       setDetailsModal({ isOpen: true, estimate });
@@ -357,13 +335,10 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
 
   // Wrapper functions to adapt estimateId-based calls to entity-based calls
   const handleContactById = async (estimateId: string, method: "phone" | "email") => {
-    console.log(`Contacting customer for estimate ${estimateId} via ${method}`);
-    
     const estimate = (allEstimates || []).find(e => e.id === estimateId);
     if (!estimate) return;
-    
-    // Fetch contact data
-    const contactResponse = await fetch(`/api/contacts/${estimate.contactId}`);
+
+    const contactResponse = await fetch(`/api/contacts/${estimate.contactId}`, { credentials: 'include' });
     if (!contactResponse.ok) {
       toast({
         title: "Error",
@@ -414,10 +389,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
   };
 
   const handleSendTextByEntity = async (estimate: any) => {
-    console.log(`Sending text to customer for estimate ${estimate.title}`);
-    
-    // Fetch contact data
-    const contactResponse = await fetch(`/api/contacts/${estimate.contactId}`);
+    const contactResponse = await fetch(`/api/contacts/${estimate.contactId}`, { credentials: 'include' });
     if (!contactResponse.ok) {
       toast({
         title: "Error",
@@ -439,10 +411,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
   };
 
   const handleSendEmailByEntity = async (estimate: any) => {
-    console.log(`Sending email to customer for estimate ${estimate.title}`);
-    
-    // Fetch contact data
-    const contactResponse = await fetch(`/api/contacts/${estimate.contactId}`);
+    const contactResponse = await fetch(`/api/contacts/${estimate.contactId}`, { credentials: 'include' });
     if (!contactResponse.ok) {
       toast({
         title: "Error",
@@ -463,13 +432,11 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
     handleSendEmail(entity, 'estimate');
   };
 
-  const handleConvertToJob = (estimateId: string) => {
-    console.log(`Converting estimate ${estimateId} to job`);
+  const handleConvertToJob = (_estimateId: string) => {
+    toast({ title: "Convert to job is not yet available" });
   };
-  
+
   const handleEditEstimate = (estimateId: string) => {
-    console.log(`Editing estimate ${estimateId}`);
-    // Find the estimate from the API data
     const estimate = (estimates || []).find(e => e.id === estimateId);
     if (estimate) {
       // Populate the edit form
@@ -663,7 +630,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
       )}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {(filteredEstimates || []).map((estimate) => (
+        {allEstimates.map((estimate) => (
           <EstimateCard
             key={estimate.id}
             estimate={estimate}
@@ -682,7 +649,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
       </div>
 
       {/* Initial loading state with skeletons */}
-      {estimatesLoading && filteredEstimates.length === 0 && (
+      {estimatesLoading && allEstimates.length === 0 && (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {Array.from({ length: 6 }).map((_, index) => (
             <EstimateCardSkeleton key={index} />
@@ -713,7 +680,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
       )}
 
       {/* Empty state */}
-      {filteredEstimates.length === 0 && !estimatesLoading && (
+      {allEstimates.length === 0 && !estimatesLoading && (
         searchQuery || filterStatus !== "all" ? (
           <EmptyState
             icon={Filter}
@@ -930,7 +897,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => handleContact(detailsModal.estimate.id, "phone")}
+                        onClick={() => handleContact({ name: detailsContact.name, emails: detailsContact.emails, phones: detailsContact.phones, id: detailsModal.estimate.id }, "phone")}
                       >
                         <Phone className="h-4 w-4 mr-1" />
                         Call
@@ -940,7 +907,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => handleContact(detailsModal.estimate.id, "email")}
+                        onClick={() => handleContact({ name: detailsContact.name, emails: detailsContact.emails, phones: detailsContact.phones, id: detailsModal.estimate.id }, "email")}
                       >
                         <Mail className="h-4 w-4 mr-1" />
                         Email
@@ -992,7 +959,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
         onClose={closeEmailModal}
         recipientName={emailModal.estimate?.name || emailModal.estimate?.customer?.name || ''}
         recipientEmail={emailModal.estimate?.emails?.[0] || emailModal.estimate?.customer?.email || ''}
-        companyName="Elmar HVAC"
+        companyName=""
         estimateId={emailModal.estimate?.id}
       />
 
@@ -1137,16 +1104,18 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
       {/* Bulk Action Toolbar */}
       <BulkActionToolbar
         onDelete={async (ids) => {
-          // Delete all selected estimates
           await Promise.all(ids.map(id => apiRequest("DELETE", `/api/estimates/${id}`)));
+          queryClient.invalidateQueries({ queryKey: ['/api/estimates/paginated'] });
+          queryClient.invalidateQueries({ queryKey: ['/api/estimates/status-counts'] });
           queryClient.invalidateQueries({ queryKey: ['/api/estimates'] });
           toast({ title: `Deleted ${ids.length} estimate(s)` });
         }}
         onStatusChange={async (ids, status) => {
-          // Update status for all selected estimates
-          await Promise.all(ids.map(id => 
+          await Promise.all(ids.map(id =>
             apiRequest("PATCH", `/api/estimates/${id}/status`, { status })
           ));
+          queryClient.invalidateQueries({ queryKey: ['/api/estimates/paginated'] });
+          queryClient.invalidateQueries({ queryKey: ['/api/estimates/status-counts'] });
           queryClient.invalidateQueries({ queryKey: ['/api/estimates'] });
           toast({ title: `Updated ${ids.length} estimate(s) to ${status}` });
         }}
