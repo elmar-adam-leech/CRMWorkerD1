@@ -134,7 +134,18 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
   const { subscribe } = useWebSocketContext();
 
   // Fetch terminology settings
-  const { data: terminology } = useQuery<any>({
+  const { data: terminology } = useQuery<{
+    leadLabel: string;
+    leadsLabel: string;
+    estimateLabel: string;
+    estimatesLabel: string;
+    jobLabel: string;
+    jobsLabel: string;
+    messageLabel: string;
+    messagesLabel: string;
+    templateLabel: string;
+    templatesLabel: string;
+  }>({
     queryKey: ['/api/terminology'],
   });
 
@@ -247,15 +258,14 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
   const createContactMutation = useMutation({
     mutationFn: async (contactData: z.infer<typeof contactFormSchema>) => {
       // Transform single email/phone to arrays and add type: 'lead'
+      const { email, phone, ...rest } = contactData;
       const payload = {
-        ...contactData,
+        ...rest,
         type: 'lead' as const,
-        emails: contactData.email ? [contactData.email] : [],
-        phones: contactData.phone ? [contactData.phone] : [],
+        emails: email ? [email] : [],
+        phones: phone ? [phone] : [],
       };
-      delete (payload as any).email;
-      delete (payload as any).phone;
-      
+
       // Uses raw fetch (not apiRequest) to parse JSON from error responses —
       // apiRequest reads text() before throwing, losing the structured duplicate-
       // detection fields (.isDuplicate, .duplicateContactId, .duplicateContactName).
@@ -321,13 +331,12 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
   const updateContactMutation = useMutation({
     mutationFn: async (data: { contactId: string; contactData: z.infer<typeof contactFormSchema> }) => {
       // Transform single email/phone to arrays
+      const { email, phone, ...rest } = data.contactData;
       const payload = {
-        ...data.contactData,
-        emails: data.contactData.email ? [data.contactData.email] : [],
-        phones: data.contactData.phone ? [data.contactData.phone] : [],
+        ...rest,
+        emails: email ? [email] : [],
+        phones: phone ? [phone] : [],
       };
-      delete (payload as any).email;
-      delete (payload as any).phone;
       
       const response = await apiRequest('PUT', `/api/contacts/${data.contactId}`, payload);
       return response;
@@ -341,7 +350,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
       setEditContactModal({ isOpen: false });
       editForm.reset();
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast({
         title: "Failed to Update Lead",
         description: error.message || "Something went wrong.",
@@ -365,7 +374,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
       queryClient.invalidateQueries({ queryKey: ['/api/contacts/status-counts'] });
       setEditStatusModal({ isOpen: false });
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast({
         title: "Failed to Update Status",
         description: error.message || "Something went wrong.",
@@ -389,7 +398,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
       queryClient.invalidateQueries({ queryKey: ['/api/contacts/status-counts'] });
       queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast({
         title: "Failed to Delete Lead",
         description: error.message || "Something went wrong.",
@@ -414,7 +423,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
       queryClient.invalidateQueries({ queryKey: ['/api/contacts/paginated'] });
       queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast({
         title: "Failed to Update Follow-Up Date",
         description: error.message || "Something went wrong.",
@@ -442,7 +451,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
       
       return await response.json();
     },
-    onSuccess: (data: any) => {
+    onSuccess: (data: { message?: string; errors?: unknown[] }) => {
       toast({
         title: "CSV Import Successful",
         description: data.message || "CSV data imported successfully",
@@ -465,7 +474,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
         fileInputRef.current.value = '';
       }
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       toast({
         title: "CSV Import Failed",
         description: error.message || "Failed to import CSV data",
@@ -598,12 +607,12 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
     handleSchedule(lead);
   };
 
-  const handleSendTextByEntity = (lead: any) => {
-    handleSendText(lead, 'lead');
+  const handleSendTextByEntity = (lead: Contact) => {
+    handleSendText(lead as any, 'lead');
   };
 
-  const handleSendEmailByEntity = (lead: any) => {
-    handleSendEmail(lead, 'lead');
+  const handleSendEmailByEntity = (lead: Contact) => {
+    handleSendEmail(lead as any, 'lead');
   };
 
   const handleEdit = (contactId: string) => {
