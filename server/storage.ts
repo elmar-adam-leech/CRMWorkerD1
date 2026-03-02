@@ -122,6 +122,7 @@ export interface IStorage {
   updateContact(id: string, contact: UpdateContact, contractorId: string): Promise<Contact | undefined>;
   markContactContacted(contactId: string, contractorId: string, userId: string, contactedAt?: Date): Promise<Contact | undefined>;
   deleteContact(id: string, contractorId: string): Promise<boolean>;
+  unlinkOrphanedEmailActivities(contactId: string, currentEmails: string[], contractorId: string): Promise<void>;
   findMatchingContact(contractorId: string, emails?: string[], phones?: string[]): Promise<string | null>;
 
   // Lead operations (individual lead submissions)
@@ -894,10 +895,73 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteContact(id: string, contractorId: string): Promise<boolean> {
-    const result = await db
-      .delete(contacts)
-      .where(and(eq(contacts.id, id), eq(contacts.contractorId, contractorId)));
-    return (result.rowCount ?? 0) > 0;
+    return await db.transaction(async (tx) => {
+      // Verify the contact belongs to this contractor before doing anything
+      const existing = await tx
+        .select({ id: contacts.id })
+        .from(contacts)
+        .where(and(eq(contacts.id, id), eq(contacts.contractorId, contractorId)))
+        .limit(1);
+
+      if (existing.length === 0) return false;
+
+      // 1. Null out calls.contactId (nullable column, no cascade defined)
+      await tx
+        .update(calls)
+        .set({ contactId: null })
+        .where(and(eq(calls.contactId, id), eq(calls.contractorId, contractorId)));
+
+      // 2. Delete estimates (NOT NULL FK, no cascade defined)
+      await tx
+        .delete(estimates)
+        .where(and(eq(estimates.contactId, id), eq(estimates.contractorId, contractorId)));
+
+      // 3. Delete jobs (NOT NULL FK, no cascade defined)
+      await tx
+        .delete(jobs)
+        .where(and(eq(jobs.contactId, id), eq(jobs.contractorId, contractorId)));
+
+      // 4. Delete the contact (leads, activities, messages cascade automatically via onDelete: "cascade")
+      const result = await tx
+        .delete(contacts)
+        .where(and(eq(contacts.id, id), eq(contacts.contractorId, contractorId)));
+
+      return (result.rowCount ?? 0) > 0;
+    });
+  }
+
+  async unlinkOrphanedEmailActivities(contactId: string, currentEmails: string[], contractorId: string): Promise<void> {
+    // Find all gmail email activities linked to this contact
+    const emailActivities = await db
+      .select({ id: activities.id, metadata: activities.metadata })
+      .from(activities)
+      .where(and(
+        eq(activities.contactId, contactId),
+        eq(activities.contractorId, contractorId),
+        eq(activities.externalSource, 'gmail')
+      ));
+
+    const lowerCurrentEmails = currentEmails.map(e => e.toLowerCase());
+
+    for (const activity of emailActivities) {
+      if (!activity.metadata) continue;
+      try {
+        const meta = JSON.parse(activity.metadata);
+        const fromEmail = (meta.from || '').toLowerCase();
+        const toEmails: string[] = (meta.to || []).map((e: string) => e.toLowerCase());
+        const allEmails = [fromEmail, ...toEmails];
+
+        const stillMatches = allEmails.some(e => lowerCurrentEmails.includes(e));
+        if (!stillMatches) {
+          await db
+            .update(activities)
+            .set({ contactId: null })
+            .where(eq(activities.id, activity.id));
+        }
+      } catch {
+        // Skip activities with unparseable metadata
+      }
+    }
   }
 
   async findMatchingContact(contractorId: string, emails?: string[], phones?: string[]): Promise<string | null> {

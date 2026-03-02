@@ -1286,11 +1286,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (updateData.status === 'scheduled') {
         updateData.scheduledByUserId = req.user!.userId;
       }
-      
+
+      // If emails are being updated, re-evaluate gmail activity links after saving
+      const emailsChanging = Array.isArray(updateData.emails);
+
       const contact = await storage.updateContact(req.params.id, updateData, req.user!.contractorId);
       if (!contact) {
         res.status(404).json({ message: "Contact not found" });
         return;
+      }
+
+      // Unlink email activities whose matched address was removed from this contact
+      if (emailsChanging) {
+        storage.unlinkOrphanedEmailActivities(contact.id, contact.emails || [], req.user!.contractorId).catch(err => {
+          console.error('[contacts] Error unlinking orphaned email activities:', err);
+        });
       }
       
       // Broadcast contact update to all connected clients

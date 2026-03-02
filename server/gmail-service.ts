@@ -417,14 +417,16 @@ export class GmailService {
     }
 
     if (payload.parts) {
+      // Prefer plain text — check text/plain first to avoid storing raw HTML
       for (const part of payload.parts) {
-        if (part.mimeType === 'text/html' && part.body?.data) {
+        if (part.mimeType === 'text/plain' && part.body?.data) {
           return this.decodeBase64(part.body.data);
         }
       }
-      
+
+      // Fall back to HTML only if no plain text part exists
       for (const part of payload.parts) {
-        if (part.mimeType === 'text/plain' && part.body?.data) {
+        if (part.mimeType === 'text/html' && part.body?.data) {
           return this.decodeBase64(part.body.data);
         }
       }

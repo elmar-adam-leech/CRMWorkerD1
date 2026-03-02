@@ -874,6 +874,11 @@ export class SyncScheduler {
               direction: isOutbound ? 'outbound' : 'inbound',
             };
             
+            // Only store email as an activity if it matches a CRM contact or estimate
+            if (!matchingContact && !matchingEstimate) {
+              continue;
+            }
+
             await storage.createActivity({
               type: 'email',
               title: isOutbound ? `Email sent: ${email.subject}` : `Email received: ${email.subject}`,

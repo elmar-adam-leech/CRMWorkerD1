@@ -35,6 +35,19 @@ const getActivityIcon = (type: Activity['type']) => {
   }
 };
 
+const stripHtml = (html: string): string =>
+  html
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&[^;]+;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
 const getActivityTypeColor = (type: Activity['type']) => {
   switch (type) {
     case 'note': return 'bg-chart-1/10 text-chart-1';
@@ -166,7 +179,7 @@ export function RecentActivityTimeline({ limit = 10, className }: RecentActivity
 
                   {activity.content && (
                     <p className="text-sm text-muted-foreground line-clamp-2">
-                      {activity.content}
+                      {activity.type === 'email' ? stripHtml(activity.content) : activity.content}
                     </p>
                   )}
 
