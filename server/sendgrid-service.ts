@@ -1,45 +1,14 @@
 import sgMail from '@sendgrid/mail';
 
-let connectionSettings: any;
+function getCredentials(): { apiKey: string; fromEmail: string } | null {
+  const apiKey = process.env.SENDGRID_API_KEY;
+  const fromEmail = process.env.SENDGRID_FROM_EMAIL || 'noreply@hcpcrm.com';
 
-async function getCredentials() {
-  const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
-  const xReplitToken = process.env.REPL_IDENTITY 
-    ? 'repl ' + process.env.REPL_IDENTITY 
-    : process.env.WEB_REPL_RENEWAL 
-    ? 'depl ' + process.env.WEB_REPL_RENEWAL 
-    : null;
-
-  if (!xReplitToken) {
-    throw new Error('X_REPLIT_TOKEN not found for repl/depl');
+  if (!apiKey) {
+    return null;
   }
 
-  connectionSettings = await fetch(
-    'https://' + hostname + '/api/v2/connection?include_secrets=true&connector_names=sendgrid',
-    {
-      headers: {
-        'Accept': 'application/json',
-        'X_REPLIT_TOKEN': xReplitToken
-      }
-    }
-  ).then(res => res.json()).then(data => data.items?.[0]);
-
-  if (!connectionSettings || (!connectionSettings.settings.api_key || !connectionSettings.settings.from_email)) {
-    throw new Error('SendGrid not connected');
-  }
-  return {apiKey: connectionSettings.settings.api_key, email: connectionSettings.settings.from_email};
-}
-
-// WARNING: Never cache this client.
-// Access tokens expire, so a new client must be created each time.
-// Always call this function again to get a fresh client.
-async function getUncachableSendGridClient() {
-  const {apiKey, email} = await getCredentials();
-  sgMail.setApiKey(apiKey);
-  return {
-    client: sgMail,
-    fromEmail: email
-  };
+  return { apiKey, fromEmail };
 }
 
 export interface SendEmailParams {
@@ -51,21 +20,27 @@ export interface SendEmailParams {
 
 export class SendGridService {
   async sendEmail({ to, subject, html, text }: SendEmailParams): Promise<void> {
+    const credentials = getCredentials();
+
+    if (!credentials) {
+      console.warn('[SendGrid] SENDGRID_API_KEY not set — skipping email to', to);
+      return;
+    }
+
     try {
-      const { client, fromEmail } = await getUncachableSendGridClient();
-      
-      const msg = {
+      sgMail.setApiKey(credentials.apiKey);
+
+      await sgMail.send({
         to,
-        from: fromEmail,
+        from: credentials.fromEmail,
         subject,
         html,
-        text: text || html.replace(/<[^>]*>/g, '') // Strip HTML tags for text version if not provided
-      };
+        text: text || html.replace(/<[^>]*>/g, ''),
+      });
 
-      await client.send(msg);
-      console.log(`Email sent successfully to ${to}`);
+      console.log(`[SendGrid] Email sent successfully to ${to}`);
     } catch (error) {
-      console.error('SendGrid email error:', error);
+      console.error('[SendGrid] Email send error:', error);
       throw new Error('Failed to send email');
     }
   }
@@ -94,9 +69,6 @@ export class SendGridService {
             <p>Hi ${name},</p>
             <p>Welcome to your HVAC CRM system! We're excited to have you on board.</p>
             <p>Your account has been successfully created. You can now log in and start managing your customers, leads, and jobs.</p>
-            <p>
-              <a href="https://hcpcrm.com/login" class="button">Log In to Your Account</a>
-            </p>
             <p>If you have any questions or need assistance, please don't hesitate to reach out to our support team.</p>
             <p>Best regards,<br>The HVAC CRM Team</p>
           </div>
@@ -107,14 +79,15 @@ export class SendGridService {
       </body>
       </html>
     `;
-    
+
     await this.sendEmail({ to, subject, html });
   }
 
   async sendPasswordResetEmail(to: string, name: string, resetToken: string): Promise<void> {
-    const resetUrl = `https://hcpcrm.com/reset-password?token=${resetToken}`;
+    const appUrl = process.env.APP_URL || 'https://hcpcrm.com';
+    const resetUrl = `${appUrl}/reset-password?token=${resetToken}`;
     const subject = 'Reset Your Password';
-    
+
     const html = `
       <!DOCTYPE html>
       <html>
@@ -160,13 +133,13 @@ export class SendGridService {
       </body>
       </html>
     `;
-    
+
     await this.sendEmail({ to, subject, html });
   }
 
   async sendPasswordChangedEmail(to: string, name: string): Promise<void> {
     const subject = 'Your Password Has Been Changed';
-    
+
     const html = `
       <!DOCTYPE html>
       <html>
@@ -202,7 +175,7 @@ export class SendGridService {
       </body>
       </html>
     `;
-    
+
     await this.sendEmail({ to, subject, html });
   }
 }

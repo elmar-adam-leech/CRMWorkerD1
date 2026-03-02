@@ -92,12 +92,15 @@ export class GmailService {
     this.clientId = process.env.GOOGLE_OAUTH_CLIENT_ID || '';
     this.clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET || '';
     
-    // Build allowlist from REPLIT_DOMAINS environment variable
-    const domains = process.env.REPLIT_DOMAINS 
-      ? process.env.REPLIT_DOMAINS.split(',').map(d => d.trim())
-      : ['localhost:5000'];
+    // Build allowlist — check ALLOWED_REDIRECT_DOMAINS first (for external deployments),
+    // then REPLIT_DOMAINS (auto-set by Replit), then fall back to localhost for dev.
+    const rawDomains =
+      process.env.ALLOWED_REDIRECT_DOMAINS ||
+      process.env.REPLIT_DOMAINS ||
+      'localhost:5000';
+    const domains = rawDomains.split(',').map(d => d.trim()).filter(Boolean);
     this.allowedDomains = new Set(domains);
-    
+
     console.log('[Gmail OAuth] Allowed redirect domains:', Array.from(this.allowedDomains));
   }
 
