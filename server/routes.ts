@@ -1350,10 +1350,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/contacts/:id", async (req: AuthenticatedRequest, res: Response) => {
     try {
       const contactUpdateSchema = insertContactSchema.omit({ contractorId: true }).partial().extend({
-        followUpDate: z.preprocess(
-          (val) => (val && typeof val === 'string' ? new Date(val) : val),
-          z.date().nullable().optional()
-        ),
+        followUpDate: z.coerce.date().nullable().optional(),
       });
       const updateData = contactUpdateSchema.parse(req.body);
       
