@@ -7560,9 +7560,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.status(400).json({ error: 'Invalid workflow data', details: validation.error });
         return;
       }
-      
+
+      // Admins, managers, and super_admins auto-approve their own workflows
+      const userContractor = await storage.getUserContractor(req.user!.userId, req.user!.contractorId);
+      const isElevatedRole = userContractor && ['admin', 'manager', 'super_admin'].includes(userContractor.role);
+      const workflowData = isElevatedRole
+        ? { ...validation.data, approvalStatus: 'approved' as const }
+        : validation.data;
+
       const workflow = await storage.createWorkflow(
-        validation.data,
+        workflowData,
         req.user!.contractorId,
         req.user!.userId
       );
@@ -7746,6 +7753,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error creating workflow step:', error);
       res.status(500).json({ error: 'Failed to create workflow step' });
+    }
+  });
+
+  app.put("/api/workflows/:workflowId/steps", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const workflow = await storage.getWorkflow(req.params.workflowId, req.user!.contractorId);
+      if (!workflow) {
+        res.status(404).json({ error: 'Workflow not found' });
+        return;
+      }
+
+      const { steps } = req.body;
+      if (!Array.isArray(steps)) {
+        res.status(400).json({ error: 'steps must be an array' });
+        return;
+      }
+
+      // Atomically replace all steps: delete existing, then create new ones
+      await storage.deleteWorkflowSteps(req.params.workflowId);
+
+      const createdSteps = [];
+      for (const stepData of steps) {
+        const validation = insertWorkflowStepSchema.safeParse({ ...stepData, workflowId: req.params.workflowId });
+        if (!validation.success) {
+          res.status(400).json({ error: 'Invalid workflow step data', details: validation.error });
+          return;
+        }
+        const step = await storage.createWorkflowStep(validation.data);
+        createdSteps.push(step);
+      }
+
+      res.json(createdSteps);
+    } catch (error) {
+      console.error('Error replacing workflow steps:', error);
+      res.status(500).json({ error: 'Failed to replace workflow steps' });
     }
   });
 

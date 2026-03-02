@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, Link, useLocation } from "wouter";
 import { Plus, Save, AlertCircle, ExternalLink, ArrowLeft, Trash2 } from "lucide-react";
@@ -8,6 +8,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -59,6 +60,9 @@ export default function WorkflowBuilder() {
   // Update workflowId when params change
   useEffect(() => {
     setWorkflowId(params.id);
+    // Reset dirty state when switching workflows
+    isInitialized.current = false;
+    setIsDirty(false);
   }, [params.id]);
 
   const [templateNodes, setTemplateNodes] = useState<Node[] | undefined>();
@@ -67,6 +71,8 @@ export default function WorkflowBuilder() {
   const [currentEdges, setCurrentEdges] = useState<Edge[]>([]);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [workflowName, setWorkflowName] = useState<string>('New Workflow');
+  const [isDirty, setIsDirty] = useState(false);
+  const isInitialized = useRef(false);
 
   // Fetch existing workflow if editing
   const { data: workflow, isLoading: workflowLoading } = useQuery<Workflow>({
@@ -190,6 +196,8 @@ export default function WorkflowBuilder() {
       setCurrentEdges(edges);
       setTemplateNodes(nodes);
       setTemplateEdges(edges);
+      // Mark as initialized so subsequent changes are tracked as dirty
+      setTimeout(() => { isInitialized.current = true; }, 0);
     }
   }, [workflow, workflowSteps]);
 
@@ -215,6 +223,13 @@ export default function WorkflowBuilder() {
       setWorkflowName(workflow.name);
     }
   }, [workflow]);
+
+  // Track unsaved changes — only after the canvas has been initialized from the DB
+  useEffect(() => {
+    if (isInitialized.current) {
+      setIsDirty(true);
+    }
+  }, [currentNodes, currentEdges]);
 
   const mapActionTypeToNodeType = (actionType: string): string => {
     const mapping: Record<string, string> = {
@@ -379,6 +394,7 @@ export default function WorkflowBuilder() {
       }
     },
     onSuccess: (savedWorkflow) => {
+      setIsDirty(false);
       toast({
         title: "Workflow saved",
         description: "Your workflow has been saved successfully.",
@@ -460,19 +476,6 @@ export default function WorkflowBuilder() {
     if (!wfId || wfId === 'undefined') {
       throw new Error('Cannot save workflow steps: Invalid workflow ID');
     }
-    
-    // First, fetch existing steps to buffer them in case we need to rollback
-    const response = await fetch(`/api/workflows/${wfId}/steps`, { 
-      credentials: 'include' 
-    });
-    
-    // Only treat 404 as "no steps", throw on other errors
-    let existingSteps: any[] = [];
-    if (response.ok) {
-      existingSteps = await response.json();
-    } else if (response.status !== 404) {
-      throw new Error(`Failed to fetch workflow steps: ${response.statusText}`);
-    }
 
     // Build adjacency map from edges to preserve relationships
     const edgeMap = new Map<string, string[]>(); // nodeId -> child nodeIds
@@ -486,126 +489,56 @@ export default function WorkflowBuilder() {
     // Topological sort to get nodes in execution order
     const visited = new Set<string>();
     const sorted: Node[] = [];
-    
+
     const visit = (nodeId: string) => {
       if (visited.has(nodeId)) return;
       visited.add(nodeId);
-      
       const node = currentNodes.find(n => n.id === nodeId);
       if (!node) return;
-      
-      // Visit children first (depth-first)
       const children = edgeMap.get(nodeId) || [];
       children.forEach(visit);
-      
-      sorted.unshift(node); // Add to front for reverse order
+      sorted.unshift(node);
     };
 
     // Find root nodes (nodes with no incoming edges)
     const targetNodes = new Set(currentEdges.map(e => e.target));
     const rootNodes = currentNodes.filter(n => !targetNodes.has(n.id));
-    
-    // Visit from root nodes
     rootNodes.forEach(node => visit(node.id));
-    
+
     // Add any unvisited nodes (disconnected components)
     currentNodes.forEach(node => {
-      if (!visited.has(node.id)) {
-        sorted.push(node);
-      }
+      if (!visited.has(node.id)) sorted.push(node);
     });
 
-    // Create steps in order, tracking step IDs
-    const nodeIdToStepId = new Map<string, string>();
-    const newlyCreatedSteps: any[] = [];
-
-    // Filter out trigger nodes - they're saved on the workflow itself, not as steps
+    // Filter out trigger nodes — they're saved on the workflow itself, not as steps
     const actionNodes = sorted.filter(node => node.type !== 'trigger');
 
-    try {
-      // First, create all new steps before deleting old ones
-      for (let i = 0; i < actionNodes.length; i++) {
-        const node = actionNodes[i];
-        
-        // Find parent node ID(s) from edges
-        const parentEdge = currentEdges.find(e => e.target === node.id);
-        const parentNodeId = parentEdge?.source;
-        const parentStepId = parentNodeId ? nodeIdToStepId.get(parentNodeId) : null;
-        
-        const stepData = {
-          stepOrder: i,
-          actionType: mapNodeTypeToActionType(node.type || 'notification'),
-          actionConfig: JSON.stringify({
-            nodeId: node.id,
-            position: node.position,
-            data: node.data,
-            edges: currentEdges.filter(e => e.source === node.id || e.target === node.id), // Store edge context
-          }),
-          parentStepId: parentStepId || null,
-        };
+    // Build steps array with a temporary nodeId->index map for parentStepId resolution
+    // Since we don't know final DB IDs yet, we'll pass parentStepId as null for now
+    // and rely on stepOrder + edges stored in actionConfig for reconstruction
+    const steps = actionNodes.map((node, i) => ({
+      stepOrder: i,
+      actionType: mapNodeTypeToActionType(node.type || 'notification'),
+      actionConfig: JSON.stringify({
+        nodeId: node.id,
+        position: node.position,
+        data: node.data,
+        edges: currentEdges.filter(e => e.source === node.id || e.target === node.id),
+      }),
+      parentStepId: null as string | null,
+    }));
 
-        const createResponse = await fetch(`/api/workflows/${wfId}/steps`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(stepData),
-        });
+    // Single PUT atomically replaces all steps
+    const response = await fetch(`/api/workflows/${wfId}/steps`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ steps }),
+    });
 
-        if (!createResponse.ok) {
-          const errorText = await createResponse.text();
-          throw new Error(`Failed to save workflow step for node ${node.id}: ${errorText || createResponse.statusText}`);
-        }
-
-        const createdStep = await createResponse.json();
-        nodeIdToStepId.set(node.id, createdStep.id);
-        newlyCreatedSteps.push(createdStep);
-      }
-    } catch (error) {
-      // If creation failed, rollback by deleting any newly created steps
-      for (const newStep of newlyCreatedSteps) {
-        try {
-          await fetch(`/api/workflow-steps/${newStep.id}`, {
-            method: 'DELETE',
-            credentials: 'include',
-          });
-        } catch (cleanupError) {
-          // Log cleanup failure but don't block the main error
-          console.error(`Failed to cleanup step ${newStep.id} during rollback:`, cleanupError);
-        }
-      }
-      // Re-throw the original error to surface it to the user
-      throw error;
-    }
-
-    // Delete old steps only after all new steps are successfully created
-    // Note: Without backend transactions, we can't guarantee atomic deletion.
-    // If deletion fails, we keep new steps (which are valid) and log old step IDs.
-    // Old steps become orphaned and should be cleaned up by a background job.
-    const deletionFailures: { id: string; error: string }[] = [];
-    for (const step of existingSteps) {
-      try {
-        const deleteResponse = await fetch(`/api/workflow-steps/${step.id}`, {
-          method: 'DELETE',
-          credentials: 'include',
-        });
-        if (!deleteResponse.ok) {
-          deletionFailures.push({
-            id: step.id,
-            error: deleteResponse.statusText
-          });
-        }
-      } catch (error) {
-        deletionFailures.push({
-          id: step.id,
-          error: error instanceof Error ? error.message : 'Unknown error'
-        });
-      }
-    }
-
-    // Log failures but don't rollback - new steps are valid and workflow will function
-    if (deletionFailures.length > 0) {
-      console.warn('Some old workflow steps could not be deleted:', deletionFailures);
-      console.warn('Workflow will function correctly with new steps. Old steps should be cleaned up by background job.');
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to save workflow steps: ${errorText || response.statusText}`);
     }
   };
 
@@ -808,6 +741,11 @@ export default function WorkflowBuilder() {
             </AlertDialogContent>
           </AlertDialog>
           
+          {isDirty && (
+            <Badge variant="outline" className="border-yellow-500 text-yellow-600 dark:text-yellow-400 no-default-active-elevate">
+              Unsaved changes
+            </Badge>
+          )}
           <Button
             variant="default"
             size="default"
@@ -830,14 +768,25 @@ export default function WorkflowBuilder() {
             {/* Active/Inactive Toggle - Only show for approved workflows */}
             {workflow && workflow.approvalStatus === 'approved' && (
               <div className="flex items-center gap-2 ml-4 border-l pl-4">
-                <Switch 
-                  id="workflow-active"
-                  checked={workflow.isActive}
-                  onCheckedChange={(checked) => toggleActiveMutation.mutate(checked)}
-                  disabled={toggleActiveMutation.isPending}
-                  data-testid="switch-workflow-active"
-                />
-                <Label htmlFor="workflow-active" className="cursor-pointer">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span>
+                      <Switch 
+                        id="workflow-active"
+                        checked={workflow.isActive}
+                        onCheckedChange={(checked) => toggleActiveMutation.mutate(checked)}
+                        disabled={toggleActiveMutation.isPending || isDirty}
+                        data-testid="switch-workflow-active"
+                      />
+                    </span>
+                  </TooltipTrigger>
+                  {isDirty && (
+                    <TooltipContent>
+                      <p>Save your changes before activating</p>
+                    </TooltipContent>
+                  )}
+                </Tooltip>
+                <Label htmlFor="workflow-active" className={isDirty ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}>
                   {workflow.isActive ? 'Active' : 'Inactive'}
                 </Label>
               </div>
