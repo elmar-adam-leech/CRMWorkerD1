@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useLocation } from "wouter";
 import { JobCard } from "@/components/JobCard";
 import { JobCardSkeleton } from "@/components/JobCardSkeleton";
@@ -25,13 +25,15 @@ import { FilterPanel, type FilterState } from "@/components/FilterPanel";
 import { EmptyState } from "@/components/EmptyState";
 import { CreateJobForm } from "@/components/CreateJobForm";
 
+type JobStatus = "new" | "draft" | "scheduled" | "sent" | "approved" | "rejected" | "in_progress" | "completed" | "cancelled" | "contacted" | "disqualified";
+
 function JobDetailsModal({ isOpen, job, onClose }: { 
   isOpen: boolean; 
   job?: {
     id: string;
     title: string;
     contactId: string;
-    status: string;
+    status: JobStatus;
     value: number;
     scheduledDate: string;
     type: string;
@@ -143,9 +145,7 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
   const [advancedFilters, setAdvancedFilters] = useState<FilterState>({});
   const [viewMode, setViewMode] = useState<"cards" | "kanban">("cards");
   
-  const [addModal, setAddModal] = useState<{
-    isOpen: boolean;
-  }>({ isOpen: false });
+  const [addModalOpen, setAddModalOpen] = useState(false);
 
   // Job details modal state
   const [jobDetailsModal, setJobDetailsModal] = useState<{
@@ -154,7 +154,7 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
       id: string;
       title: string;
       contactId: string;
-      status: string;
+      status: JobStatus;
       value: number;
       scheduledDate: string;
       type: string;
@@ -165,9 +165,7 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
     };
   }>({ isOpen: false });
 
-  const [importDateModal, setImportDateModal] = useState<{
-    isOpen: boolean;
-  }>({ isOpen: false });
+  const [importDateModalOpen, setImportDateModalOpen] = useState(false);
 
   const [selectedImportDate, setSelectedImportDate] = useState<Date | undefined>(undefined);
 
@@ -273,7 +271,7 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
   // Enable global keyboard shortcuts
   useGlobalShortcuts((type) => {
     if (type === "job") {
-      setAddModal({ isOpen: true });
+      setAddModalOpen(true);
     }
   });
 
@@ -281,7 +279,7 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('add') === 'true') {
-      setAddModal({ isOpen: true });
+      setAddModalOpen(true);
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, [location]);
@@ -299,7 +297,6 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
       if (message.type === 'new_job' || message.type === 'job_created' || message.type === 'job_updated' || message.type === 'job_deleted') {
         queryClient.invalidateQueries({ queryKey: ['/api/jobs/paginated'] });
         queryClient.invalidateQueries({ queryKey: ['/api/jobs/status-counts'] });
-        queryClient.invalidateQueries({ queryKey: ['/api/jobs'] });
       }
     });
     return unsubscribe;
@@ -352,26 +349,26 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
     cancelled: 0,
   };
 
-  const jobsByStatus = {
+  const jobsByStatus = useMemo(() => ({
     scheduled: allJobs.filter(j => j.status === "scheduled"),
     in_progress: allJobs.filter(j => j.status === "in_progress"),
     completed: allJobs.filter(j => j.status === "completed"),
     cancelled: allJobs.filter(j => j.status === "cancelled"),
-  };
+  }), [allJobs]);
 
   const handleAddJob = () => {
-    setAddModal({ isOpen: true });
+    setAddModalOpen(true);
   };
 
   // Handle showing date picker for import
   const handleImportFromHousecallPro = () => {
-    setAddModal({ isOpen: false });
-    setImportDateModal({ isOpen: true });
+    setAddModalOpen(false);
+    setImportDateModalOpen(true);
   };
 
   // Handle actual import with selected date
   const handleConfirmImport = async () => {
-    setImportDateModal({ isOpen: false });
+    setImportDateModalOpen(false);
 
     toast({
       title: "Import Started",
@@ -390,7 +387,8 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
       }
 
       const response = await apiRequest('POST', '/api/housecall-pro/sync');
-      const data = await response.json();
+      const contentType = response.headers.get('content-type');
+      const data = contentType?.includes('application/json') ? await response.json() : {};
 
       queryClient.invalidateQueries({ queryKey: ['/api/jobs/paginated'] });
       toast({
@@ -433,10 +431,18 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
         description="Track and manage all your service jobs and installations"
         icon={<Briefcase className="h-6 w-6" />}
         actions={
-          <Button onClick={handleAddJob} data-testid="button-add-job">
-            <Plus className="h-4 w-4 mr-2" />
-            Add {terminology?.jobLabel || "Job"}
-          </Button>
+          <div className="flex items-center gap-2">
+            {isHousecallProConfigured && (
+              <Button variant="outline" onClick={handleImportFromHousecallPro} data-testid="button-import-hcp">
+                <CalendarIcon className="h-4 w-4 mr-2" />
+                Import from Housecall Pro
+              </Button>
+            )}
+            <Button onClick={handleAddJob} data-testid="button-add-job">
+              <Plus className="h-4 w-4 mr-2" />
+              Add {terminology?.jobLabel || "Job"}
+            </Button>
+          </div>
         }
       />
 
@@ -632,7 +638,7 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
       />
 
       {/* Add Job Modal */}
-      <Dialog open={addModal.isOpen} onOpenChange={(open) => setAddModal({ isOpen: open })}>
+      <Dialog open={addModalOpen} onOpenChange={setAddModalOpen}>
         <DialogContent className="sm:max-w-[600px]" data-testid="modal-add-job">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -645,14 +651,14 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
           </DialogHeader>
 
           <CreateJobForm
-            onSuccess={() => setAddModal({ isOpen: false })}
-            onCancel={() => setAddModal({ isOpen: false })}
+            onSuccess={() => setAddModalOpen(false)}
+            onCancel={() => setAddModalOpen(false)}
           />
         </DialogContent>
       </Dialog>
 
       {/* Import Date Selection Modal */}
-      <Dialog open={importDateModal.isOpen} onOpenChange={(open) => setImportDateModal({ isOpen: open })}>
+      <Dialog open={importDateModalOpen} onOpenChange={setImportDateModalOpen}>
         <DialogContent className="sm:max-w-[400px]" data-testid="modal-import-date">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -703,7 +709,7 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setImportDateModal({ isOpen: false })}
+                onClick={() => setImportDateModalOpen(false)}
                 data-testid="button-cancel-import"
               >
                 Cancel
@@ -741,12 +747,12 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
         }}
         onExport={async (ids) => {
           // Export selected jobs
-          const selectedJobs = (allJobs || []).filter(job => ids.includes(job.id));
+          const selectedJobs = allJobs.filter(job => ids.includes(job.id));
           const csvContent = [
-            ['Title', 'Customer', 'Status', 'Value', 'Scheduled Date', 'Type', 'Priority', 'Estimated Hours'].join(','),
-            ...(selectedJobs || []).map(job => [
+            ['Title', 'Contact ID', 'Status', 'Value', 'Scheduled Date', 'Type', 'Priority', 'Estimated Hours'].join(','),
+            ...selectedJobs.map(job => [
               job.title || '',
-              job.customer?.name || '',
+              job.contactId || '',
               job.status || '',
               job.value || '',
               job.scheduledDate || '',
