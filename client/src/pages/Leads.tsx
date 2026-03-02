@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { AddressAutocomplete } from "@/components/ui/AddressAutocomplete";
 import { useLocation } from "wouter";
 import { LeadCard } from "@/components/LeadCard";
 import { LeadCardSkeleton } from "@/components/LeadCardSkeleton";
@@ -1287,7 +1288,14 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
                       <FormItem>
                         <FormLabel>Address</FormLabel>
                         <FormControl>
-                          <Input placeholder="Enter full address" {...field} data-testid="input-lead-address" />
+                          <AddressAutocomplete
+                            endpoint="/api/places"
+                            value={field.value || ''}
+                            onChange={field.onChange}
+                            onAddressSelect={(formatted) => field.onChange(formatted)}
+                            placeholder="Enter full address"
+                            data-testid="input-lead-address"
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -1942,7 +1950,14 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
                   <FormItem>
                     <FormLabel>Address</FormLabel>
                     <FormControl>
-                      <Input placeholder="Enter full address" {...field} data-testid="input-edit-lead-address" />
+                      <AddressAutocomplete
+                        endpoint="/api/places"
+                        value={field.value || ''}
+                        onChange={field.onChange}
+                        onAddressSelect={(formatted) => field.onChange(formatted)}
+                        placeholder="Enter full address"
+                        data-testid="input-edit-lead-address"
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
