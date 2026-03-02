@@ -8,7 +8,6 @@ import {
   BarChart3,
   Plus,
   FileText,
-  Brain,
   Workflow,
   Clock,
 } from "lucide-react";
@@ -77,11 +76,6 @@ const getMenuItems = (terminology?: any) => [
     url: "/reports",
     icon: BarChart3,
   },
-  {
-    title: "AI Monitor",
-    url: "/ai-monitor",
-    icon: Brain,
-  },
 ];
 
 const getQuickActions = (terminology?: any) => [
@@ -136,14 +130,7 @@ export function AppSidebar({
   const menuItems = getMenuItems(terminology);
   const quickActions = getQuickActions(terminology);
 
-  // Filter menu items based on user role
-  const visibleMenuItems = menuItems.filter(item => {
-    // AI Monitor is only visible to admin and manager roles
-    if (item.url === '/ai-monitor') {
-      return user.role === 'admin' || user.role === 'manager' || user.role === 'super_admin';
-    }
-    return true;
-  });
+  const visibleMenuItems = menuItems;
 
   const handleQuickAction = (action: string) => {
     console.log(`Quick action: ${action}`);

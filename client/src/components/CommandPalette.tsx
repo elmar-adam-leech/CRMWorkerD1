@@ -18,7 +18,6 @@ import {
   MessageSquare,
   FileText,
   BarChart3,
-  Brain,
   Settings,
   UsersRound,
   Plus,
@@ -105,12 +104,6 @@ export function CommandPalette({ terminology }: CommandPaletteProps) {
       url: "/reports",
       icon: BarChart3,
       keywords: ["analytics", "stats", "data"],
-    },
-    {
-      title: "AI Monitor",
-      url: "/ai-monitor",
-      icon: Brain,
-      keywords: ["insights", "ai", "analytics"],
     },
     {
       title: "Settings",

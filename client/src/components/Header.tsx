@@ -1,14 +1,14 @@
-import { Search, Plus } from "lucide-react";
+import { Plus, Search } from "lucide-react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { UserMenu } from "./UserMenu";
 import { ThemeToggle } from "./ThemeToggle";
-import { useState } from "react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { NotificationDropdown } from "./NotificationDropdown";
+import { GlobalSearchDropdown } from "./GlobalSearchDropdown";
 
 type HeaderProps = {
   user: {
@@ -27,16 +27,9 @@ export function Header({
   onSearch,
   onNewItem,
 }: HeaderProps) {
-  const [searchQuery, setSearchQuery] = useState("");
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const { toast } = useToast();
   const [, setLocation] = useLocation();
-
-  const handleSearch = (value: string) => {
-    setSearchQuery(value);
-    console.log(`Searching for: ${value}`);
-    onSearch?.(value);
-  };
 
   const handleNewItem = () => {
     console.log("New item clicked");
@@ -72,15 +65,8 @@ export function Header({
       <header className="flex items-center justify-between gap-2 sm:gap-4 border-b bg-background px-3 sm:px-4 py-2">
         <div className="flex items-center gap-2 flex-1 min-w-0">
           <SidebarTrigger data-testid="button-sidebar-toggle" />
-          <div className="relative flex-1 max-w-xs sm:max-w-md hidden sm:block">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search customers, jobs, or estimates..."
-              value={searchQuery}
-              onChange={(e) => handleSearch(e.target.value)}
-              className="pl-8"
-              data-testid="input-search"
-            />
+          <div className="hidden sm:block flex-1 max-w-xs sm:max-w-md">
+            <GlobalSearchDropdown onSearch={onSearch} />
           </div>
         </div>
         
@@ -127,17 +113,7 @@ export function Header({
       {/* Mobile Search Bar */}
       {mobileSearchOpen && (
         <div className="border-b bg-background px-3 py-2 sm:hidden">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search customers, jobs, or estimates..."
-              value={searchQuery}
-              onChange={(e) => handleSearch(e.target.value)}
-              className="pl-8"
-              data-testid="input-mobile-search"
-              autoFocus
-            />
-          </div>
+          <GlobalSearchDropdown onSearch={onSearch} />
         </div>
       )}
     </>

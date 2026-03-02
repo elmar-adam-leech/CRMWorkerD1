@@ -22,7 +22,6 @@ import Templates from "@/pages/Templates";
 import Messages from "@/pages/Messages";
 import Reports from "@/pages/Reports";
 import Settings from "@/pages/Settings";
-import AIMonitor from "@/pages/AI-Monitor";
 import WorkflowBuilder from "@/pages/WorkflowBuilder";
 import WorkflowExecutions from "@/pages/WorkflowExecutions";
 import WorkflowsList from "@/pages/WorkflowsList";
@@ -65,7 +64,6 @@ function Router({ isAuthenticated, onLogin, isLoading, loginError, globalSearch 
       <Route path="/workflows/:id/executions" component={() => isAuthenticated ? <WorkflowExecutions /> : <LoginForm onLogin={onLogin} isLoading={isLoading} error={loginError} />} />
       <Route path="/workflows" component={() => isAuthenticated ? <WorkflowBuilder /> : <LoginForm onLogin={onLogin} isLoading={isLoading} error={loginError} />} />
       <Route path="/reports" component={() => isAuthenticated ? <Reports /> : <LoginForm onLogin={onLogin} isLoading={isLoading} error={loginError} />} />
-      <Route path="/ai-monitor" component={() => isAuthenticated ? <AIMonitor /> : <LoginForm onLogin={onLogin} isLoading={isLoading} error={loginError} />} />
       <Route path="/settings" component={() => isAuthenticated ? <Settings /> : <LoginForm onLogin={onLogin} isLoading={isLoading} error={loginError} />} />
       <Route path="/users" component={() => isAuthenticated ? <UserManagement /> : <LoginForm onLogin={onLogin} isLoading={isLoading} error={loginError} />} />
       <Route path="/dialpad-setup" component={() => isAuthenticated ? <EnhancedDialpadSetup /> : <LoginForm onLogin={onLogin} isLoading={isLoading} error={loginError} />} />
