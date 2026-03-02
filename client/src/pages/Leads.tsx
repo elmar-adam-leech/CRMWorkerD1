@@ -608,11 +608,11 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
   };
 
   const handleSendTextByEntity = (lead: Contact) => {
-    handleSendText(lead as any, 'lead');
+    handleSendText(lead, 'lead');
   };
 
   const handleSendEmailByEntity = (lead: Contact) => {
-    handleSendEmail(lead as any, 'lead');
+    handleSendEmail(lead, 'lead');
   };
 
   const handleEdit = (contactId: string) => {
@@ -1002,7 +1002,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
                         <FormItem>
                           <FormLabel>Source</FormLabel>
                           <FormControl>
-                            <Input placeholder="e.g., Website, Referral" {...field} data-testid="input-lead-source" />
+                            <Input placeholder="e.g., Website, Referral" {...field} value={field.value ?? ""} data-testid="input-lead-source" />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -1056,7 +1056,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
                           <PopoverContent className="w-auto p-0" align="start">
                             <Calendar
                               mode="single"
-                              selected={field.value}
+                              selected={field.value ?? undefined}
                               onSelect={field.onChange}
                               disabled={(date) => date < new Date("1900-01-01")}
                               initialFocus
@@ -1079,7 +1079,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
                           <FormItem>
                             <FormLabel>Page URL</FormLabel>
                             <FormControl>
-                              <Input placeholder="https://yoursite.com/landing-page" {...field} data-testid="input-lead-page-url" />
+                              <Input placeholder="https://yoursite.com/landing-page" {...field} value={field.value ?? ""} data-testid="input-lead-page-url" />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -1093,7 +1093,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
                           <FormItem>
                             <FormLabel>UTM Source</FormLabel>
                             <FormControl>
-                              <Input placeholder="e.g., google, facebook" {...field} data-testid="input-lead-utm-source" />
+                              <Input placeholder="e.g., google, facebook" {...field} value={field.value ?? ""} data-testid="input-lead-utm-source" />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -1107,7 +1107,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
                           <FormItem>
                             <FormLabel>UTM Medium</FormLabel>
                             <FormControl>
-                              <Input placeholder="e.g., cpc, email, social" {...field} data-testid="input-lead-utm-medium" />
+                              <Input placeholder="e.g., cpc, email, social" {...field} value={field.value ?? ""} data-testid="input-lead-utm-medium" />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -1121,7 +1121,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
                           <FormItem>
                             <FormLabel>UTM Campaign</FormLabel>
                             <FormControl>
-                              <Input placeholder="e.g., summer_sale_2024" {...field} data-testid="input-lead-utm-campaign" />
+                              <Input placeholder="e.g., summer_sale_2024" {...field} value={field.value ?? ""} data-testid="input-lead-utm-campaign" />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -1135,7 +1135,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
                           <FormItem>
                             <FormLabel>UTM Term</FormLabel>
                             <FormControl>
-                              <Input placeholder="e.g., hvac repair" {...field} data-testid="input-lead-utm-term" />
+                              <Input placeholder="e.g., hvac repair" {...field} value={field.value ?? ""} data-testid="input-lead-utm-term" />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -1149,7 +1149,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
                           <FormItem>
                             <FormLabel>UTM Content</FormLabel>
                             <FormControl>
-                              <Input placeholder="e.g., banner_ad_1" {...field} data-testid="input-lead-utm-content" />
+                              <Input placeholder="e.g., banner_ad_1" {...field} value={field.value ?? ""} data-testid="input-lead-utm-content" />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -1169,6 +1169,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
                             placeholder="Enter any additional notes..." 
                             className="min-h-[80px]" 
                             {...field} 
+                            value={field.value ?? ""}
                             data-testid="textarea-lead-notes"
                           />
                         </FormControl>
@@ -1426,7 +1427,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
                     <FormItem>
                       <FormLabel>Source</FormLabel>
                       <FormControl>
-                        <Input placeholder="How did they find you?" {...field} data-testid="input-edit-lead-source" />
+                        <Input placeholder="How did they find you?" {...field} value={field.value ?? ""} data-testid="input-edit-lead-source" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -1466,7 +1467,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
                       <FormItem>
                         <FormLabel>Page URL</FormLabel>
                         <FormControl>
-                          <Input placeholder="https://yoursite.com/landing-page" {...field} data-testid="input-edit-lead-page-url" />
+                          <Input placeholder="https://yoursite.com/landing-page" {...field} value={field.value ?? ""} data-testid="input-edit-lead-page-url" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -1480,7 +1481,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
                       <FormItem>
                         <FormLabel>UTM Source</FormLabel>
                         <FormControl>
-                          <Input placeholder="e.g., google, facebook" {...field} data-testid="input-edit-lead-utm-source" />
+                          <Input placeholder="e.g., google, facebook" {...field} value={field.value ?? ""} data-testid="input-edit-lead-utm-source" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -1494,7 +1495,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
                       <FormItem>
                         <FormLabel>UTM Medium</FormLabel>
                         <FormControl>
-                          <Input placeholder="e.g., cpc, email, social" {...field} data-testid="input-edit-lead-utm-medium" />
+                          <Input placeholder="e.g., cpc, email, social" {...field} value={field.value ?? ""} data-testid="input-edit-lead-utm-medium" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -1508,7 +1509,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
                       <FormItem>
                         <FormLabel>UTM Campaign</FormLabel>
                         <FormControl>
-                          <Input placeholder="e.g., summer_sale_2024" {...field} data-testid="input-edit-lead-utm-campaign" />
+                          <Input placeholder="e.g., summer_sale_2024" {...field} value={field.value ?? ""} data-testid="input-edit-lead-utm-campaign" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -1522,7 +1523,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
                       <FormItem>
                         <FormLabel>UTM Term</FormLabel>
                         <FormControl>
-                          <Input placeholder="e.g., hvac repair" {...field} data-testid="input-edit-lead-utm-term" />
+                          <Input placeholder="e.g., hvac repair" {...field} value={field.value ?? ""} data-testid="input-edit-lead-utm-term" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -1536,7 +1537,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
                       <FormItem>
                         <FormLabel>UTM Content</FormLabel>
                         <FormControl>
-                          <Input placeholder="e.g., banner_ad_1" {...field} data-testid="input-edit-lead-utm-content" />
+                          <Input placeholder="e.g., banner_ad_1" {...field} value={field.value ?? ""} data-testid="input-edit-lead-utm-content" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -1574,7 +1575,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
                       <PopoverContent className="w-auto p-0" align="start">
                         <Calendar
                           mode="single"
-                          selected={field.value}
+                          selected={field.value ?? undefined}
                           onSelect={field.onChange}
                           disabled={(date) =>
                             date < new Date(new Date().setHours(0, 0, 0, 0))
@@ -1600,6 +1601,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
                         placeholder="Add any notes about this lead..."
                         className="min-h-[100px]"
                         {...field}
+                        value={field.value ?? ""}
                         data-testid="textarea-edit-lead-notes"
                       />
                     </FormControl>

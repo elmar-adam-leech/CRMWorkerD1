@@ -2,12 +2,12 @@ import { useState } from "react";
 
 export interface CommunicationEntity {
   id: string;
-  name?: string;
-  customerName?: string;
-  emails?: string[];
-  phones?: string[];
-  email?: string;
-  phone?: string;
+  name?: string | null;
+  customerName?: string | null;
+  emails?: string[] | null;
+  phones?: string[] | null;
+  email?: string | null;
+  phone?: string | null;
 }
 
 export interface EmailModalState {

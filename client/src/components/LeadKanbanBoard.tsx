@@ -22,26 +22,26 @@ import { LeadCard } from "@/components/LeadCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import type { Lead } from "@shared/schema";
+import type { Contact } from "@shared/schema";
 
 interface KanbanColumn {
   id: string;
   title: string;
   status: "new" | "contacted" | "scheduled" | "disqualified";
-  leads: Lead[];
+  leads: Contact[];
 }
 
 interface LeadKanbanBoardProps {
-  leads: Lead[];
+  leads: Contact[];
   onStatusChange: (leadId: string, newStatus: string) => void;
   onViewDetails: (leadId: string) => void;
   onEdit: (leadId: string) => void;
   onContact: (leadId: string, method: "phone" | "email") => void;
   onSchedule: (leadId: string) => void;
-  onSendText?: (lead: Lead) => void;
-  onSendEmail?: (lead: Lead) => void;
+  onSendText?: (lead: Contact) => void;
+  onSendEmail?: (lead: Contact) => void;
   onEditStatus?: (leadId: string) => void;
-  onSetFollowUp?: (lead: Lead) => void;
+  onSetFollowUp?: (lead: Contact) => void;
 }
 
 function SortableLeadCard({
@@ -55,15 +55,15 @@ function SortableLeadCard({
   onEditStatus,
   onSetFollowUp,
 }: {
-  lead: Lead;
+  lead: Contact;
   onViewDetails: (leadId: string) => void;
   onEdit: (leadId: string) => void;
   onContact: (leadId: string, method: "phone" | "email") => void;
   onSchedule: (leadId: string) => void;
-  onSendText?: (lead: Lead) => void;
-  onSendEmail?: (lead: Lead) => void;
+  onSendText?: (lead: Contact) => void;
+  onSendEmail?: (lead: Contact) => void;
   onEditStatus?: (leadId: string) => void;
-  onSetFollowUp?: (lead: Lead) => void;
+  onSetFollowUp?: (lead: Contact) => void;
 }) {
   const {
     attributes,
@@ -120,10 +120,10 @@ function KanbanColumnComponent({
   onEdit: (leadId: string) => void;
   onContact: (leadId: string, method: "phone" | "email") => void;
   onSchedule: (leadId: string) => void;
-  onSendText?: (lead: Lead) => void;
-  onSendEmail?: (lead: Lead) => void;
+  onSendText?: (lead: Contact) => void;
+  onSendEmail?: (lead: Contact) => void;
   onEditStatus?: (leadId: string) => void;
-  onSetFollowUp?: (lead: Lead) => void;
+  onSetFollowUp?: (lead: Contact) => void;
 }) {
   return (
     <Card className="flex flex-col h-[calc(100vh-20rem)] min-w-[320px]">
