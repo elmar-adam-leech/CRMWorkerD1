@@ -34,7 +34,14 @@ export function SyncStatusProvider({ children }: { children: ReactNode }) {
   const toastId = useRef<string | null>(null);
 
   // Read user role from cache (no extra network request — auth/me is fetched on app load)
-  const { data: authData } = useQuery<{ user: { role: string; canManageIntegrations?: boolean } }>({
+  const { data: authData } = useQuery<{
+    user: {
+      role: string;
+      canManageIntegrations?: boolean;
+      gmailConnected?: boolean;
+      hasActiveCompanyIntegrations?: boolean;
+    }
+  }>({
     queryKey: ['/api/auth/me'],
   });
   const user = authData?.user;
@@ -42,7 +49,9 @@ export function SyncStatusProvider({ children }: { children: ReactNode }) {
     user?.role === 'admin' ||
     user?.role === 'super_admin' ||
     user?.role === 'manager' ||
-    user?.canManageIntegrations === true;
+    user?.canManageIntegrations === true ||
+    user?.gmailConnected === true ||         // user's own Gmail sync
+    user?.hasActiveCompanyIntegrations === true; // Dialpad or HCP enabled for the company
 
   // Adaptive polling: fast when sync is running, slow when idle, paused in background tabs.
   // Disabled entirely for regular users who cannot trigger or manage syncs.

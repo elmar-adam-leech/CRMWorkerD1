@@ -493,7 +493,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     // Fetch full user data from database to get dialpadDefaultNumber and Gmail status
     const fullUser = await storage.getUser(req.user.userId);
-    
+
+    // Check if the company has any active integrations (Dialpad, Housecall Pro, etc.)
+    const enabledIntegrations = await storage.getEnabledIntegrations(req.user.contractorId);
+
     res.json({
       user: {
         id: req.user.userId,
@@ -505,7 +508,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         canManageIntegrations: req.user.canManageIntegrations,
         dialpadDefaultNumber: fullUser?.dialpadDefaultNumber || undefined,
         gmailConnected: fullUser?.gmailConnected || false,
-        gmailEmail: fullUser?.gmailEmail || undefined
+        gmailEmail: fullUser?.gmailEmail || undefined,
+        hasActiveCompanyIntegrations: enabledIntegrations.length > 0
       }
     });
   });
