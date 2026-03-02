@@ -50,7 +50,7 @@ export function CreateEstimateForm({ onSuccess, onCancel }: CreateEstimateFormPr
   const [customerSearchQuery, setCustomerSearchQuery] = useState("");
   const [showCreateCustomerDialog, setShowCreateCustomerDialog] = useState(false);
 
-  // Fetch contacts (leads and customers) for selection
+  // Fetch contacts (leads and customers) for selection — bounded to 100
   const { data: contacts = [], isLoading: contactsLoading } = useQuery<Array<{
     id: string;
     name: string;
@@ -58,11 +58,12 @@ export function CreateEstimateForm({ onSuccess, onCancel }: CreateEstimateFormPr
     emails: string[];
     phones: string[];
   }>>({
-    queryKey: ['/api/contacts'],
+    queryKey: ['/api/contacts/paginated', { limit: 100 }],
     queryFn: async () => {
-      const response = await fetch('/api/contacts', { credentials: 'include' });
+      const response = await fetch('/api/contacts/paginated?limit=100', { credentials: 'include' });
       if (!response.ok) throw new Error('Failed to fetch contacts');
-      return response.json();
+      const result = await response.json();
+      return result.data ?? [];
     },
   });
 

@@ -50,7 +50,7 @@ export function CreateJobForm({ onSuccess, onCancel }: CreateJobFormProps) {
   const [customerSearchQuery, setCustomerSearchQuery] = useState("");
   const [showCreateCustomerDialog, setShowCreateCustomerDialog] = useState(false);
 
-  // Fetch contacts (customers) for selection
+  // Fetch contacts (customers) for selection — bounded to 100 to avoid fetching all contacts
   const { data: contacts = [], isLoading: contactsLoading } = useQuery<Array<{
     id: string;
     name: string;
@@ -58,26 +58,37 @@ export function CreateJobForm({ onSuccess, onCancel }: CreateJobFormProps) {
     emails: string[];
     phones: string[];
   }>>({
-    queryKey: ['/api/contacts'],
+    queryKey: ['/api/contacts/paginated', { limit: 100 }],
     queryFn: async () => {
-      const response = await fetch('/api/contacts', { credentials: 'include' });
+      const response = await fetch('/api/contacts/paginated?limit=100', { credentials: 'include' });
       if (!response.ok) throw new Error('Failed to fetch contacts');
-      return response.json();
+      const result = await response.json();
+      return result.data ?? [];
     },
   });
 
-  // Fetch estimates for optional linking
-  const { data: estimates = [] } = useQuery<Array<{
+  // Estimate search state for lazy linking (only fetches when user types)
+  const [estimateSearchQuery, setEstimateSearchQuery] = useState("");
+  const [estimatePopoverOpen, setEstimatePopoverOpen] = useState(false);
+
+  const { data: estimateSearchResults = [], isLoading: estimatesSearchLoading } = useQuery<Array<{
     id: string;
     title: string;
     amount: number;
+    contactName: string;
   }>>({
-    queryKey: ['/api/estimates'],
+    queryKey: ['/api/estimates/paginated', { search: estimateSearchQuery, limit: 10 }],
     queryFn: async () => {
-      const response = await fetch('/api/estimates', { credentials: 'include' });
+      const response = await fetch(
+        `/api/estimates/paginated?search=${encodeURIComponent(estimateSearchQuery)}&limit=10`,
+        { credentials: 'include' }
+      );
       if (!response.ok) return [];
-      return response.json();
+      const result = await response.json();
+      return result.data ?? [];
     },
+    enabled: estimatePopoverOpen && estimateSearchQuery.length >= 2,
+    staleTime: 10_000,
   });
 
   const {
@@ -415,25 +426,67 @@ export function CreateJobForm({ onSuccess, onCancel }: CreateJobFormProps) {
 
         <div className="space-y-2">
           <Label htmlFor="estimate">Link to Estimate (Optional)</Label>
-          <Select
-            value={selectedEstimateId || undefined}
-            onValueChange={(value) => {
-              // If "none" is selected, set to undefined
-              setValue("estimateId", value === "none" ? undefined : value);
-            }}
-          >
-            <SelectTrigger id="estimate" data-testid="select-estimate">
-              <SelectValue placeholder="Select an estimate (optional)" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">None</SelectItem>
-              {estimates.map((estimate) => (
-                <SelectItem key={estimate.id} value={estimate.id}>
-                  {estimate.title} - ${estimate.amount}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Popover open={estimatePopoverOpen} onOpenChange={setEstimatePopoverOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                role="combobox"
+                aria-expanded={estimatePopoverOpen}
+                className="w-full justify-between"
+                data-testid="button-select-estimate"
+                type="button"
+              >
+                {selectedEstimateId
+                  ? (estimateSearchResults.find(e => e.id === selectedEstimateId)?.title ?? "Estimate linked")
+                  : "Search for an estimate..."}
+                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-full p-0" align="start">
+              <Command shouldFilter={false}>
+                <CommandInput
+                  placeholder="Type to search estimates..."
+                  value={estimateSearchQuery}
+                  onValueChange={setEstimateSearchQuery}
+                />
+                <CommandList>
+                  {selectedEstimateId && (
+                    <CommandItem
+                      onSelect={() => {
+                        setValue("estimateId", undefined);
+                        setEstimatePopoverOpen(false);
+                      }}
+                    >
+                      Clear selection
+                    </CommandItem>
+                  )}
+                  {estimateSearchQuery.length < 2 ? (
+                    <CommandEmpty>Type at least 2 characters to search</CommandEmpty>
+                  ) : estimatesSearchLoading ? (
+                    <CommandEmpty>Searching...</CommandEmpty>
+                  ) : estimateSearchResults.length === 0 ? (
+                    <CommandEmpty>No estimates found</CommandEmpty>
+                  ) : (
+                    <CommandGroup>
+                      {estimateSearchResults.map((est) => (
+                        <CommandItem
+                          key={est.id}
+                          value={est.id}
+                          onSelect={() => {
+                            setValue("estimateId", est.id);
+                            setEstimatePopoverOpen(false);
+                          }}
+                        >
+                          <Check className={cn("mr-2 h-4 w-4", selectedEstimateId === est.id ? "opacity-100" : "opacity-0")} />
+                          {est.title} — ${Number(est.amount).toLocaleString()}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  )}
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
         </div>
 
         <div className="flex justify-end gap-2 pt-4">

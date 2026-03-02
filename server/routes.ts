@@ -1941,14 +1941,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return;
       }
       
-      // Prevent deleting of Housecall Pro estimates - they're read-only for tracking only
-      if (existingEstimate.externalSource === 'housecall-pro') {
-        res.status(403).json({ 
-          message: "Cannot delete Housecall Pro estimates - they are read-only for tracking purposes." 
-        });
-        return;
-      }
-      
       const deleted = await storage.deleteEstimate(req.params.id, req.user!.contractorId);
       if (!deleted) {
         res.status(404).json({ message: "Estimate not found" });
