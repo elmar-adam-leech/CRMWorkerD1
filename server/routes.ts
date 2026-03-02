@@ -82,6 +82,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (req.path.startsWith('/public/')) {
       return next();
     }
+    // Allow public access to client-safe config (e.g. Maps API key, which is domain-restricted in Google Console)
+    if (req.path.startsWith('/api/config/')) {
+      return next();
+    }
     // Apply authentication to all other routes
     return requireAuth(req, res, next);
   });
@@ -1017,6 +1021,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       version: BUILD_VERSION,
       timestamp: Date.now()
     });
+  });
+
+  // Expose non-sensitive public config to the frontend (API keys safe to expose client-side)
+  app.get('/api/config/maps-key', (_req, res) => {
+    res.json({ key: process.env.GOOGLE_MAPS_API_KEY || null });
   });
 
   // Dashboard metrics route
@@ -4555,7 +4564,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Book an appointment (auto-assigns or uses specified salesperson)
   app.post("/api/scheduling/book", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { startTime, title, customerName, customerEmail, customerPhone, customerAddress, notes, contactId, salespersonId, housecallProEmployeeId } = req.body;
+      const { startTime, title, customerName, customerEmail, customerPhone, customerAddress, customerAddressComponents, notes, contactId, salespersonId, housecallProEmployeeId } = req.body;
       
       if (!startTime || !title || !customerName) {
         res.status(400).json({ message: "startTime, title, and customerName are required" });
@@ -4570,6 +4579,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         customerEmail,
         customerPhone,
         customerAddress,
+        customerAddressComponents,
         notes,
         contactId,
         salespersonId,

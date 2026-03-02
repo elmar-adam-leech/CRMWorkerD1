@@ -55,5 +55,13 @@ The system employs strategic database indexing (54 indexes), application caching
 
 ### Integrations
 - **Zapier**: For SMS message ingestion.
-- **Google Cloud Platform**: For Gmail OAuth and API access.
+- **Google Cloud Platform**: For Gmail OAuth, Google Maps Places API autocomplete (address input in scheduling modal), and API access.
 - **Housecall Pro**: For calendar management and scheduling.
+
+### Environment Variables Required
+- `GOOGLE_MAPS_API_KEY` (secret): Google Maps API key with Places API + Maps JavaScript API enabled. Must have your domain added to "Allowed HTTP referrers" in Google Cloud Console (API Keys → Restrictions).
+- `DATABASE_URL`, `JWT_SECRET`, `CREDENTIAL_ENCRYPTION_KEY`, `NODE_ENV`, `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL`, `APP_URL`, `XAI_API_KEY`
+
+### Known Pending Issues
+- `GET /api/contacts/[object%20Object]` 404 — object being stringified as contact ID (source not yet traced)
+- Several TypeScript errors in example/demo components (`examples/`) are pre-existing and don't affect production

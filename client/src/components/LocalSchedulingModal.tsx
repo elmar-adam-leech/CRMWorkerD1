@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -17,6 +17,89 @@ import { Calendar as CalendarIcon, Clock, User, MapPin, Phone, Mail, Loader2 } f
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+
+interface AddressComponents {
+  street: string;
+  city: string;
+  state: string;
+  zip: string;
+  country?: string;
+}
+
+interface PlacesAddressInputProps {
+  value: string;
+  onChange: (value: string) => void;
+  onAddressSelect: (formatted: string, components: AddressComponents) => void;
+  placeholder?: string;
+  "data-testid"?: string;
+}
+
+function PlacesAddressInput({ value, onChange, onAddressSelect, placeholder, "data-testid": testId }: PlacesAddressInputProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const autocompleteRef = useRef<any>(null);
+  const { data: mapsConfig } = useQuery<{ key: string | null }>({ queryKey: ['/api/config/maps-key'] });
+
+  useEffect(() => {
+    if (!mapsConfig?.key || !inputRef.current) return;
+    if (autocompleteRef.current) return;
+
+    const loadPlaces = async () => {
+      try {
+        const { setOptions, importLibrary } = await import('@googlemaps/js-api-loader');
+        setOptions({ key: mapsConfig.key!, v: 'weekly' });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { Autocomplete } = await importLibrary('places') as any;
+
+        if (!inputRef.current) return;
+        const autocomplete = new Autocomplete(inputRef.current, {
+          types: ['address'],
+          componentRestrictions: { country: 'us' },
+          fields: ['formatted_address', 'address_components'],
+        });
+        autocompleteRef.current = autocomplete;
+
+        autocomplete.addListener('place_changed', () => {
+          const place = autocomplete.getPlace();
+          if (!place.address_components) return;
+
+          let streetNumber = '';
+          let route = '';
+          let city = '';
+          let state = '';
+          let zip = '';
+
+          for (const component of place.address_components) {
+            const type = component.types[0];
+            if (type === 'street_number') streetNumber = component.long_name;
+            else if (type === 'route') route = component.long_name;
+            else if (type === 'locality') city = component.long_name;
+            else if (type === 'administrative_area_level_1') state = component.short_name;
+            else if (type === 'postal_code') zip = component.long_name;
+          }
+
+          const street = [streetNumber, route].filter(Boolean).join(' ');
+          const formatted = place.formatted_address || value;
+
+          onAddressSelect(formatted, { street, city, state, zip, country: 'US' });
+        });
+      } catch (e) {
+        console.warn('[Places] Failed to load Google Maps:', e);
+      }
+    };
+
+    loadPlaces();
+  }, [mapsConfig?.key]);
+
+  return (
+    <Input
+      ref={inputRef}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      data-testid={testId}
+    />
+  );
+}
 
 interface Salesperson {
   userId: string;
@@ -147,6 +230,7 @@ export function LocalSchedulingModal({ lead, isOpen, onClose, onScheduled }: Loc
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [selectedSalesperson, setSelectedSalesperson] = useState<Salesperson | null>(null);
+  const [addressComponents, setAddressComponents] = useState<AddressComponents | null>(null);
 
   // Fetch salespeople from the API (only those marked as salespeople)
   const { data: allTeamMembers = [], isLoading: salespeopleLoading } = useQuery<Salesperson[]>({
@@ -250,6 +334,11 @@ export function LocalSchedulingModal({ lead, isOpen, onClose, onScheduled }: Loc
         contactId: lead?.id,
         salespersonId: data.salespersonId,
       };
+
+      // Include structured address components when available (from Google Places autocomplete)
+      if (addressComponents) {
+        bookingPayload.customerAddressComponents = addressComponents;
+      }
       
       // Only add HCP employee ID if salesperson has HCP linkage
       if (salesperson?.housecallProUserId) {
@@ -305,6 +394,7 @@ export function LocalSchedulingModal({ lead, isOpen, onClose, onScheduled }: Loc
         address: lead?.address || "",
         notes: `Estimate appointment for ${lead?.name}`,
       });
+      setAddressComponents(null);
     }
   }, [isOpen, lead, form]);
 
@@ -371,9 +461,17 @@ export function LocalSchedulingModal({ lead, isOpen, onClose, onScheduled }: Loc
                     Service Address
                   </FormLabel>
                   <FormControl>
-                    <Input
-                      placeholder="Enter service address (sent to Housecall Pro)"
-                      {...field}
+                    <PlacesAddressInput
+                      value={field.value || ""}
+                      onChange={(v) => {
+                        field.onChange(v);
+                        setAddressComponents(null);
+                      }}
+                      onAddressSelect={(formatted, components) => {
+                        field.onChange(formatted);
+                        setAddressComponents(components);
+                      }}
+                      placeholder="Start typing an address..."
                       data-testid="input-schedule-address"
                     />
                   </FormControl>

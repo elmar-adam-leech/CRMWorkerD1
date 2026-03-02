@@ -19,6 +19,14 @@ export interface AvailableSlot {
   availableSalespersonIds: string[];
 }
 
+export interface AddressComponents {
+  street: string;
+  city: string;
+  state: string;
+  zip: string;
+  country?: string;
+}
+
 export interface BookingRequest {
   startTime: Date;
   title: string;
@@ -26,6 +34,7 @@ export interface BookingRequest {
   customerEmail?: string;
   customerPhone?: string;
   customerAddress?: string;
+  customerAddressComponents?: AddressComponents;
   notes?: string;
   contactId?: string;
   salespersonId?: string; // If provided, use this salesperson instead of auto-assigning
@@ -764,16 +773,29 @@ export class HousecallSchedulingService {
           const firstName = nameParts[0] || 'Customer';
           const lastName = nameParts.slice(1).join(' ') || '';
           
-          // Build address object — prefer address from booking request (entered during scheduling),
-          // fall back to the address already stored on the contact record
-          const resolvedAddress = request.customerAddress || contact.address;
-          const addressData = resolvedAddress ? {
-            street: resolvedAddress,
-            city: '',
-            state: '',
-            zip: '',
-            country: 'US',
-          } : undefined;
+          // Build address object — prefer structured components from booking request,
+          // then plain string from request, then fall back to what's stored on the contact
+          let addressData: AddressComponents | undefined;
+          if (request.customerAddressComponents?.street) {
+            addressData = {
+              street: request.customerAddressComponents.street,
+              city: request.customerAddressComponents.city || '',
+              state: request.customerAddressComponents.state || '',
+              zip: request.customerAddressComponents.zip || '',
+              country: request.customerAddressComponents.country || 'US',
+            };
+          } else {
+            const resolvedAddress = request.customerAddress || contact.address;
+            if (resolvedAddress) {
+              addressData = {
+                street: resolvedAddress,
+                city: '',
+                state: '',
+                zip: '',
+                country: 'US',
+              };
+            }
+          }
           
           const customerResult = await housecallProService.createCustomer(tenantId, {
             first_name: firstName,
@@ -798,6 +820,23 @@ export class HousecallSchedulingService {
       }
       
       if (hcpCustomerId) {
+        // Build estimate address from structured components, or fall back to plain string / contact address
+        let estimateAddress: AddressComponents | undefined;
+        if (request.customerAddressComponents?.street) {
+          estimateAddress = {
+            street: request.customerAddressComponents.street,
+            city: request.customerAddressComponents.city || '',
+            state: request.customerAddressComponents.state || '',
+            zip: request.customerAddressComponents.zip || '',
+            country: request.customerAddressComponents.country || 'US',
+          };
+        } else {
+          const fallbackAddr = request.customerAddress || contact?.address;
+          if (fallbackAddr) {
+            estimateAddress = { street: fallbackAddr, city: '', state: '', zip: '', country: 'US' };
+          }
+        }
+
         // Step 1: Create an estimate in HCP with required options array
         const estimateResult = await housecallProService.createEstimate(tenantId, {
           customer_id: hcpCustomerId,
@@ -807,6 +846,7 @@ export class HousecallSchedulingService {
             name: request.title || 'Estimate Appointment',
             message: request.notes || 'Scheduled estimate appointment',
           }],
+          address: estimateAddress,
         });
         
         if (estimateResult.success && estimateResult.data?.id) {
