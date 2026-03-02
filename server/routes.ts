@@ -1349,7 +1349,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.put("/api/contacts/:id", async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const updateData = insertContactSchema.omit({ contractorId: true }).partial().parse(req.body);
+      const contactUpdateSchema = insertContactSchema.omit({ contractorId: true }).partial().extend({
+        followUpDate: z.preprocess(
+          (val) => (val && typeof val === 'string' ? new Date(val) : val),
+          z.date().nullable().optional()
+        ),
+      });
+      const updateData = contactUpdateSchema.parse(req.body);
       
       // Track who scheduled the contact
       if (updateData.status === 'scheduled') {
