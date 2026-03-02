@@ -19,7 +19,8 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Textarea } from "@/components/ui/textarea";
 import { PageHeader } from "@/components/ui/page-header-v2";
 import { PageLayout } from "@/components/ui/page-layout";
-import { CalendarIcon, Plus, Search, Filter, Download, Upload, UserPlus, Users, AlertCircle, CheckCircle, Loader2, LayoutGrid, List } from "lucide-react";
+import { CalendarIcon, Plus, Search, Filter, Download, Upload, UserPlus, Users, AlertCircle, Loader2, LayoutGrid, List } from "lucide-react";
+import { GoogleSheetsImportTab } from "@/components/GoogleSheetsImportTab";
 import { LeadKanbanBoard } from "@/components/LeadKanbanBoard";
 import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -41,6 +42,30 @@ import { useBulkSelection } from "@/contexts/BulkSelectionContext";
 import { FilterPanel, type FilterState } from "@/components/FilterPanel";
 import { EmptyState } from "@/components/EmptyState";
 import { TagManager } from "@/components/TagManager";
+
+const contactFormSchema = insertContactSchema
+  .omit({ contractorId: true, emails: true, phones: true, type: true })
+  .extend({
+    email: z.string().optional(),
+    phone: z.string().optional(),
+  });
+
+const CONTACT_FORM_DEFAULTS: z.infer<typeof contactFormSchema> = {
+  name: "",
+  email: "",
+  phone: "",
+  address: "",
+  source: "",
+  notes: "",
+  tags: [],
+  followUpDate: undefined,
+  utmSource: "",
+  utmMedium: "",
+  utmCampaign: "",
+  utmTerm: "",
+  utmContent: "",
+  pageUrl: "",
+};
 
 export default function Leads({ externalSearch = "" }: { externalSearch?: string }) {
   const [location] = useLocation();
@@ -77,22 +102,6 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
   // Add Contact modal state
   const [addContactModal, setAddContactModal] = useState(false);
   const [activeTab, setActiveTab] = useState("manual");
-
-  // Google Sheets import state
-  const [googleSheetsConfig, setGoogleSheetsConfig] = useState({
-    spreadsheetId: "",
-    sheetName: ""
-  });
-  const [credentialsConfig, setCredentialsConfig] = useState({
-    serviceAccountEmail: "",
-    privateKey: ""
-  });
-  const [googleSheetsHeaders, setGoogleSheetsHeaders] = useState<string[]>([]);
-  const [columnMapping, setColumnMapping] = useState<Record<string, string>>({});
-  const [sheetInfo, setSheetInfo] = useState<any>(null);
-  const [isLoadingSheets, setIsLoadingSheets] = useState(false);
-  const [showCredentialsForm, setShowCredentialsForm] = useState(false);
-  const [previewData, setPreviewData] = useState<{ headers: string[]; rows: any[][] } | null>(null);
 
   // Contact details modal state
   const [contactDetailsModal, setContactDetailsModal] = useState<{
@@ -179,52 +188,16 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
     localStorage.setItem("leads-view-mode", viewMode);
   }, [viewMode]);
 
-  // UI schema that accepts single email/phone values (for backwards compatibility)
-  const contactFormSchema = insertContactSchema.omit({ contractorId: true, emails: true, phones: true, type: true }).extend({
-    email: z.string().optional(),
-    phone: z.string().optional(),
-  });
-  
   // Form for manual contact creation
   const form = useForm<z.infer<typeof contactFormSchema>>({
     resolver: zodResolver(contactFormSchema),
-    defaultValues: {
-      name: "",
-      email: "",
-      phone: "",
-      address: "",
-      source: "",
-      notes: "",
-      tags: [],
-      followUpDate: undefined,
-      utmSource: "",
-      utmMedium: "",
-      utmCampaign: "",
-      utmTerm: "",
-      utmContent: "",
-      pageUrl: "",
-    },
+    defaultValues: CONTACT_FORM_DEFAULTS,
   });
 
   // Form for contact editing
   const editForm = useForm<z.infer<typeof contactFormSchema>>({
     resolver: zodResolver(contactFormSchema),
-    defaultValues: {
-      name: "",
-      email: "",
-      phone: "",
-      address: "",
-      source: "",
-      notes: "",
-      tags: [],
-      followUpDate: undefined,
-      utmSource: "",
-      utmMedium: "",
-      utmCampaign: "",
-      utmTerm: "",
-      utmContent: "",
-      pageUrl: "",
-    },
+    defaultValues: CONTACT_FORM_DEFAULTS,
   });
 
   // Fetch contacts (filtered by type=lead) from API with pagination
@@ -500,259 +473,6 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
       });
     },
   });
-
-  // Check Google Sheets credential status
-  const { data: credentialStatus } = useQuery({
-    queryKey: ['/api/leads/google-sheets/credentials/status'],
-    queryFn: async () => {
-      const response = await fetch('/api/leads/google-sheets/credentials/status', {
-        credentials: 'include'
-      });
-      if (!response.ok) throw new Error('Failed to check credential status');
-      return await response.json();
-    },
-  });
-
-  const hasStoredCredentials = credentialStatus?.configured ?? false;
-
-  // Google Sheets credential storage mutation
-  const storeCredentialsMutation = useMutation({
-    mutationFn: async (credentials: typeof credentialsConfig) => {
-      const response = await fetch('/api/leads/google-sheets/credentials', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(credentials)
-      });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to store credentials');
-      }
-      return await response.json();
-    },
-    onSuccess: () => {
-      toast({
-        title: "Credentials Stored Successfully",
-        description: "Your Google Sheets credentials have been stored securely.",
-      });
-      queryClient.invalidateQueries({ queryKey: ['/api/leads/google-sheets/credentials/status'] });
-      setShowCredentialsForm(false);
-      setCredentialsConfig({ serviceAccountEmail: "", privateKey: "" });
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Credential Storage Failed",
-        description: error.message || "Failed to store Google Sheets credentials",
-        variant: "destructive",
-      });
-    }
-  });
-
-  // Google Sheets mutations (secure)
-  const googleSheetsValidateMutation = useMutation({
-    mutationFn: async (config: typeof googleSheetsConfig) => {
-      const response = await fetch('/api/leads/google-sheets/validate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(config)
-      });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Validation failed');
-      }
-      return await response.json();
-    }
-  });
-
-  const googleSheetsInfoMutation = useMutation({
-    mutationFn: async (config: typeof googleSheetsConfig) => {
-      const response = await fetch('/api/leads/google-sheets/info', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(config)
-      });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to get sheet info');
-      }
-      return await response.json();
-    },
-    onSuccess: (data) => {
-      setSheetInfo(data.sheetInfo);
-      setGoogleSheetsHeaders(data.headers);
-      setColumnMapping(data.suggestedMappings);
-    }
-  });
-
-  const googleSheetsPreviewMutation = useMutation({
-    mutationFn: async (config: typeof googleSheetsConfig) => {
-      const response = await fetch('/api/leads/google-sheets/preview', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(config)
-      });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to preview data');
-      }
-      return await response.json();
-    },
-    onSuccess: (data) => {
-      setPreviewData(data);
-    }
-  });
-
-  const googleSheetsImportMutation = useMutation({
-    mutationFn: async (importData: typeof googleSheetsConfig & { columnMapping: Record<string, string> }) => {
-      const response = await fetch('/api/leads/google-sheets/import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(importData)
-      });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Import failed');
-      }
-      return await response.json();
-    },
-    onSuccess: (data) => {
-      toast({
-        title: "Google Sheets Import Successful",
-        description: data.message || "Leads imported successfully from Google Sheets",
-      });
-      
-      if (data.errors && data.errors.length > 0) {
-        toast({
-          title: "Some rows had errors",
-          description: `${data.errors.length} rows failed validation and were skipped.`,
-          variant: "destructive",
-        });
-      }
-      
-      queryClient.invalidateQueries({ queryKey: ['/api/contacts/paginated'] });
-      setAddContactModal(false);
-      
-      // Reset Google Sheets state
-      setGoogleSheetsConfig({ spreadsheetId: "", sheetName: "" });
-      setGoogleSheetsHeaders([]);
-      setColumnMapping({});
-      setSheetInfo(null);
-      setPreviewData(null);
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Google Sheets Import Failed",
-        description: error.message || "Failed to import from Google Sheets",
-        variant: "destructive",
-      });
-    }
-  });
-
-  // Google Sheets handlers
-  const handleStoreCredentials = async () => {
-    if (!credentialsConfig.serviceAccountEmail || !credentialsConfig.privateKey) {
-      toast({
-        title: "Missing Credentials",
-        description: "Please fill in both service account email and private key",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    try {
-      await storeCredentialsMutation.mutateAsync(credentialsConfig);
-    } catch (error: any) {
-      // Error handling is done in the mutation's onError
-    }
-  };
-
-  const handleValidateSheets = async () => {
-    if (!hasStoredCredentials) {
-      toast({
-        title: "Credentials Required",
-        description: "Please set up your Google Sheets credentials first",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (!googleSheetsConfig.spreadsheetId) {
-      toast({
-        title: "Missing Spreadsheet ID",
-        description: "Please enter a Google Sheets spreadsheet ID",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsLoadingSheets(true);
-    try {
-      await googleSheetsValidateMutation.mutateAsync(googleSheetsConfig);
-      toast({
-        title: "Connection Successful",
-        description: "Successfully connected to Google Sheets",
-      });
-      // Load sheet info after successful validation
-      await googleSheetsInfoMutation.mutateAsync(googleSheetsConfig);
-    } catch (error: any) {
-      toast({
-        title: "Connection Failed",
-        description: error.message || "Failed to connect to Google Sheets",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoadingSheets(false);
-    }
-  };
-
-  const handlePreviewSheets = async () => {
-    if (!sheetInfo) {
-      toast({
-        title: "No Sheet Info",
-        description: "Please validate your connection first",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    try {
-      await googleSheetsPreviewMutation.mutateAsync(googleSheetsConfig);
-      toast({
-        title: "Preview Loaded",
-        description: "Sheet data preview loaded successfully",
-      });
-    } catch (error: any) {
-      toast({
-        title: "Preview Failed",
-        description: error.message || "Failed to load preview",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleImportFromSheets = async () => {
-    if (!sheetInfo || Object.keys(columnMapping).length === 0) {
-      toast({
-        title: "Missing Configuration",
-        description: "Please validate connection and configure column mapping",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    try {
-      await googleSheetsImportMutation.mutateAsync({
-        ...googleSheetsConfig,
-        columnMapping
-      });
-    } catch (error) {
-      // Error handling is done in the mutation's onError
-    }
-  };
 
   // Fetch status counts from backend (filtered by type=lead)
   const { data: statusCountsData, isLoading: statusCountsLoading } = useQuery<{
@@ -1549,252 +1269,14 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
               </div>
             </TabsContent>
 
-            <TabsContent value="google-sheets" className="space-y-4 mt-4">
-              <div className="space-y-4">
-                <div className="text-sm text-muted-foreground">
-                  <p className="mb-4">Import leads directly from your Google Sheets. First set up your credentials securely, then configure your spreadsheet import.</p>
-                </div>
-                
-                {/* Credential Status */}
-                {!hasStoredCredentials ? (
-                  <div className="border bg-muted p-4 rounded-md">
-                    <div className="flex items-center gap-2 mb-2">
-                      <AlertCircle className="h-4 w-4 text-muted-foreground" />
-                      <h4 className="font-medium">Google Sheets Credentials Required</h4>
-                    </div>
-                    <p className="text-sm text-muted-foreground mb-3">
-                      To import from Google Sheets, you need to set up service account credentials. These will be stored securely and encrypted.
-                    </p>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowCredentialsForm(!showCredentialsForm)}
-                      data-testid="button-setup-credentials"
-                    >
-                      {showCredentialsForm ? "Cancel Setup" : "Set Up Credentials"}
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="border bg-muted p-4 rounded-md">
-                    <div className="flex items-center gap-2 mb-2">
-                      <CheckCircle className="h-4 w-4 text-muted-foreground" />
-                      <h4 className="font-medium">Google Sheets Credentials Configured</h4>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      Your credentials are securely stored and ready to use for importing leads.
-                    </p>
-                  </div>
-                )}
-
-                {/* Credential Setup Form */}
-                {showCredentialsForm && !hasStoredCredentials && (
-                  <div className="border p-4 rounded-md bg-muted">
-                    <h4 className="font-medium mb-3">Google Service Account Setup</h4>
-                    <div className="space-y-4">
-                      <div>
-                        <label className="text-sm font-medium mb-2 block">Service Account Email *</label>
-                        <Input
-                          placeholder="service-account@project.iam.gserviceaccount.com"
-                          value={credentialsConfig.serviceAccountEmail}
-                          onChange={(e) => setCredentialsConfig(prev => ({ ...prev, serviceAccountEmail: e.target.value }))}
-                          data-testid="input-service-account-email"
-                        />
-                      </div>
-                      
-                      <div>
-                        <label className="text-sm font-medium mb-2 block">Private Key *</label>
-                        <Textarea
-                          placeholder="-----BEGIN PRIVATE KEY-----..."
-                          value={credentialsConfig.privateKey}
-                          onChange={(e) => setCredentialsConfig(prev => ({ ...prev, privateKey: e.target.value }))}
-                          className="min-h-[100px] font-mono text-xs"
-                          data-testid="textarea-private-key"
-                        />
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Paste the complete private key from your service account JSON file
-                        </p>
-                      </div>
-                      
-                      <div className="flex gap-2">
-                        <Button
-                          type="button"
-                          onClick={handleStoreCredentials}
-                          disabled={storeCredentialsMutation.isPending || !credentialsConfig.serviceAccountEmail || !credentialsConfig.privateKey}
-                          data-testid="button-store-credentials"
-                        >
-                          {storeCredentialsMutation.isPending ? "Storing..." : "Store Credentials Securely"}
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => setShowCredentialsForm(false)}
-                          data-testid="button-cancel-credentials"
-                        >
-                          Cancel
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Google Sheets Import Configuration */}
-                {hasStoredCredentials && (
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="text-sm font-medium mb-2 block">Spreadsheet ID *</label>
-                        <Input
-                          placeholder="Enter Google Sheets ID from URL"
-                          value={googleSheetsConfig.spreadsheetId}
-                          onChange={(e) => setGoogleSheetsConfig(prev => ({ ...prev, spreadsheetId: e.target.value }))}
-                          data-testid="input-spreadsheet-id"
-                        />
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Extract ID from the URL: https://docs.google.com/spreadsheets/d/[SPREADSHEET_ID]/edit
-                        </p>
-                      </div>
-                      
-                      <div>
-                        <label className="text-sm font-medium mb-2 block">Sheet Name (optional)</label>
-                        <Input
-                          placeholder="Leave empty for first sheet"
-                          value={googleSheetsConfig.sheetName}
-                          onChange={(e) => setGoogleSheetsConfig(prev => ({ ...prev, sheetName: e.target.value }))}
-                          data-testid="input-sheet-name"
-                        />
-                      </div>
-                    </div>
-                    
-                    <div className="flex gap-2">
-                      <Button
-                        type="button"
-                        onClick={handleValidateSheets}
-                        disabled={isLoadingSheets || !googleSheetsConfig.spreadsheetId}
-                        data-testid="button-validate-sheets"
-                      >
-                        {isLoadingSheets ? "Validating..." : "Validate & Load Headers"}
-                      </Button>
-                      
-                      {sheetInfo && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={handlePreviewSheets}
-                          disabled={googleSheetsPreviewMutation.isPending}
-                          data-testid="button-preview-sheets"
-                        >
-                          {googleSheetsPreviewMutation.isPending ? "Loading..." : "Preview Data"}
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                )}
-                
-                {/* Sheet Info */}
-                {sheetInfo && (
-                  <div className="bg-muted p-4 rounded border">
-                    <h4 className="font-medium mb-2">Sheet Information</h4>
-                    <p><strong>Spreadsheet:</strong> {sheetInfo.title}</p>
-                    <p><strong>Sheets:</strong> {(sheetInfo?.sheets || []).map((s: any) => s.title).join(', ')}</p>
-                    <p><strong>Headers found:</strong> {(googleSheetsHeaders || []).join(', ')}</p>
-                  </div>
-                )}
-                
-                {/* Column Mapping */}
-                {googleSheetsHeaders.length > 0 && (
-                  <div className="space-y-4">
-                    <h4 className="font-medium">Column Mapping</h4>
-                    <p className="text-sm text-muted-foreground">
-                      Map your Google Sheets columns to lead fields. Suggested mappings are pre-filled.
-                    </p>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {(googleSheetsHeaders || []).map((header) => (
-                        <div key={header} className="space-y-1">
-                          <label className="text-sm font-medium">
-                            Sheet Column: <span className="font-normal text-muted-foreground">"{header}"</span>
-                          </label>
-                          <select
-                            value={columnMapping[header] || ''}
-                            onChange={(e) => setColumnMapping(prev => ({ ...prev, [header]: e.target.value }))}
-                            className="w-full px-3 py-2 border border-input bg-background rounded-md text-sm"
-                            data-testid={`select-mapping-${header}`}
-                          >
-                            <option value="">-- Skip this column --</option>
-                            <option value="name">Name</option>
-                            <option value="email">Email</option>
-                            <option value="phone">Phone</option>
-                            <option value="address">Address</option>
-                            <option value="source">Source</option>
-                            <option value="notes">Notes</option>
-                            <option value="followUpDate">Follow Up Date</option>
-                            <option value="utmSource">UTM Source</option>
-                            <option value="utmMedium">UTM Medium</option>
-                            <option value="utmCampaign">UTM Campaign</option>
-                            <option value="utmTerm">UTM Term</option>
-                            <option value="utmContent">UTM Content</option>
-                            <option value="pageUrl">Page URL</option>
-                          </select>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                
-                {/* Data Preview */}
-                {previewData && (
-                  <div className="space-y-4">
-                    <h4 className="font-medium">Data Preview</h4>
-                    <div className="border rounded-lg overflow-hidden">
-                      <div className="overflow-x-auto max-h-64">
-                        <table className="min-w-full text-sm">
-                          <thead className="bg-muted">
-                            <tr>
-                              {(previewData?.headers || []).map((header, index) => (
-                                <th key={index} className="px-3 py-2 text-left font-medium">
-                                  {header}
-                                </th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {(previewData?.rows || []).slice(0, 5).map((row, rowIndex) => (
-                              <tr key={rowIndex} className="border-t">
-                                {(row || []).map((cell, cellIndex) => (
-                                  <td key={cellIndex} className="px-3 py-2 border-r last:border-r-0">
-                                    {cell || <span className="text-muted-foreground">—</span>}
-                                  </td>
-                                ))}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                      <div className="px-3 py-2 bg-muted text-xs text-muted-foreground">
-                        Showing first 5 rows of {previewData?.rows?.length || 0} total rows
-                      </div>
-                    </div>
-                  </div>
-                )}
-                
-                <div className="flex justify-end gap-2">
-                  <Button 
-                    variant="outline" 
-                    onClick={() => setAddContactModal(false)}
-                    data-testid="button-cancel-sheets"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={handleImportFromSheets}
-                    disabled={googleSheetsImportMutation.isPending || !sheetInfo || Object.keys(columnMapping).length === 0}
-                    data-testid="button-import-sheets"
-                  >
-                    {googleSheetsImportMutation.isPending ? "Importing..." : "Import Leads"}
-                  </Button>
-                </div>
-              </div>
+            <TabsContent value="google-sheets" className="mt-4">
+              <GoogleSheetsImportTab
+                onImportSuccess={() => {
+                  setAddContactModal(false);
+                  queryClient.invalidateQueries({ queryKey: ["/api/contacts/paginated"] });
+                }}
+                onCancel={() => setAddContactModal(false)}
+              />
             </TabsContent>
           </Tabs>
         </DialogContent>
