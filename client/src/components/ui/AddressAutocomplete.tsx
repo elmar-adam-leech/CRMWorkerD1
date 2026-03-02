@@ -1,5 +1,7 @@
 import { useState, useRef } from "react";
+import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { Input } from "@/components/ui/input";
+import { PopoverContent } from "@/components/ui/popover";
 
 export interface AddressComponents {
   street: string;
@@ -114,35 +116,40 @@ export function AddressAutocomplete({
   };
 
   return (
-    <div className="relative">
-      <Input
-        value={value}
-        onChange={(e) => handleInputChange(e.target.value)}
-        onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
-        onFocus={() => {
-          if (suggestions.length > 0) setShowDropdown(true);
-        }}
-        placeholder={placeholder}
-        data-testid={testId}
-        autoComplete="off"
-      />
-      {showDropdown && suggestions.length > 0 && (
-        <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-background border rounded-md shadow-md overflow-hidden">
-          {suggestions.map((s, i) => (
-            <button
-              key={i}
-              type="button"
-              className="w-full text-left px-3 py-2 text-sm hover-elevate cursor-pointer"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                handleSelect(s);
-              }}
-            >
-              {s.text}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+    <PopoverPrimitive.Root open={showDropdown} onOpenChange={setShowDropdown}>
+      <PopoverPrimitive.Anchor asChild>
+        <Input
+          value={value}
+          onChange={(e) => handleInputChange(e.target.value)}
+          onFocus={() => {
+            if (suggestions.length > 0) setShowDropdown(true);
+          }}
+          placeholder={placeholder}
+          data-testid={testId}
+          autoComplete="off"
+        />
+      </PopoverPrimitive.Anchor>
+      <PopoverContent
+        className="p-0 w-[var(--radix-popover-anchor-width)]"
+        align="start"
+        sideOffset={4}
+        onOpenAutoFocus={(e) => e.preventDefault()}
+        onInteractOutside={() => setShowDropdown(false)}
+      >
+        {suggestions.map((s, i) => (
+          <button
+            key={i}
+            type="button"
+            className="w-full text-left px-3 py-2 text-sm hover-elevate cursor-pointer"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              handleSelect(s);
+            }}
+          >
+            {s.text}
+          </button>
+        ))}
+      </PopoverContent>
+    </PopoverPrimitive.Root>
   );
 }
