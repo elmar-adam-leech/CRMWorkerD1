@@ -118,7 +118,6 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
   }>({ isOpen: false });
 
   // CSV Upload state
-  const [csvUploading, setCsvUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -264,8 +263,6 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
     },
     getNextPageParam: (lastPage) => lastPage.pagination.nextCursor,
     initialPageParam: undefined as string | undefined,
-    staleTime: 0, // Always fetch fresh data
-    refetchOnMount: true, // Refetch when component mounts
   });
 
   // Flatten the paginated data
@@ -487,7 +484,6 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
       
       // Refresh the leads list
       queryClient.invalidateQueries({ queryKey: ['/api/contacts/paginated'] });
-      setCsvUploading(false);
       setAddContactModal(false);
       
       // Reset the file input
@@ -501,7 +497,6 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
         description: error.message || "Failed to import CSV data",
         variant: "destructive",
       });
-      setCsvUploading(false);
     },
   });
 
@@ -778,8 +773,6 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
       if (!response.ok) throw new Error('Failed to fetch contact status counts');
       return response.json();
     },
-    staleTime: 0, // Always fetch fresh data
-    refetchOnMount: true, // Refetch when component mounts
   });
 
   // Use status counts from backend, don't show counts during loading
@@ -792,8 +785,6 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
   };
   
   
-  const dataToUse = leads;
-
   // Infinite scroll handler
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const { scrollTop, clientHeight, scrollHeight } = e.currentTarget;
@@ -801,13 +792,6 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
       fetchNextPage();
     }
   };
-
-  // Reset pagination when filters change
-  useEffect(() => {
-    queryClient.invalidateQueries({ 
-      queryKey: ['/api/contacts/paginated'] 
-    });
-  }, [filterStatus, searchQuery, queryClient]);
 
   const handleAddLead = () => {
     setAddContactModal(true);
@@ -872,7 +856,6 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
       return;
     }
 
-    setCsvUploading(true);
     const reader = new FileReader();
     reader.onload = (e) => {
       const csvData = e.target?.result as string;
@@ -883,13 +866,13 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
 
   // Wrapper functions to adapt leadId-based calls to entity-based calls
   const handleContactById = (leadId: string, method: "phone" | "email") => {
-    const lead = dataToUse.find(l => l.id === leadId);
+    const lead = leads.find(l => l.id === leadId);
     if (!lead) return;
     handleContact(lead, method);
   };
 
   const handleScheduleById = (leadId: string) => {
-    const lead = dataToUse.find(l => l.id === leadId);
+    const lead = leads.find(l => l.id === leadId);
     if (!lead) return;
     handleSchedule(lead);
   };
@@ -903,7 +886,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
   };
 
   const handleEdit = (contactId: string) => {
-    const contact = dataToUse.find(l => l.id === contactId);
+    const contact = leads.find(l => l.id === contactId);
     if (!contact) return;
     
     // Populate the edit form with contact data
@@ -927,7 +910,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
   };
 
   const handleDelete = (contactId: string) => {
-    const contact = dataToUse.find(l => l.id === contactId);
+    const contact = leads.find(l => l.id === contactId);
     if (!contact) return;
     
     const contactName = 'name' in contact ? contact.name : contact.customerName;
@@ -937,14 +920,14 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
   };
 
   const handleViewDetails = (contactId: string) => {
-    const contact = dataToUse.find(l => l.id === contactId);
+    const contact = leads.find(l => l.id === contactId);
     if (!contact) return;
     
     setContactDetailsModal({ isOpen: true, contact });
   };
 
   const handleEditStatus = (contactId: string) => {
-    const contact = dataToUse.find(l => l.id === contactId);
+    const contact = leads.find(l => l.id === contactId);
     if (!contact) return;
     
     setEditStatusModal({ isOpen: true, contact });
@@ -1091,7 +1074,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
           ))}
           
           {/* Actual leads */}
-          {!leadsLoading && dataToUse.map((lead) => (
+          {!leadsLoading && leads.map((lead) => (
             <LeadCard
               key={lead.id}
               lead={lead}
@@ -1111,7 +1094,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
         </div>
       ) : (
         <LeadKanbanBoard
-          leads={dataToUse}
+          leads={leads}
           onStatusChange={handleStatusChange}
           onViewDetails={handleViewDetails}
           onEdit={handleEdit}
@@ -1145,8 +1128,17 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
         </div>
       )}
       
+      {/* Error state */}
+      {leadsError && !leadsLoading && (
+        <EmptyState
+          icon={AlertCircle}
+          title="Failed to load leads"
+          description="There was a problem loading your leads. Please try refreshing the page."
+        />
+      )}
+
       {/* Empty state */}
-      {leads.length === 0 && !leadsLoading && (
+      {leads.length === 0 && !leadsLoading && !leadsError && (
         searchQuery || filterStatus !== 'all' ? (
           <EmptyState
             icon={Filter}
@@ -1499,7 +1491,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
                       <Button 
                         variant="outline" 
                         onClick={handleDownloadTemplate}
-                        disabled={csvUploading}
+                        disabled={csvUploadMutation.isPending}
                         data-testid="button-download-template"
                       >
                         <Download className="h-4 w-4 mr-2" />
@@ -1507,11 +1499,11 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
                       </Button>
                       <Button 
                         onClick={handleUploadClick}
-                        disabled={csvUploading}
+                        disabled={csvUploadMutation.isPending}
                         data-testid="button-upload-csv"
                       >
                         <Upload className="h-4 w-4 mr-2" />
-                        {csvUploading ? "Uploading..." : "Upload CSV"}
+                        {csvUploadMutation.isPending ? "Uploading..." : "Upload CSV"}
                       </Button>
                     </div>
                   </div>
@@ -1557,12 +1549,12 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
                 
                 {/* Credential Status */}
                 {!hasStoredCredentials ? (
-                  <div className="border border-amber-200 bg-amber-50 p-4 rounded-lg">
+                  <div className="border bg-muted p-4 rounded-md">
                     <div className="flex items-center gap-2 mb-2">
-                      <AlertCircle className="h-4 w-4 text-amber-600" />
-                      <h4 className="font-medium text-amber-800">Google Sheets Credentials Required</h4>
+                      <AlertCircle className="h-4 w-4 text-muted-foreground" />
+                      <h4 className="font-medium">Google Sheets Credentials Required</h4>
                     </div>
-                    <p className="text-sm text-amber-700 mb-3">
+                    <p className="text-sm text-muted-foreground mb-3">
                       To import from Google Sheets, you need to set up service account credentials. These will be stored securely and encrypted.
                     </p>
                     <Button
@@ -1576,12 +1568,12 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
                     </Button>
                   </div>
                 ) : (
-                  <div className="border border-green-200 bg-green-50 p-4 rounded-lg">
+                  <div className="border bg-muted p-4 rounded-md">
                     <div className="flex items-center gap-2 mb-2">
-                      <CheckCircle className="h-4 w-4 text-green-600" />
-                      <h4 className="font-medium text-green-800">Google Sheets Credentials Configured</h4>
+                      <CheckCircle className="h-4 w-4 text-muted-foreground" />
+                      <h4 className="font-medium">Google Sheets Credentials Configured</h4>
                     </div>
-                    <p className="text-sm text-green-700">
+                    <p className="text-sm text-muted-foreground">
                       Your credentials are securely stored and ready to use for importing leads.
                     </p>
                   </div>
@@ -1589,7 +1581,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
 
                 {/* Credential Setup Form */}
                 {showCredentialsForm && !hasStoredCredentials && (
-                  <div className="border p-4 rounded-lg bg-gray-50">
+                  <div className="border p-4 rounded-md bg-muted">
                     <h4 className="font-medium mb-3">Google Service Account Setup</h4>
                     <div className="space-y-4">
                       <div>
@@ -2201,6 +2193,8 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
           // Delete all selected contacts
           await Promise.all(ids.map(id => apiRequest("DELETE", `/api/contacts/${id}`)));
           queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
+          queryClient.invalidateQueries({ queryKey: ['/api/contacts/paginated'] });
+          queryClient.invalidateQueries({ queryKey: ['/api/contacts/status-counts'] });
           toast({ title: `Deleted ${ids.length} lead(s)` });
         }}
         onStatusChange={async (ids, status) => {
@@ -2209,6 +2203,8 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
             apiRequest("PATCH", `/api/contacts/${id}/status`, { status })
           ));
           queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
+          queryClient.invalidateQueries({ queryKey: ['/api/contacts/paginated'] });
+          queryClient.invalidateQueries({ queryKey: ['/api/contacts/status-counts'] });
           toast({ title: `Updated ${ids.length} lead(s) to ${status}` });
         }}
         onExport={async (ids) => {
