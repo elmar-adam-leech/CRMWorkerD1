@@ -34,49 +34,27 @@ interface PlacesAddressInputProps {
   "data-testid"?: string;
 }
 
-let mapsLoaderPromise: Promise<{ AutocompleteSessionToken: any; AutocompleteSuggestion: any }> | null = null;
-
-function getPlacesLib(key: string) {
-  if (!mapsLoaderPromise) {
-    mapsLoaderPromise = (async () => {
-      const { Loader } = await import('@googlemaps/js-api-loader');
-      const loader = new Loader({ apiKey: key, version: 'weekly' });
-      const placesLib = await loader.importLibrary('places') as any;
-      return {
-        AutocompleteSessionToken: placesLib.AutocompleteSessionToken,
-        AutocompleteSuggestion: placesLib.AutocompleteSuggestion,
-      };
-    })();
-  }
-  return mapsLoaderPromise;
-}
-
 function PlacesAddressInput({ value, onChange, onAddressSelect, placeholder, "data-testid": testId }: PlacesAddressInputProps) {
-  const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [suggestions, setSuggestions] = useState<Array<{ placeId: string; text: string }>>([]);
   const [showDropdown, setShowDropdown] = useState(false);
-  const sessionTokenRef = useRef<any>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { data: mapsConfig } = useQuery<{ key: string | null }>({ queryKey: ['/api/config/maps-key'] });
 
   const fetchSuggestions = async (input: string) => {
-    if (!mapsConfig?.key || !input || input.length < 3) {
+    if (!input || input.length < 3) {
       setSuggestions([]);
       setShowDropdown(false);
       return;
     }
     try {
-      const { AutocompleteSessionToken, AutocompleteSuggestion } = await getPlacesLib(mapsConfig.key);
-      if (!sessionTokenRef.current) {
-        sessionTokenRef.current = new AutocompleteSessionToken();
-      }
-      const { suggestions: results } = await AutocompleteSuggestion.fetchAutocompleteSuggestions({
-        input,
-        sessionToken: sessionTokenRef.current,
-        includedRegionCodes: ['us'],
-        types: ['address'],
-      });
-      setSuggestions(results || []);
-      setShowDropdown((results || []).length > 0);
+      const resp = await fetch(`/api/places/autocomplete?input=${encodeURIComponent(input)}`, { credentials: 'include' });
+      if (!resp.ok) return;
+      const data = await resp.json();
+      const mapped = (data.suggestions || []).map((s: any) => ({
+        placeId: s.placePrediction?.placeId || '',
+        text: s.placePrediction?.text?.text || '',
+      })).filter((s: any) => s.placeId && s.text);
+      setSuggestions(mapped);
+      setShowDropdown(mapped.length > 0);
     } catch (e) {
       console.warn('[Places] Failed to fetch suggestions:', e);
     }
@@ -88,14 +66,18 @@ function PlacesAddressInput({ value, onChange, onAddressSelect, placeholder, "da
     debounceRef.current = setTimeout(() => fetchSuggestions(val), 300);
   };
 
-  const handleSelect = async (suggestion: any) => {
+  const handleSelect = async (suggestion: { placeId: string; text: string }) => {
     setShowDropdown(false);
     setSuggestions([]);
-    sessionTokenRef.current = null;
+    onChange(suggestion.text);
 
     try {
-      const place = suggestion.placePrediction.toPlace();
-      await place.fetchFields({ fields: ['formattedAddress', 'addressComponents'] });
+      const resp = await fetch(`/api/places/details?placeId=${encodeURIComponent(suggestion.placeId)}`, { credentials: 'include' });
+      if (!resp.ok) {
+        onAddressSelect(suggestion.text, { street: suggestion.text, city: '', state: '', zip: '', country: 'US' });
+        return;
+      }
+      const place = await resp.json();
 
       let streetNumber = '';
       let route = '';
@@ -113,12 +95,13 @@ function PlacesAddressInput({ value, onChange, onAddressSelect, placeholder, "da
       }
 
       const street = [streetNumber, route].filter(Boolean).join(' ');
-      const formatted = place.formattedAddress || value;
+      const formatted = place.formattedAddress || suggestion.text;
 
       onChange(formatted);
       onAddressSelect(formatted, { street, city, state, zip, country: 'US' });
     } catch (e) {
       console.warn('[Places] Failed to fetch place details:', e);
+      onAddressSelect(suggestion.text, { street: suggestion.text, city: '', state: '', zip: '', country: 'US' });
     }
   };
 
@@ -142,7 +125,7 @@ function PlacesAddressInput({ value, onChange, onAddressSelect, placeholder, "da
               className="w-full text-left px-3 py-2 text-sm hover-elevate cursor-pointer"
               onMouseDown={(e) => { e.preventDefault(); handleSelect(s); }}
             >
-              {s.placePrediction?.text?.text || ''}
+              {s.text}
             </button>
           ))}
         </div>
