@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useParams, useSearch } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -15,6 +15,112 @@ import { Calendar } from "@/components/ui/calendar";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Calendar as CalendarIcon, Clock, User, Mail, Phone, MapPin, CheckCircle, Loader2, AlertCircle } from "lucide-react";
+
+interface AddressComponents {
+  street: string;
+  city: string;
+  state: string;
+  zip: string;
+  country?: string;
+}
+
+interface PublicPlacesInputProps {
+  value: string;
+  onChange: (value: string) => void;
+  onAddressSelect: (formatted: string, components: AddressComponents) => void;
+  placeholder?: string;
+}
+
+function PublicPlacesInput({ value, onChange, onAddressSelect, placeholder }: PublicPlacesInputProps) {
+  const [suggestions, setSuggestions] = useState<Array<{ placeId: string; text: string }>>([]);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const fetchSuggestions = async (input: string) => {
+    if (!input || input.length < 3) {
+      setSuggestions([]);
+      setShowDropdown(false);
+      return;
+    }
+    try {
+      const resp = await fetch(`/api/public/places/autocomplete?input=${encodeURIComponent(input)}`);
+      if (!resp.ok) return;
+      const data = await resp.json();
+      const mapped = (data.suggestions || []).map((s: any) => ({
+        placeId: s.placePrediction?.placeId || '',
+        text: s.placePrediction?.text?.text || '',
+      })).filter((s: any) => s.placeId && s.text);
+      setSuggestions(mapped);
+      setShowDropdown(mapped.length > 0);
+    } catch (e) {
+      console.warn('[Places] Failed to fetch suggestions:', e);
+    }
+  };
+
+  const handleInputChange = (val: string) => {
+    onChange(val);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => fetchSuggestions(val), 300);
+  };
+
+  const handleSelect = async (suggestion: { placeId: string; text: string }) => {
+    setShowDropdown(false);
+    setSuggestions([]);
+    onChange(suggestion.text);
+    try {
+      const resp = await fetch(`/api/public/places/details?placeId=${encodeURIComponent(suggestion.placeId)}`);
+      if (!resp.ok) {
+        onAddressSelect(suggestion.text, { street: suggestion.text, city: '', state: '', zip: '', country: 'US' });
+        return;
+      }
+      const place = await resp.json();
+      let streetNumber = '', route = '', city = '', state = '', zip = '';
+      for (const component of (place.addressComponents || [])) {
+        const types: string[] = component.types || [];
+        if (types.includes('street_number')) streetNumber = component.longText || '';
+        else if (types.includes('route')) route = component.longText || '';
+        else if (types.includes('locality')) city = component.longText || '';
+        else if (types.includes('administrative_area_level_1')) state = component.shortText || '';
+        else if (types.includes('postal_code')) zip = component.longText || '';
+      }
+      const street = [streetNumber, route].filter(Boolean).join(' ');
+      const formatted = place.formattedAddress || suggestion.text;
+      onChange(formatted);
+      onAddressSelect(formatted, { street, city, state, zip, country: 'US' });
+    } catch (e) {
+      console.warn('[Places] Failed to fetch place details:', e);
+      onAddressSelect(suggestion.text, { street: suggestion.text, city: '', state: '', zip: '', country: 'US' });
+    }
+  };
+
+  return (
+    <div className="relative">
+      <Input
+        value={value}
+        onChange={(e) => handleInputChange(e.target.value)}
+        onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
+        onFocus={() => { if (suggestions.length > 0) setShowDropdown(true); }}
+        placeholder={placeholder}
+        data-testid="input-address"
+        autoComplete="off"
+      />
+      {showDropdown && suggestions.length > 0 && (
+        <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-background border rounded-md shadow-md overflow-hidden">
+          {suggestions.map((s, i) => (
+            <button
+              key={i}
+              type="button"
+              className="w-full text-left px-3 py-2 text-sm hover-elevate cursor-pointer"
+              onMouseDown={(e) => { e.preventDefault(); handleSelect(s); }}
+            >
+              {s.text}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface ContractorInfo {
   id: string;
@@ -58,6 +164,7 @@ export default function PublicBooking() {
   const contactId = urlParams.get('contact');
   const [bookingComplete, setBookingComplete] = useState(false);
   const [bookingDetails, setBookingDetails] = useState<{ startTime: string } | null>(null);
+  const [addressComponents, setAddressComponents] = useState<AddressComponents | null>(null);
 
   const { data: contractorData, isLoading: contractorLoading, error: contractorError } = useQuery<{ contractor: ContractorInfo }>({
     queryKey: ['/api/public/book', slug],
@@ -152,6 +259,7 @@ export default function PublicBooking() {
           email: data.email || undefined,
           phone: data.phone || undefined,
           address: data.address || undefined,
+          customerAddressComponents: addressComponents || undefined,
           startTime: data.timeSlot,
           notes: data.notes,
           source: 'public_booking',
@@ -314,7 +422,15 @@ export default function PublicBooking() {
                           Address (Optional)
                         </FormLabel>
                         <FormControl>
-                          <Input placeholder="123 Main St, City, State" {...field} data-testid="input-address" />
+                          <PublicPlacesInput
+                            value={field.value || ''}
+                            onChange={field.onChange}
+                            onAddressSelect={(formatted, components) => {
+                              field.onChange(formatted);
+                              setAddressComponents(components);
+                            }}
+                            placeholder="123 Main St, City, State"
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>

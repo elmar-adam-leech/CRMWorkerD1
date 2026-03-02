@@ -8099,6 +8099,75 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Public Booking API Routes (no authentication required)
   // =============================================
 
+  // Public Google Places proxy — no auth required (used by public booking page)
+  app.get('/api/public/places/autocomplete', publicBookingRateLimiter, async (req: Request, res: Response) => {
+    const { input } = req.query as { input?: string };
+    if (!input || input.trim().length < 3) {
+      return res.json({ suggestions: [] });
+    }
+    const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+    if (!apiKey) {
+      return res.status(503).json({ error: 'Google Maps API key not configured' });
+    }
+    const appUrl = process.env.APP_URL || 'https://hcpcrm.replit.app';
+    try {
+      const response = await fetch('https://places.googleapis.com/v1/places:autocomplete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Goog-Api-Key': apiKey,
+          'Referer': appUrl,
+        },
+        body: JSON.stringify({
+          input: input.trim(),
+          includedRegionCodes: ['us'],
+        }),
+      });
+      const data = await response.json() as any;
+      if (!response.ok) {
+        console.error('[Places Autocomplete Public] API error:', data);
+        return res.status(502).json({ error: 'Places API error', details: data });
+      }
+      return res.json({ suggestions: data.suggestions || [] });
+    } catch (e) {
+      console.error('[Places Autocomplete Public] Fetch error:', e);
+      return res.status(502).json({ error: 'Failed to reach Places API' });
+    }
+  });
+
+  app.get('/api/public/places/details', publicBookingRateLimiter, async (req: Request, res: Response) => {
+    const { placeId } = req.query as { placeId?: string };
+    if (!placeId) {
+      return res.status(400).json({ error: 'placeId is required' });
+    }
+    const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+    if (!apiKey) {
+      return res.status(503).json({ error: 'Google Maps API key not configured' });
+    }
+    const appUrl = process.env.APP_URL || 'https://hcpcrm.replit.app';
+    try {
+      const response = await fetch(
+        `https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}?fields=formattedAddress,addressComponents`,
+        {
+          method: 'GET',
+          headers: {
+            'X-Goog-Api-Key': apiKey,
+            'Referer': appUrl,
+          },
+        }
+      );
+      const data = await response.json() as any;
+      if (!response.ok) {
+        console.error('[Places Details Public] API error:', data);
+        return res.status(502).json({ error: 'Places API error', details: data });
+      }
+      return res.json(data);
+    } catch (e) {
+      console.error('[Places Details Public] Fetch error:', e);
+      return res.status(502).json({ error: 'Failed to reach Places API' });
+    }
+  });
+
   // Get contractor info and available slots for public booking page
   app.get("/api/public/book/:slug", publicBookingRateLimiter, async (req: Request, res: Response) => {
     try {
@@ -8205,7 +8274,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/public/book/:slug", publicBookingSubmitRateLimiter, async (req: Request, res: Response) => {
     try {
       const { slug } = req.params;
-      const { name, email, phone, address, startTime, notes, source } = req.body;
+      const { name, email, phone, address, customerAddressComponents, startTime, notes, source } = req.body;
       
       // Find contractor by booking slug
       const contractor = await storage.getContractorBySlug(slug);
@@ -8279,6 +8348,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         customerPhone: phone,
         notes: notes || `Booked via public booking page`,
         contactId,
+        customerAddressComponents: customerAddressComponents || undefined,
       });
 
       if (!result.success) {
