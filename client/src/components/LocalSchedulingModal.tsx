@@ -6,6 +6,7 @@ import { format, addDays, isToday, isTomorrow, startOfWeek, addWeeks } from "dat
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Calendar } from "@/components/ui/calendar";
@@ -136,6 +137,7 @@ const scheduleFormSchema = z.object({
   salespersonId: z.string().min(1, "Please select a salesperson"),
   date: z.date({ required_error: "Please select a date" }),
   timeSlot: z.string().min(1, "Please select a time slot"),
+  address: z.string().optional(),
   notes: z.string().optional(),
 });
 
@@ -243,6 +245,7 @@ export function LocalSchedulingModal({ lead, isOpen, onClose, onScheduled }: Loc
         customerName: lead?.name || 'Unknown',
         customerEmail: lead?.email,
         customerPhone: lead?.phone,
+        customerAddress: data.address || lead?.address,
         notes: data.notes,
         contactId: lead?.id,
         salespersonId: data.salespersonId,
@@ -255,10 +258,11 @@ export function LocalSchedulingModal({ lead, isOpen, onClose, onScheduled }: Loc
       
       await apiRequest('POST', '/api/scheduling/book', bookingPayload);
       
-      // Update lead status to scheduled
-      await apiRequest('PATCH', `/api/leads/${lead?.id}`, {
+      // Update lead status to scheduled and persist any address entered during scheduling
+      await apiRequest('PATCH', `/api/contacts/${lead?.id}`, {
         status: 'scheduled',
         scheduledDate: `${format(data.date, 'MMM dd, yyyy')} at ${data.timeSlot}`,
+        ...(data.address ? { address: data.address } : {}),
       });
 
       return scheduleData;
@@ -270,9 +274,9 @@ export function LocalSchedulingModal({ lead, isOpen, onClose, onScheduled }: Loc
       });
       
       // Invalidate queries to refresh data
-      queryClient.invalidateQueries({ queryKey: ['/api/leads'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/leads/paginated'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/leads/status-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/contacts/paginated'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/contacts/status-counts'] });
       queryClient.invalidateQueries({ queryKey: ['/api/appointments'] });
       
       // Close modal and notify parent
@@ -298,6 +302,7 @@ export function LocalSchedulingModal({ lead, isOpen, onClose, onScheduled }: Loc
   useEffect(() => {
     if (isOpen) {
       form.reset({
+        address: lead?.address || "",
         notes: `Estimate appointment for ${lead?.name}`,
       });
     }
@@ -356,6 +361,27 @@ export function LocalSchedulingModal({ lead, isOpen, onClose, onScheduled }: Loc
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            <FormField
+              control={form.control}
+              name="address"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="flex items-center gap-2">
+                    <MapPin className="h-4 w-4 text-muted-foreground" />
+                    Service Address
+                  </FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder="Enter service address (sent to Housecall Pro)"
+                      {...field}
+                      data-testid="input-schedule-address"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
             <FormField
               control={form.control}
               name="salespersonId"

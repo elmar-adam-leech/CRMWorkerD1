@@ -25,6 +25,7 @@ export interface BookingRequest {
   customerName: string;
   customerEmail?: string;
   customerPhone?: string;
+  customerAddress?: string;
   notes?: string;
   contactId?: string;
   salespersonId?: string; // If provided, use this salesperson instead of auto-assigning
@@ -763,9 +764,11 @@ export class HousecallSchedulingService {
           const firstName = nameParts[0] || 'Customer';
           const lastName = nameParts.slice(1).join(' ') || '';
           
-          // Build address object if we have address data
-          const addressData = contact.address ? {
-            street: contact.address,
+          // Build address object — prefer address from booking request (entered during scheduling),
+          // fall back to the address already stored on the contact record
+          const resolvedAddress = request.customerAddress || contact.address;
+          const addressData = resolvedAddress ? {
+            street: resolvedAddress,
             city: '',
             state: '',
             zip: '',

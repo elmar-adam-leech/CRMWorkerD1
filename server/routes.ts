@@ -4555,7 +4555,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Book an appointment (auto-assigns or uses specified salesperson)
   app.post("/api/scheduling/book", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { startTime, title, customerName, customerEmail, customerPhone, notes, contactId, salespersonId, housecallProEmployeeId } = req.body;
+      const { startTime, title, customerName, customerEmail, customerPhone, customerAddress, notes, contactId, salespersonId, housecallProEmployeeId } = req.body;
       
       if (!startTime || !title || !customerName) {
         res.status(400).json({ message: "startTime, title, and customerName are required" });
@@ -4569,6 +4569,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         customerName,
         customerEmail,
         customerPhone,
+        customerAddress,
         notes,
         contactId,
         salespersonId,
