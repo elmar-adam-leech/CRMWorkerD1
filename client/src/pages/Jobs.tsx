@@ -130,10 +130,15 @@ function JobDetailsModal({ isOpen, job, onClose }: {
   );
 }
 
-export default function Jobs() {
+export default function Jobs({ externalSearch = "" }: { externalSearch?: string }) {
   const [location] = useLocation();
   const { subscribe } = useWebSocketContext();
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState(externalSearch);
+
+  // Sync global search bar into local search state
+  useEffect(() => {
+    setSearchQuery(externalSearch);
+  }, [externalSearch]);
   const [filterStatus, setFilterStatus] = useState<"all" | "scheduled" | "in_progress" | "completed" | "cancelled">("all");
   const [advancedFilters, setAdvancedFilters] = useState<FilterState>({});
   const [viewMode, setViewMode] = useState<"cards" | "kanban">("cards");

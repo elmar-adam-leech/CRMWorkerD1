@@ -34,27 +34,29 @@ import EnhancedDialpadSetup from "@/pages/EnhancedDialpadSetup";
 import PublicBooking from "@/pages/PublicBooking";
 import NotFound from "@/pages/not-found";
 
-function Router({ isAuthenticated, onLogin, isLoading, loginError }: { 
+function Router({ isAuthenticated, onLogin, isLoading, loginError, globalSearch }: { 
   isAuthenticated: boolean; 
   onLogin: (credentials: { email: string; password: string }) => void;
   isLoading: boolean;
   loginError: string;
+  globalSearch: string;
 }) {
+  const loginFallback = <LoginForm onLogin={onLogin} isLoading={isLoading} error={loginError} />;
   return (
     <Switch>
       {/* Public routes */}
-      <Route path="/" component={() => isAuthenticated ? <Dashboard /> : <LoginForm onLogin={onLogin} isLoading={isLoading} error={loginError} />} />
-      <Route path="/login" component={() => isAuthenticated ? <Dashboard /> : <LoginForm onLogin={onLogin} isLoading={isLoading} error={loginError} />} />
+      <Route path="/" component={() => isAuthenticated ? <Dashboard /> : loginFallback} />
+      <Route path="/login" component={() => isAuthenticated ? <Dashboard /> : loginFallback} />
       <Route path="/signup" component={SignUp} />
       <Route path="/forgot-password" component={ForgotPassword} />
       <Route path="/reset-password" component={ResetPassword} />
       <Route path="/book/:slug" component={PublicBooking} />
       
       {/* Protected routes - redirect to login if not authenticated */}
-      <Route path="/leads" component={() => isAuthenticated ? <Leads /> : <LoginForm onLogin={onLogin} isLoading={isLoading} error={loginError} />} />
-      <Route path="/follow-ups" component={() => isAuthenticated ? <FollowUps /> : <LoginForm onLogin={onLogin} isLoading={isLoading} error={loginError} />} />
-      <Route path="/estimates" component={() => isAuthenticated ? <Estimates /> : <LoginForm onLogin={onLogin} isLoading={isLoading} error={loginError} />} />
-      <Route path="/jobs" component={() => isAuthenticated ? <Jobs /> : <LoginForm onLogin={onLogin} isLoading={isLoading} error={loginError} />} />
+      <Route path="/leads" component={() => isAuthenticated ? <Leads externalSearch={globalSearch} /> : loginFallback} />
+      <Route path="/follow-ups" component={() => isAuthenticated ? <FollowUps /> : loginFallback} />
+      <Route path="/estimates" component={() => isAuthenticated ? <Estimates externalSearch={globalSearch} /> : loginFallback} />
+      <Route path="/jobs" component={() => isAuthenticated ? <Jobs externalSearch={globalSearch} /> : loginFallback} />
       <Route path="/templates" component={() => isAuthenticated ? <Templates /> : <LoginForm onLogin={onLogin} isLoading={isLoading} error={loginError} />} />
       <Route path="/messages" component={() => isAuthenticated ? <Messages /> : <LoginForm onLogin={onLogin} isLoading={isLoading} error={loginError} />} />
       <Route path="/workflows/manage" component={() => isAuthenticated ? <WorkflowsList /> : <LoginForm onLogin={onLogin} isLoading={isLoading} error={loginError} />} />
@@ -244,8 +246,10 @@ function App() {
     }
   };
 
+  const [globalSearch, setGlobalSearch] = useState("");
+
   const handleSearch = (query: string) => {
-    console.log("Global search:", query);
+    setGlobalSearch(query);
   };
 
   const [, setLocation] = useLocation();
@@ -325,7 +329,8 @@ function App() {
                   isAuthenticated={isAuthenticated} 
                   onLogin={handleLogin} 
                   isLoading={isLoading} 
-                  loginError={loginError} 
+                  loginError={loginError}
+                  globalSearch={globalSearch}
                 />
               </DashboardLayout>
               <Toaster />

@@ -34,10 +34,15 @@ import { FilterPanel, type FilterState } from "@/components/FilterPanel";
 import { EmptyState } from "@/components/EmptyState";
 import { CreateEstimateForm } from "@/components/CreateEstimateForm";
 
-export default function Estimates() {
+export default function Estimates({ externalSearch = "" }: { externalSearch?: string }) {
   const [location] = useLocation();
   const { subscribe } = useWebSocketContext();
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState(externalSearch);
+
+  // Sync global search bar into local search state
+  useEffect(() => {
+    setSearchQuery(externalSearch);
+  }, [externalSearch]);
   const [filterStatus, setFilterStatus] = useState<"all" | "sent" | "pending" | "approved" | "rejected">("all");
   const [advancedFilters, setAdvancedFilters] = useState<FilterState>({});
   

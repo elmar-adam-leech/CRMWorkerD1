@@ -54,9 +54,14 @@ function ensureUrlProtocol(url: string | null | undefined): string {
   return `https://${url}`;
 }
 
-export default function Leads() {
+export default function Leads({ externalSearch = "" }: { externalSearch?: string }) {
   const [location] = useLocation();
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState(externalSearch);
+
+  // Sync global search bar into local search state
+  useEffect(() => {
+    setSearchQuery(externalSearch);
+  }, [externalSearch]);
   const [filterStatus, setFilterStatus] = useState<"all" | "new" | "contacted" | "scheduled" | "disqualified">("all");
   const [advancedFilters, setAdvancedFilters] = useState<FilterState>({});
   const [viewMode, setViewMode] = useState<"cards" | "kanban">(() => {
