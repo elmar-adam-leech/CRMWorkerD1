@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 import { useQuery, useMutation, useInfiniteQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Job, JobSummary, PaginatedJobs, Contact } from "@shared/schema";
+import type { PaginatedJobs, Contact } from "@shared/schema";
 import { useWebSocketContext } from "@/contexts/WebSocketContext";
 import { useGlobalShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { BulkActionToolbar } from "@/components/BulkActionToolbar";
@@ -111,15 +111,15 @@ function JobDetailsModal({ isOpen, job, onClose }: {
             )}
 
             {job.externalSource === 'housecall-pro' && (
-              <div className="text-sm text-muted-foreground bg-muted p-3 rounded border-l-4 border-l-blue-500">
-                <strong>Tracking Only:</strong> This job was automatically synced from Housecall Pro for lead value tracking. 
+              <div className="text-sm text-muted-foreground bg-muted border rounded-md p-3">
+                <strong>Tracking Only:</strong> This job was automatically synced from Housecall Pro for lead value tracking.
                 Status updates and job management should be done in Housecall Pro.
               </div>
             )}
 
             {job.estimateId && (
-              <div className="text-sm text-muted-foreground bg-green-50 p-3 rounded border-l-4 border-l-green-500">
-                <strong>Generated from Estimate:</strong> This job was created from an approved estimate. 
+              <div className="text-sm text-muted-foreground bg-muted border rounded-md p-3">
+                <strong>Generated from Estimate:</strong> This job was created from an approved estimate.
                 You can track the original estimate ID: {job.estimateId}
               </div>
             )}
@@ -279,15 +279,9 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
 
   // Check URL parameters to auto-open modal
   useEffect(() => {
-    console.log('🔍 Jobs page useEffect triggered, location:', location);
-    console.log('🔍 Current URL:', window.location.href);
     const urlParams = new URLSearchParams(window.location.search);
-    const shouldAdd = urlParams.get('add');
-    console.log('🔍 URL params shouldAdd:', shouldAdd);
-    if (shouldAdd === 'true') {
-      console.log('✅ Opening add modal for jobs');
+    if (urlParams.get('add') === 'true') {
       setAddModal({ isOpen: true });
-      // Clean URL after opening modal
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, [location]);
@@ -299,27 +293,15 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
     }
   }, [syncStartDateData]);
 
-  // Invalidate queries when filters change to ensure fresh data
-  useEffect(() => {
-    queryClient.invalidateQueries({ 
-      queryKey: ['/api/jobs/paginated'] 
-    });
-  }, [filterStatus, searchQuery]);
-
   // Subscribe to WebSocket updates for jobs
   useEffect(() => {
     const unsubscribe = subscribe((message: any) => {
-      console.log('[Jobs] WebSocket message received:', message);
-      
-      // When jobs are created, updated, or deleted, invalidate queries to refresh
       if (message.type === 'new_job' || message.type === 'job_created' || message.type === 'job_updated' || message.type === 'job_deleted') {
-        console.log('[Jobs] Invalidating job queries for real-time update');
         queryClient.invalidateQueries({ queryKey: ['/api/jobs/paginated'] });
         queryClient.invalidateQueries({ queryKey: ['/api/jobs/status-counts'] });
         queryClient.invalidateQueries({ queryKey: ['/api/jobs'] });
       }
     });
-
     return unsubscribe;
   }, [subscribe]);
 
@@ -338,9 +320,6 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
     estimateId: undefined, // Not in JobSummary yet
   }))) ?? [];
 
-  // Server-side filtering is handled by the pagination query
-  // Use allJobs directly since filtering is already applied
-  const filteredJobs = allJobs;
 
   // Get total count from pagination data
   const totalJobs = jobsData?.pages[0]?.pagination.total ?? 0;
@@ -358,7 +337,7 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
       const params = new URLSearchParams();
       if (searchQuery) params.append('search', searchQuery);
       
-      const response = await fetch(`/api/jobs/status-counts?${params}`);
+      const response = await fetch(`/api/jobs/status-counts?${params}`, { credentials: 'include' });
       if (!response.ok) throw new Error('Failed to fetch job status counts');
       return response.json();
     },
@@ -374,14 +353,13 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
   };
 
   const jobsByStatus = {
-    scheduled: (filteredJobs || []).filter(j => j.status === "scheduled"),
-    in_progress: (filteredJobs || []).filter(j => j.status === "in_progress"),
-    completed: (filteredJobs || []).filter(j => j.status === "completed"),
-    cancelled: (filteredJobs || []).filter(j => j.status === "cancelled"),
+    scheduled: allJobs.filter(j => j.status === "scheduled"),
+    in_progress: allJobs.filter(j => j.status === "in_progress"),
+    completed: allJobs.filter(j => j.status === "completed"),
+    cancelled: allJobs.filter(j => j.status === "cancelled"),
   };
 
   const handleAddJob = () => {
-    console.log("Add job clicked");
     setAddModal({ isOpen: true });
   };
 
@@ -393,54 +371,47 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
 
   // Handle actual import with selected date
   const handleConfirmImport = async () => {
-    try {
-      setImportDateModal({ isOpen: false });
-      
-      toast({
-        title: "Import Started",
-        description: "Importing jobs from Housecall Pro...",
-      });
+    setImportDateModal({ isOpen: false });
 
-      // Temporarily update sync start date if different from current
-      const originalSyncDate = syncStartDateData?.syncStartDate;
-      const selectedDateISO = selectedImportDate?.toISOString();
-      
-      if (selectedDateISO && selectedDateISO !== originalSyncDate) {
+    toast({
+      title: "Import Started",
+      description: "Importing jobs from Housecall Pro...",
+    });
+
+    const originalSyncDate = syncStartDateData?.syncStartDate;
+    const selectedDateISO = selectedImportDate?.toISOString();
+    const dateChanged = selectedDateISO && selectedDateISO !== originalSyncDate;
+
+    try {
+      if (dateChanged) {
         await apiRequest('POST', '/api/housecall-pro/sync-start-date', {
           syncStartDate: selectedDateISO
         });
       }
 
       const response = await apiRequest('POST', '/api/housecall-pro/sync');
-      
-      // Restore original sync date if we changed it
-      if (selectedDateISO && selectedDateISO !== originalSyncDate) {
-        await apiRequest('POST', '/api/housecall-pro/sync-start-date', {
-          syncStartDate: originalSyncDate
-        });
-      }
-      
-      if (response.ok) {
-        const data = await response.json();
-        
-        // Refresh jobs data
-        queryClient.invalidateQueries({ queryKey: ['/api/jobs/paginated'] });
-        
-        toast({
-          title: "Import Successful", 
-          description: `Successfully imported data from Housecall Pro. ${data.newJobs ? `Added ${data.newJobs} new jobs.` : ''}`,
-        });
-      } else {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Import failed');
-      }
+      const data = await response.json();
+
+      queryClient.invalidateQueries({ queryKey: ['/api/jobs/paginated'] });
+      toast({
+        title: "Import Successful",
+        description: `Successfully imported data from Housecall Pro.${data.newJobs ? ` Added ${data.newJobs} new jobs.` : ''}`,
+      });
     } catch (error: any) {
-      console.error('Failed to import from Housecall Pro:', error);
       toast({
         title: "Import Failed",
         description: error.message || "Failed to import jobs from Housecall Pro",
         variant: "destructive",
       });
+    } finally {
+      // Always restore the original sync date if we changed it
+      if (dateChanged) {
+        await apiRequest('POST', '/api/housecall-pro/sync-start-date', {
+          syncStartDate: originalSyncDate
+        }).catch(() => {
+          // Best-effort restore; don't surface a secondary error
+        });
+      }
     }
   };
 
@@ -449,7 +420,6 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
   };
 
   const handleViewDetails = (jobId: string) => {
-    console.log(`Viewing details for job ${jobId}`);
     const job = allJobs.find(j => j.id === jobId);
     if (job) {
       setJobDetailsModal({ isOpen: true, job });
@@ -536,9 +506,9 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
       </div>
 
       {/* Pagination Info */}
-      {filteredJobs.length > 0 && (
+      {allJobs.length > 0 && (
         <div className="text-sm text-muted-foreground">
-          Showing {filteredJobs.length} of {totalJobs} {terminology?.jobsLabel?.toLowerCase() || "jobs"}
+          Showing {allJobs.length} of {totalJobs} {terminology?.jobsLabel?.toLowerCase() || "jobs"}
         </div>
       )}
 
@@ -550,7 +520,7 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
               <JobCardSkeleton key={`skeleton-${i}`} />
             ))
           ) : (
-            filteredJobs.map((job) => (
+            allJobs.map((job) => (
               <JobCard
                 key={job.id}
                 job={job}
@@ -625,7 +595,7 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
         </div>
       )}
 
-      {filteredJobs.length === 0 && !jobsLoading && (
+      {allJobs.length === 0 && !jobsLoading && (
         searchQuery || filterStatus !== "all" ? (
           <EmptyState
             icon={Filter}
@@ -754,16 +724,18 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
       {/* Bulk Action Toolbar */}
       <BulkActionToolbar
         onDelete={async (ids) => {
-          // Delete all selected jobs
           await Promise.all(ids.map(id => apiRequest("DELETE", `/api/jobs/${id}`)));
+          queryClient.invalidateQueries({ queryKey: ['/api/jobs/paginated'] });
+          queryClient.invalidateQueries({ queryKey: ['/api/jobs/status-counts'] });
           queryClient.invalidateQueries({ queryKey: ['/api/jobs'] });
           toast({ title: `Deleted ${ids.length} job(s)` });
         }}
         onStatusChange={async (ids, status) => {
-          // Update status for all selected jobs
-          await Promise.all(ids.map(id => 
+          await Promise.all(ids.map(id =>
             apiRequest("PATCH", `/api/jobs/${id}/status`, { status })
           ));
+          queryClient.invalidateQueries({ queryKey: ['/api/jobs/paginated'] });
+          queryClient.invalidateQueries({ queryKey: ['/api/jobs/status-counts'] });
           queryClient.invalidateQueries({ queryKey: ['/api/jobs'] });
           toast({ title: `Updated ${ids.length} job(s) to ${status}` });
         }}
