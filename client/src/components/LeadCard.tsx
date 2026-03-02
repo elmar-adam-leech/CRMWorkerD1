@@ -147,10 +147,12 @@ export function LeadCard({ lead, onContact, onSchedule, onSendText, onSendEmail,
               <Settings className="h-4 w-4 mr-2" />
               Edit Status
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setTagsDialogOpen(true)} data-testid={`menu-add-tags-${lead.id}`}>
-              <Tag className="h-4 w-4 mr-2" />
-              Add Tags
-            </DropdownMenuItem>
+            {onUpdateLead && (
+              <DropdownMenuItem onClick={() => setTagsDialogOpen(true)} data-testid={`menu-add-tags-${lead.id}`}>
+                <Tag className="h-4 w-4 mr-2" />
+                Add Tags
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem 
               onClick={() => onDelete?.(lead.id)} 

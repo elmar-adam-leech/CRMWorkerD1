@@ -72,6 +72,7 @@ export function EstimateCard({ estimate, onSend, onViewDetails, onConvertToJob, 
     try {
       await apiRequest('PATCH', `/api/contacts/${contact.id}`, { tags: newTags });
       queryClient.invalidateQueries({ queryKey: [`/api/contacts/${contact.id}`] });
+      queryClient.invalidateQueries({ queryKey: ['/api/contacts/paginated'] });
       toast({
         title: "Tags updated",
         description: "Contact tags have been updated successfully.",

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -32,13 +32,12 @@ export function TagsDialog({
   const [tags, setTags] = useState<string[]>(initialTags);
   const [inputValue, setInputValue] = useState("");
 
-  // Reset tags when dialog opens/closes
-  useState(() => {
+  useEffect(() => {
     if (open) {
       setTags(initialTags);
       setInputValue("");
     }
-  });
+  }, [open, initialTags]);
 
   const handleAddTag = () => {
     const newTag = inputValue.trim();
