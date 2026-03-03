@@ -33,12 +33,12 @@ import EnhancedDialpadSetup from "@/pages/EnhancedDialpadSetup";
 import PublicBooking from "@/pages/PublicBooking";
 import NotFound from "@/pages/not-found";
 
-function Router({ isAuthenticated, onLogin, isLoading, loginError, globalSearch }: { 
+function Router({ isAuthenticated, onLogin, isLoading, loginError, globalSearch = "" }: { 
   isAuthenticated: boolean; 
   onLogin: (credentials: { email: string; password: string }) => void;
   isLoading: boolean;
   loginError: string;
-  globalSearch: string;
+  globalSearch?: string;
 }) {
   const loginFallback = <LoginForm onLogin={onLogin} isLoading={isLoading} error={loginError} />;
   return (

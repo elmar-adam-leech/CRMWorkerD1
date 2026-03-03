@@ -21,27 +21,37 @@ export default function AIMonitor() {
   const isSuperAdmin = userRole === 'super_admin';
 
   // Data queries - only enabled for authorized users
-  const { data: errorStats, isLoading: errorStatsLoading, refetch: refetchErrorStats } = useQuery({
+  const { data: errorStats, isLoading: errorStatsLoading, refetch: refetchErrorStats } = useQuery<{
+    total: number;
+    bySeverity: Record<string, number>;
+    [key: string]: unknown;
+  }>({
     queryKey: ['/api/ai/errors'],
     enabled: isAuthorized
   });
 
-  const { data: errorLogs, isLoading: errorLogsLoading, refetch: refetchErrorLogs } = useQuery({
+  const { data: errorLogs, isLoading: errorLogsLoading, refetch: refetchErrorLogs } = useQuery<unknown[]>({
     queryKey: ['/api/ai/error-logs'],
     enabled: isAuthorized
   });
 
-  const { data: weeklyReport, isLoading: weeklyReportLoading, refetch: refetchWeeklyReport } = useQuery({
+  const { data: weeklyReport, isLoading: weeklyReportLoading, refetch: refetchWeeklyReport } = useQuery<{
+    report: { recommendations: unknown[]; [key: string]: unknown };
+    [key: string]: unknown;
+  }>({
     queryKey: ['/api/ai/weekly-report'],
     enabled: isAuthorized
   });
 
-  const { data: performanceMetrics, isLoading: performanceLoading, refetch: refetchPerformanceMetrics } = useQuery({
+  const { data: performanceMetrics, isLoading: performanceLoading, refetch: refetchPerformanceMetrics } = useQuery<{
+    speedToLead: string;
+    [key: string]: unknown;
+  }>({
     queryKey: ['/api/ai/business-metrics'],
     enabled: isAuthorized && userRole !== 'super_admin'
   });
 
-  const { data: businessInsights, isLoading: businessInsightsLoading, refetch: refetchBusinessInsights } = useQuery({
+  const { data: businessInsights, isLoading: businessInsightsLoading, refetch: refetchBusinessInsights } = useQuery<unknown>({
     queryKey: ['/api/ai/business-insights'],
     enabled: isAuthorized && userRole !== 'super_admin'
   });
@@ -158,7 +168,7 @@ export default function AIMonitor() {
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400" data-testid="text-system-health">
-                      {weeklyReportLoading ? '...' : weeklyReport?.report?.metrics?.uptime || '99.8%'}
+                      {weeklyReportLoading ? '...' : (weeklyReport as any)?.report?.metrics?.uptime || '99.8%'}
                     </div>
                     <p className="text-xs text-muted-foreground">
                       Uptime percentage

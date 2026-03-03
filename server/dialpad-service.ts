@@ -134,7 +134,7 @@ export class DialpadService {
       });
 
       console.log('Dialpad API Response Status:', response.status, response.statusText);
-      console.log('Dialpad API Response Headers:', JSON.stringify([...response.headers.entries()], null, 2));
+      console.log('Dialpad API Response Headers:', JSON.stringify(Array.from(response.headers.entries()), null, 2));
 
       if (!response.ok) {
         const errorText = await response.text();

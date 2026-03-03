@@ -813,7 +813,7 @@ export class DatabaseStorage implements IStorage {
     }).from(contacts)
       .where(and(eq(contacts.id, id), eq(contacts.contractorId, contractorId)))
       .limit(1);
-    return result[0];
+    return result[0] as unknown as Contact;
   }
 
   async getContactByExternalId(externalId: string, externalSource: string, contractorId: string): Promise<Contact | undefined> {
@@ -1146,14 +1146,14 @@ export class DatabaseStorage implements IStorage {
     };
     
     // O(n) - Union contacts that share phone numbers
-    for (const contactIds of phoneToContacts.values()) {
+    for (const contactIds of Array.from(phoneToContacts.values())) {
       for (let i = 1; i < contactIds.length; i++) {
         union(contactIds[0], contactIds[i]);
       }
     }
     
     // O(n) - Union contacts that share emails
-    for (const contactIds of emailToContacts.values()) {
+    for (const contactIds of Array.from(emailToContacts.values())) {
       for (let i = 1; i < contactIds.length; i++) {
         union(contactIds[0], contactIds[i]);
       }
@@ -1170,10 +1170,10 @@ export class DatabaseStorage implements IStorage {
     
     // Filter to only groups with duplicates (more than 1 contact)
     const contactGroups = new Map<string, Contact[]>();
-    for (const [root, group] of groups) {
+    for (const [root, group] of Array.from(groups)) {
       if (group.length > 1) {
         // Sort by createdAt to ensure oldest is first
-        group.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+        group.sort((a: Contact, b: Contact) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
         contactGroups.set(root, group);
       }
     }
@@ -2778,7 +2778,7 @@ export class DatabaseStorage implements IStorage {
       .limit(options.limit || 50)
       .offset(options.offset || 0);
     
-    return result as Activity[];
+    return result as unknown as Activity[];
   }
 
   async getActivity(id: string, contractorId: string): Promise<Activity | undefined> {
@@ -3712,6 +3712,32 @@ export class DatabaseStorage implements IStorage {
       ...job,
       contact: contact || undefined
     };
+  }
+
+  // IStorage interface aliases for provider/integration methods
+  async getContractorProvider(contractorId: string, providerType: 'email' | 'sms' | 'calling'): Promise<ContractorProvider | undefined> {
+    return this.getTenantProvider(contractorId, providerType);
+  }
+  async setContractorProvider(contractorId: string, providerType: 'email' | 'sms' | 'calling', providerName: string): Promise<ContractorProvider> {
+    return this.setTenantProvider(contractorId, providerType, providerName);
+  }
+  async getContractorProviders(contractorId: string): Promise<ContractorProvider[]> {
+    return this.getTenantProviders(contractorId);
+  }
+  async disableContractorProvider(contractorId: string, providerType: 'email' | 'sms' | 'calling'): Promise<void> {
+    return this.disableTenantProvider(contractorId, providerType);
+  }
+  async getContractorIntegration(contractorId: string, integrationName: string): Promise<ContractorIntegration | undefined> {
+    return this.getTenantIntegration(contractorId, integrationName);
+  }
+  async getContractorIntegrations(contractorId: string): Promise<ContractorIntegration[]> {
+    return this.getTenantIntegrations(contractorId);
+  }
+  async enableContractorIntegration(contractorId: string, integrationName: string, enabledBy?: string): Promise<ContractorIntegration> {
+    return this.enableTenantIntegration(contractorId, integrationName, enabledBy);
+  }
+  async disableContractorIntegration(contractorId: string, integrationName: string): Promise<void> {
+    return this.disableTenantIntegration(contractorId, integrationName);
   }
 }
 

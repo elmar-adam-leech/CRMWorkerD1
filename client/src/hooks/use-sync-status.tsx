@@ -55,7 +55,7 @@ export function SyncStatusProvider({ children }: { children: ReactNode }) {
 
   // Adaptive polling: fast when sync is running, slow when idle, paused in background tabs.
   // Disabled entirely for regular users who cannot trigger or manage syncs.
-  const { data: currentSyncStatus } = useQuery({
+  const { data: currentSyncStatus } = useQuery<SyncStatus>({
     queryKey: ['/api/sync-status'],
     enabled: canReceiveSyncUpdates,
     refetchInterval: (query) => query.state.data?.isRunning ? 2000 : 30000,

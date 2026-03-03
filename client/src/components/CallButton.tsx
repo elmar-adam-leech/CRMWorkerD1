@@ -17,6 +17,7 @@ interface CallButtonProps {
   children?: React.ReactNode;
   customerId?: string;
   leadId?: string;
+  estimateId?: string;
 }
 
 export function CallButton({ 
@@ -28,7 +29,8 @@ export function CallButton({
   className = "",
   children,
   customerId,
-  leadId
+  leadId,
+  estimateId: _estimateId
 }: CallButtonProps) {
   const { toast } = useToast();
   const { calling } = useProviderStatus();

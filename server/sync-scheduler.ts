@@ -602,8 +602,8 @@ export class SyncScheduler {
         externalSource: 'housecall-pro' as const,
       };
 
-      await storage.createJob(jobData, tenantId);
-      console.log(`[sync-scheduler] Created job from approved estimate: ${estimate.id} -> ${jobData.id}`);
+      const createdJob = await storage.createJob(jobData, tenantId);
+      console.log(`[sync-scheduler] Created job from approved estimate: ${estimate.id} -> ${createdJob.id}`);
     } catch (error) {
       console.error(`[sync-scheduler] Failed to convert estimate ${estimate.id} to job:`, error);
     }

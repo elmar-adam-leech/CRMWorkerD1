@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useMemo } from "react";
-import type { Lead, Estimate } from "@shared/schema";
+import type { Contact, Estimate } from "@shared/schema";
 import { Link } from "wouter";
 
 interface FollowUpItem {
@@ -18,7 +18,7 @@ interface FollowUpItem {
 
 export function FollowUpsWidget() {
   // Fetch leads using unified contacts API
-  const { data: leads = [], isLoading: leadsLoading } = useQuery<Lead[]>({
+  const { data: leads = [], isLoading: leadsLoading } = useQuery<Contact[]>({
     queryKey: ['/api/contacts', { type: 'lead' }],
     queryFn: async () => {
       const response = await fetch('/api/contacts?type=lead');

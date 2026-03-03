@@ -11,7 +11,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Mail, Send } from "lucide-react";
-import type { Lead, Customer, Estimate } from "@shared/schema";
+import type { Estimate } from "@shared/schema";
 
 const emailSchema = z.object({
   toEmail: z.string().email("Please enter a valid email address"),

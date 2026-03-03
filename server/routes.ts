@@ -268,7 +268,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           userId: user.id,
           contractorId,
           role: userRole,
-          canManageIntegrations: userRole === 'admin',
+          canManageIntegrations: (userRole as string) === 'admin',
         });
         
         console.log(`[Registration] Existing user ${user.email} added to new contractor ${contractorName}`);
@@ -298,7 +298,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           userId: user.id,
           contractorId: user.contractorId,
           role: userRole,
-          canManageIntegrations: userRole === 'admin',
+          canManageIntegrations: (userRole as string) === 'admin',
         });
 
         // Send welcome email for new users only
@@ -1733,7 +1733,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return;
       }
 
-      const updateData = insertJobSchema.omit({ contractorId: true, customerId: true }).partial().parse(req.body);
+      const updateData = insertJobSchema.omit({ contractorId: true, contactId: true }).partial().parse(req.body);
       const job = await storage.updateJob(req.params.id, updateData, req.user!.contractorId);
       if (!job) {
         res.status(404).json({ message: "Job not found" });
@@ -1892,7 +1892,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return;
       }
 
-      const updateData = insertEstimateSchema.omit({ contractorId: true, customerId: true }).partial().parse(req.body);
+      const updateData = insertEstimateSchema.omit({ contractorId: true, contactId: true }).partial().parse(req.body);
       const estimate = await storage.updateEstimate(req.params.id, updateData, req.user!.contractorId);
       if (!estimate) {
         res.status(404).json({ message: "Estimate not found" });
@@ -2893,10 +2893,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let query = db.select().from(templates).where(eq(templates.contractorId, req.user!.contractorId));
       
       if (type) {
-        query = query.where(and(
+        query = (query as any).where(and(
           eq(templates.contractorId, req.user!.contractorId),
           eq(templates.type, type)
-        )) as any;
+        ));
       }
       
       const allTemplates = await query;
@@ -4244,7 +4244,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
 
             // Create or find customer inline (following App Script pattern)
-            let localCustomer = await storage.getCustomerByExternalId(customerData.id, 'housecall-pro', req.user!.contractorId);
+            let localCustomer = await storage.getContactByExternalId(customerData.id, 'housecall-pro', req.user!.contractorId);
             
             if (!localCustomer) {
               // Create customer from embedded data
@@ -4298,7 +4298,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
             const estimateData = {
               id: crypto.randomUUID(),
-              customerId: localCustomer.id,
+              contactId: localCustomer.id,
               title: estimateTitle,
               description: hcpEstimate.description || '',
               amount: amountInDollars,
@@ -4798,13 +4798,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
             last_name: contact.name.split(' ').slice(1).join(' ') || '',
             email: contactEmail || '',
             mobile_number: contactPhone || '',
-            address: contact.address ? {
+            addresses: contact.address ? [{
               street: contact.address,
               city: '',
               state: '',
               zip: '',
               country: 'US'
-            } : undefined
+            }] : undefined
           });
 
           if (!customerResult.success) {
@@ -4820,9 +4820,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const estimateResult = await housecallProService.createEstimate(req.user!.contractorId, {
         customer_id: housecallProCustomerId,
         employee_id: employeeId,
-        description: description || `Estimate for ${contact.name}`,
-        scheduled_start: startDate.toISOString(),
-        scheduled_end: endDate.toISOString(),
+        message: description || `Estimate for ${contact.name}`,
+        options: [{
+          name: 'Option 1',
+          schedule: {
+            scheduled_start: startDate.toISOString(),
+            scheduled_end: endDate.toISOString(),
+          },
+        }],
         address: contact.address ? {
           street: contact.address,
           city: '',
@@ -4929,7 +4934,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const estimateId = data.id;
         
         // Find the lead associated with this estimate within the specific tenant
-        const leadResult = await storage.getLeadByHousecallProEstimateId(estimateId, contractorId);
+        const leadResult = await storage.getEstimateByHousecallProEstimateId(estimateId, contractorId);
         
         if (leadResult) {
           // Also find and update the local estimate record
@@ -7657,7 +7662,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch("/api/workflows/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
       // Validate request body
-      const validation = insertWorkflowSchema.omit({ contractorId: true }).partial().safeParse(req.body);
+      const validation = insertWorkflowSchema.partial().safeParse(req.body);
       if (!validation.success) {
         res.status(400).json({ error: 'Invalid workflow data', details: validation.error });
         return;
@@ -8023,7 +8028,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
       
       // Execute workflow asynchronously (don't wait for completion)
-      workflowEngine.executeWorkflow(execution.id).catch(error => {
+      workflowEngine.executeWorkflow(execution.id, req.user!.contractorId).catch(error => {
         console.error(`[Workflow API] Error executing workflow ${execution.id}:`, error);
       });
       

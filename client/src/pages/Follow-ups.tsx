@@ -94,8 +94,14 @@ export default function FollowUps() {
     item?: FollowUpItem;
   }>({ isOpen: false });
 
-  // Form schema for lead editing
-  const leadFormSchema = insertContactSchema.omit({ contractorId: true, type: true });
+  // Form schema for lead editing — emails/phones omitted and replaced with
+  // singular string fields so the UI can work with a single value at a time.
+  const leadFormSchema = insertContactSchema
+    .omit({ contractorId: true, type: true, emails: true, phones: true })
+    .extend({
+      email: z.string().optional(),
+      phone: z.string().optional(),
+    });
 
   // Form for lead editing
   const editForm = useForm<z.infer<typeof leadFormSchema>>({
@@ -394,8 +400,8 @@ export default function FollowUps() {
         // Populate the form with lead data
         editForm.reset({
           name: lead.name || "",
-          email: lead.email || "",
-          phone: lead.phone || "",
+          email: (lead.emails && lead.emails.length > 0) ? lead.emails[0] : "",
+          phone: (lead.phones && lead.phones.length > 0) ? lead.phones[0] : "",
           address: lead.address || "",
           source: lead.source || "",
           notes: lead.notes || "",
@@ -420,12 +426,14 @@ export default function FollowUps() {
     // Convert empty strings to null for optional fields
     const processedValues = {
       ...values,
-      email: values.email || null,
-      phone: values.phone || null,
+      emails: values.email ? [values.email] : [],
+      phones: values.phone ? [values.phone] : [],
       address: values.address || null,
       source: values.source || null,
       notes: values.notes || null,
     };
+    delete (processedValues as Record<string, unknown>).email;
+    delete (processedValues as Record<string, unknown>).phone;
     
     updateLeadMutation.mutate({
       leadId: editLeadModal.lead.id,
@@ -786,7 +794,7 @@ export default function FollowUps() {
                     <FormItem>
                       <FormLabel>Source</FormLabel>
                       <FormControl>
-                        <Input placeholder="Where did this lead come from?" {...field} data-testid="input-edit-lead-source" />
+                        <Input placeholder="Where did this lead come from?" {...field} value={field.value ?? ""} data-testid="input-edit-lead-source" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -801,7 +809,7 @@ export default function FollowUps() {
                   <FormItem>
                     <FormLabel>Address</FormLabel>
                     <FormControl>
-                      <Input placeholder="Enter address" {...field} data-testid="input-edit-lead-address" />
+                      <Input placeholder="Enter address" {...field} value={field.value ?? ""} data-testid="input-edit-lead-address" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -818,7 +826,8 @@ export default function FollowUps() {
                       <Textarea 
                         placeholder="Add any additional notes..." 
                         className="min-h-[100px]"
-                        {...field} 
+                        {...field}
+                        value={field.value ?? ""}
                         data-testid="input-edit-lead-notes"
                       />
                     </FormControl>

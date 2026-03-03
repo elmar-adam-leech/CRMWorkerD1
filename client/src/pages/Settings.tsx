@@ -171,7 +171,12 @@ export default function Settings() {
   });
 
   // Fetch current business targets (admin-only endpoint)
-  const { data: currentTargets, isLoading: targetsLoading } = useQuery({
+  const { data: currentTargets, isLoading: targetsLoading } = useQuery<{
+    speedToLeadMinutes: number;
+    followUpRatePercent: string;
+    setRatePercent: string;
+    closeRatePercent: string;
+  }>({
     queryKey: ['/api/business-targets'],
     enabled: userCanManageIntegrations,
   });
@@ -699,8 +704,7 @@ export default function Settings() {
     );
   }
 
-  // Handle API response structure - integrations might be wrapped in an object
-  const integrationsArray = Array.isArray(integrations) ? integrations : (integrations?.integrations || []);
+  const integrationsArray = integrations;
   
   const allIntegrations = integrationsArray.map(getIntegrationConfig);
   
@@ -1829,7 +1833,7 @@ export default function Settings() {
                   <div className="flex gap-2">
                     <Input
                       id="webhook-url"
-                      value={webhookConfig?.webhooks?.[selectedWebhook]?.url || webhookConfig?.webhookUrl || ''}
+                      value={webhookConfig?.webhooks?.[selectedWebhook as "leads" | "estimates"]?.url || webhookConfig?.webhookUrl || ''}
                       readOnly
                       data-testid="input-webhook-url"
                     />
@@ -1837,7 +1841,7 @@ export default function Settings() {
                       variant="outline"
                       size="icon"
                       onClick={() => {
-                        const url = webhookConfig?.webhooks?.[selectedWebhook]?.url || webhookConfig?.webhookUrl;
+                        const url = webhookConfig?.webhooks?.[selectedWebhook as "leads" | "estimates"]?.url || webhookConfig?.webhookUrl;
                         if (url) {
                           navigator.clipboard.writeText(url);
                           toast({
@@ -1902,7 +1906,7 @@ export default function Settings() {
                 <Separator />
 
                 {(() => {
-                  const currentDoc = webhookConfig?.webhooks?.[selectedWebhook]?.documentation || webhookConfig?.documentation;
+                  const currentDoc = webhookConfig?.webhooks?.[selectedWebhook as "leads" | "estimates"]?.documentation || webhookConfig?.documentation;
                   if (!currentDoc) return null;
                   
                   return (
@@ -1939,7 +1943,7 @@ export default function Settings() {
                       <div className="space-y-2">
                         <h4 className="text-sm font-medium text-muted-foreground">Required Fields</h4>
                         <div className="flex flex-wrap gap-2">
-                          {currentDoc.requiredFields.map((field) => (
+                          {currentDoc.requiredFields.map((field: string) => (
                             <Badge key={field} variant="default" className="text-xs font-medium">
                               {field}
                             </Badge>
@@ -1952,7 +1956,7 @@ export default function Settings() {
                         <div className="space-y-2">
                           <h4 className="text-sm font-medium text-muted-foreground">Optional Fields</h4>
                           <div className="flex flex-wrap gap-2">
-                            {currentDoc.optionalFields.map((field) => (
+                            {currentDoc.optionalFields.map((field: string) => (
                               <Badge key={field} variant="secondary" className="text-xs font-medium">
                                 {field}
                               </Badge>
