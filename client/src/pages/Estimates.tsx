@@ -24,11 +24,14 @@ import { Plus, Search, Filter, Calendar, FileText } from "lucide-react";
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { formatStatusLabel } from "@/lib/utils";
+import { downloadCsv } from "@/lib/csv";
 import type { PaginatedEstimates, TerminologySettings, Contact, EstimateSummary } from "@shared/schema";
 import { useWebSocketContext } from "@/contexts/WebSocketContext";
 import { useCommunicationActions } from "@/hooks/useCommunicationActions";
 import { useGlobalShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useFetchContact } from "@/hooks/useFetchContact";
+import { useHousecallProIntegration } from "@/hooks/useHousecallProIntegration";
 import { BulkActionToolbar } from "@/components/BulkActionToolbar";
 import { FilterPanel, type FilterState } from "@/components/FilterPanel";
 import { EmptyState } from "@/components/EmptyState";
@@ -149,30 +152,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
   const estimates = estimatesData?.pages.flatMap((page) => page.data) || [];
   const totalEstimates = estimatesData?.pages[0]?.pagination.total || 0;
 
-  // Get user role to guard admin-only queries
-  const { data: currentUser } = useQuery<{ user: { role: string; canManageIntegrations?: boolean } }>({
-    queryKey: ["/api/auth/me"],
-  });
-  const canManageIntegrations =
-    currentUser?.user?.role === "admin" ||
-    currentUser?.user?.role === "super_admin" ||
-    currentUser?.user?.role === "manager" ||
-    currentUser?.user?.canManageIntegrations === true;
-
-  // Check if Housecall Pro integration is configured (admin/manager only)
-  const { data: integrations = [] } = useQuery<any[]>({
-    queryKey: ["/api/integrations"],
-    enabled: canManageIntegrations,
-  });
-
-  const housecallProIntegration = integrations.find((i) => i.name === "housecall-pro");
-  const isHousecallProConfigured = housecallProIntegration?.hasCredentials && housecallProIntegration?.isEnabled;
-
-  // Fetch current sync start date from settings
-  const { data: syncStartDateData } = useQuery<{ syncStartDate: string | null }>({
-    queryKey: ["/api/housecall-pro/sync-start-date"],
-    enabled: isHousecallProConfigured,
-  });
+  const { isHousecallProConfigured, syncStartDate } = useHousecallProIntegration();
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -212,10 +192,10 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
 
   // Set default import date when sync start date is fetched
   useEffect(() => {
-    if (syncStartDateData?.syncStartDate) {
-      setSelectedImportDate(new Date(syncStartDateData.syncStartDate));
+    if (syncStartDate) {
+      setSelectedImportDate(new Date(syncStartDate));
     }
-  }, [syncStartDateData]);
+  }, [syncStartDate]);
 
   // Transform paginated estimates data (EstimateSummary) into display-friendly EstimateListItem
   const allEstimates: EstimateListItem[] = (estimates || []).map((e) => ({
@@ -271,9 +251,8 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
       description: "Importing estimates from Housecall Pro...",
     });
 
-    const originalSyncDate = syncStartDateData?.syncStartDate;
     const selectedDateISO = selectedImportDate?.toISOString();
-    const dateChanged = selectedDateISO && selectedDateISO !== originalSyncDate;
+    const dateChanged = selectedDateISO && selectedDateISO !== syncStartDate;
 
     try {
       if (dateChanged) {
@@ -299,10 +278,8 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
     } finally {
       if (dateChanged) {
         await apiRequest("POST", "/api/housecall-pro/sync-start-date", {
-          syncStartDate: originalSyncDate,
-        }).catch(() => {
-          // Best-effort restore; don't surface a secondary error
-        });
+          syncStartDate: syncStartDate,
+        }).catch(() => {});
       }
     }
   };
@@ -508,7 +485,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
                   onClick={() => setFilterStatus(status)}
                   data-testid={`filter-${status}`}
                 >
-                  {status === "all" ? "All" : status.charAt(0).toUpperCase() + status.slice(1)} ({statusCounts[status]})
+                  {status === "all" ? "All" : formatStatusLabel(status)} ({statusCounts[status]})
                 </Badge>
               ))}
             </div>
@@ -716,30 +693,12 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
           toast({ title: `Updated ${ids.length} estimate(s) to ${status}` });
         }}
         onExport={async (ids) => {
-          const selectedEstimates = (allEstimates || []).filter((est) => ids.includes(est.id));
-          const csvContent = [
-            ["Title", "Customer", "Email", "Phone", "Status", "Value", "Created Date", "Expiry Date"].join(","),
-            ...(selectedEstimates || []).map((est) =>
-              [
-                est.title || "",
-                est.contactName || "",
-                "",
-                "",
-                est.status || "",
-                est.value || "",
-                est.createdDate || "",
-                est.expiryDate || "",
-              ].join(",")
-            ),
-          ].join("\n");
-
-          const blob = new Blob([csvContent], { type: "text/csv" });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = `estimates-export-${new Date().toISOString().split("T")[0]}.csv`;
-          a.click();
-          URL.revokeObjectURL(url);
+          const selectedEstimates = allEstimates.filter((est) => ids.includes(est.id));
+          downloadCsv(
+            `estimates-export-${new Date().toISOString().split("T")[0]}.csv`,
+            ["Title", "Customer", "Email", "Phone", "Status", "Value", "Created Date", "Expiry Date"],
+            selectedEstimates.map((est) => [est.title, est.contactName, "", "", est.status, est.value, est.createdDate, est.expiryDate])
+          );
           toast({ title: `Exported ${ids.length} estimate(s)` });
         }}
         statusOptions={[

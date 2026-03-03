@@ -32,7 +32,8 @@ import { z } from "zod";
 import type { Contact } from "@shared/schema";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
+import { cn, formatStatusLabel } from "@/lib/utils";
+import { downloadCsv } from "@/lib/csv";
 import { format } from "date-fns";
 import { useWebSocketContext } from "@/contexts/WebSocketContext";
 import { useCommunicationActions } from "@/hooks/useCommunicationActions";
@@ -765,7 +766,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
                 onClick={() => setFilterStatus(status)}
                 data-testid={`filter-${status}`}
               >
-                {status === "all" ? "All" : status.charAt(0).toUpperCase() + status.slice(1)} {statusCounts[status] !== undefined ? `(${statusCounts[status]})` : ''}
+                {status === "all" ? "All" : formatStatusLabel(status)} {statusCounts[status] !== undefined ? `(${statusCounts[status]})` : ''}
               </Badge>
             ))}
           </div>
@@ -1677,7 +1678,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
                   data-testid={`button-status-${status}`}
                   className="justify-start"
                 >
-                  {status.charAt(0).toUpperCase() + status.slice(1)}
+                  {formatStatusLabel(status)}
                 </Button>
               ))}
             </div>
@@ -1716,28 +1717,20 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
           toast({ title: `Updated ${ids.length} lead(s) to ${status}` });
         }}
         onExport={async (ids) => {
-          // Export selected contacts
           const selectedContacts = leads.filter(contact => ids.includes(contact.id));
-          const csvContent = [
-            ['Name', 'Email', 'Phone', 'Address', 'Source', 'Status', 'Priority'].join(','),
-            ...selectedContacts.map(contact => [
-              contact.name || '',
+          downloadCsv(
+            `leads-export-${new Date().toISOString().split('T')[0]}.csv`,
+            ['Name', 'Email', 'Phone', 'Address', 'Source', 'Status', 'Priority'],
+            selectedContacts.map(contact => [
+              contact.name,
               (contact.emails && contact.emails.length > 0) ? contact.emails[0] : '',
               (contact.phones && contact.phones.length > 0) ? contact.phones[0] : '',
-              contact.address || '',
-              contact.source || '',
-              contact.status || '',
-              contact.priority || ''
-            ].join(','))
-          ].join('\n');
-          
-          const blob = new Blob([csvContent], { type: 'text/csv' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = `leads-export-${new Date().toISOString().split('T')[0]}.csv`;
-          a.click();
-          URL.revokeObjectURL(url);
+              contact.address,
+              contact.source,
+              contact.status,
+              contact.priority,
+            ])
+          );
           toast({ title: `Exported ${ids.length} lead(s)` });
         }}
         statusOptions={[
