@@ -11,6 +11,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -23,17 +33,38 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Trash2 } from 'lucide-react';
+import { useCurrentUser, isAdminUser } from '@/hooks/useCurrentUser';
 
 type NodeEditDialogProps = {
   node: Node | null;
   open: boolean;
   onClose: () => void;
-  onSave: (nodeId: string, newData: any) => void;
+  onSave: (nodeId: string, newData: Record<string, unknown>) => void;
   onDelete?: (nodeId: string) => void;
 };
 
+function StatusOptions({ entityType }: { entityType?: string }) {
+  if (entityType === 'lead') return (<>
+    <SelectItem value="contacted">Contacted</SelectItem>
+    <SelectItem value="scheduled">Scheduled</SelectItem>
+    <SelectItem value="disqualified">Disqualified</SelectItem>
+  </>);
+  if (entityType === 'estimate') return (<>
+    <SelectItem value="sent">Sent</SelectItem>
+    <SelectItem value="viewed">Viewed</SelectItem>
+    <SelectItem value="accepted">Accepted</SelectItem>
+    <SelectItem value="rejected">Rejected</SelectItem>
+  </>);
+  if (entityType === 'job') return (<>
+    <SelectItem value="in_progress">In Progress</SelectItem>
+    <SelectItem value="completed">Completed</SelectItem>
+  </>);
+  return null;
+}
+
 export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }: NodeEditDialogProps) {
-  const [formData, setFormData] = useState<Record<string, any>>({});
+  const [formData, setFormData] = useState<Record<string, unknown>>({});
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   
   // Refs for text inputs to support cursor-position variable insertion
   const subjectRef = useRef<HTMLInputElement>(null);
@@ -41,14 +72,13 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
   const messageRef = useRef<HTMLTextAreaElement>(null);
   const emailToRef = useRef<HTMLInputElement>(null);
   const smsToRef = useRef<HTMLInputElement>(null);
+  const notificationTitleRef = useRef<HTMLInputElement>(null);
+  const notificationMessageRef = useRef<HTMLTextAreaElement>(null);
+  const aiPromptRef = useRef<HTMLTextAreaElement>(null);
 
   // Get current user to check admin permissions
-  const { data: currentUser } = useQuery<{ user: { id: string; name: string; email: string; role: string } }>({
-    queryKey: ['/api/auth/me'],
-  });
-  const isAdmin = currentUser?.user?.role === 'admin' 
-    || currentUser?.user?.role === 'super_admin' 
-    || currentUser?.user?.role === 'manager';
+  const { data: currentUser } = useCurrentUser();
+  const isAdmin = isAdminUser(currentUser?.user?.role);
 
   // Get available Gmail users (those with gmailRefreshToken)
   const { data: gmailUsers = [] } = useQuery<Array<{ id: string; name: string; email: string }>>({
@@ -62,8 +92,14 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
     enabled: isAdmin && open,
   });
 
+  // Get team users for assignUser node
+  const { data: teamUsers = [] } = useQuery<Array<{ id: string; name: string; email: string }>>({
+    queryKey: ['/api/users'],
+    enabled: isAdmin && open,
+  });
+
   // Fetch terminology settings
-  const { data: terminology } = useQuery<any>({
+  const { data: terminology } = useQuery<{ leadLabel?: string; estimateLabel?: string; jobLabel?: string }>({
     queryKey: ['/api/terminology'],
   });
 
@@ -87,7 +123,7 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
     const input = ref.current;
     const start = input.selectionStart || 0;
     const end = input.selectionEnd || 0;
-    const currentValue = formData[fieldName] || '';
+    const currentValue = String(formData[fieldName] || '');
     const newValue = currentValue.slice(0, start) + variable + currentValue.slice(end);
     
     setFormData(prev => ({
@@ -111,10 +147,7 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
   
   const handleDelete = () => {
     if (node && onDelete) {
-      if (confirm(`Are you sure you want to delete this node?`)) {
-        onDelete(node.id);
-        onClose();
-      }
+      setShowDeleteConfirm(true);
     }
   };
 
@@ -136,15 +169,15 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
     }
   };
 
-  const handleChange = (field: string, value: any) => {
+  const handleChange = (field: string, value: unknown) => {
     setFormData(prev => {
       const newData = { ...prev, [field]: value };
       
       // Auto-generate trigger label when entity/event types change
       if (node?.type === 'trigger' && (field === 'entityType' || field === 'eventType' || field === 'targetStatus')) {
-        const entity = field === 'entityType' ? value : (prev.entityType || 'lead');
-        const event = field === 'eventType' ? value : (prev.eventType || 'created');
-        const targetStatus = field === 'targetStatus' ? value : prev.targetStatus;
+        const entity = String(field === 'entityType' ? value : (prev.entityType || 'lead'));
+        const event = String(field === 'eventType' ? value : (prev.eventType || 'created'));
+        const targetStatus = String(field === 'targetStatus' ? value : (prev.targetStatus || ''));
         
         // Get entity label with custom terminology
         const entityLabel = getEntityLabel(entity);
@@ -179,7 +212,7 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
               <Label htmlFor="label">Trigger Name</Label>
               <Input
                 id="label"
-                value={formData.label || ''}
+                value={String(formData.label || '')}
                 onChange={(e) => handleChange('label', e.target.value)}
                 placeholder={`When ${terminology?.leadLabel || 'Lead'} is Created`}
                 data-testid="input-trigger-label"
@@ -188,7 +221,7 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
             <div className="space-y-2">
               <Label htmlFor="triggerType">Trigger Type</Label>
               <Select
-                value={formData.triggerType || 'entity_event'}
+                value={String(formData.triggerType || 'entity_event')}
                 onValueChange={(value) => handleChange('triggerType', value)}
               >
                 <SelectTrigger id="triggerType" data-testid="select-trigger-type">
@@ -208,7 +241,7 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
                 <div className="space-y-2">
                   <Label htmlFor="entityType">Entity</Label>
                   <Select
-                    value={formData.entityType || 'lead'}
+                    value={String(formData.entityType || 'lead')}
                     onValueChange={(value) => handleChange('entityType', value)}
                   >
                     <SelectTrigger id="entityType" data-testid="select-trigger-entity">
@@ -225,7 +258,7 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
                 <div className="space-y-2">
                   <Label htmlFor="eventType">Event Type</Label>
                   <Select
-                    value={formData.eventType || 'created'}
+                    value={String(formData.eventType || 'created')}
                     onValueChange={(value) => handleChange('eventType', value)}
                   >
                     <SelectTrigger id="eventType" data-testid="select-trigger-event">
@@ -243,7 +276,7 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
                   <div className="space-y-2">
                     <Label htmlFor="targetStatus">Status Changed To</Label>
                     <Select
-                      value={formData.targetStatus || ''}
+                      value={String(formData.targetStatus || '')}
                       onValueChange={(value) => handleChange('targetStatus', value)}
                     >
                       <SelectTrigger id="targetStatus" data-testid="select-target-status">
@@ -293,7 +326,7 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
                     Only trigger this workflow for contacts with these tags. Leave empty to trigger for all contacts.
                   </p>
                   <TagManager
-                    tags={formData.tags || []}
+                    tags={(formData.tags as string[]) || []}
                     onChange={(tags) => handleChange('tags', tags)}
                     placeholder="Add tag filter (e.g., Ductless, Emergency)..."
                   />
@@ -306,7 +339,7 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
                 <div className="space-y-2">
                   <Label htmlFor="scheduleType">Schedule Type</Label>
                   <Select
-                    value={formData.scheduleType || 'interval'}
+                    value={String(formData.scheduleType || 'interval')}
                     onValueChange={(value) => handleChange('scheduleType', value)}
                   >
                     <SelectTrigger id="scheduleType" data-testid="select-schedule-type">
@@ -326,7 +359,7 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
                     <Label htmlFor="interval">Interval</Label>
                     <Input
                       id="interval"
-                      value={formData.interval || ''}
+                      value={String(formData.interval || '')}
                       onChange={(e) => handleChange('interval', e.target.value)}
                       placeholder="e.g., 1 hour, 30 minutes"
                       data-testid="input-trigger-interval"
@@ -339,7 +372,7 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
                     <Input
                       id="time"
                       type="time"
-                      value={formData.time || ''}
+                      value={String(formData.time || '')}
                       onChange={(e) => handleChange('time', e.target.value)}
                       data-testid="input-trigger-time"
                     />
@@ -350,7 +383,7 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
                     <Label htmlFor="cronExpression">Cron Expression</Label>
                     <Input
                       id="cronExpression"
-                      value={formData.cronExpression || ''}
+                      value={String(formData.cronExpression || '')}
                       onChange={(e) => handleChange('cronExpression', e.target.value)}
                       placeholder="0 9 * * 1-5"
                       data-testid="input-trigger-cron"
@@ -377,14 +410,14 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
               <div className="flex items-center justify-between">
                 <Label htmlFor="to">To (Email)</Label>
                 <VariablePicker
-                  entityType={formData.entityType || 'lead'}
+                  entityType={(formData.entityType as "lead" | "estimate" | "job" | "customer") || "lead"}
                   onSelect={(v) => handleVariableInsert('to', v, emailToRef)}
                 />
               </div>
               <Input
                 ref={emailToRef}
                 id="to"
-                value={formData.to || ''}
+                value={String(formData.to || '')}
                 onChange={(e) => handleChange('to', e.target.value)}
                 placeholder="email@example.com or {{lead.emails}}"
                 data-testid="input-email-to"
@@ -394,14 +427,14 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
               <div className="flex items-center justify-between">
                 <Label htmlFor="subject">Subject</Label>
                 <VariablePicker
-                  entityType={formData.entityType || 'lead'}
+                  entityType={(formData.entityType as "lead" | "estimate" | "job" | "customer") || "lead"}
                   onSelect={(v) => handleVariableInsert('subject', v, subjectRef)}
                 />
               </div>
               <Input
                 ref={subjectRef}
                 id="subject"
-                value={formData.subject || ''}
+                value={String(formData.subject || '')}
                 onChange={(e) => handleChange('subject', e.target.value)}
                 placeholder="Email subject (use Insert Variable button)"
                 data-testid="input-email-subject"
@@ -411,14 +444,14 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
               <div className="flex items-center justify-between">
                 <Label htmlFor="body">Body</Label>
                 <VariablePicker
-                  entityType={formData.entityType || 'lead'}
+                  entityType={(formData.entityType as "lead" | "estimate" | "job" | "customer") || "lead"}
                   onSelect={(v) => handleVariableInsert('body', v, bodyRef)}
                 />
               </div>
               <Textarea
                 ref={bodyRef}
                 id="body"
-                value={formData.body || ''}
+                value={String(formData.body || '')}
                 onChange={(e) => handleChange('body', e.target.value)}
                 placeholder="Email body content (use Insert Variable button)"
                 rows={4}
@@ -433,7 +466,7 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
                 <div className="space-y-2">
                   <Label htmlFor="fromEmail">From Email (Optional)</Label>
                   <Select
-                    value={formData.fromEmail || undefined}
+                    value={(formData.fromEmail as string | undefined) || undefined}
                     onValueChange={(value) => handleChange('fromEmail', value === 'default' ? undefined : value)}
                   >
                     <SelectTrigger id="fromEmail" data-testid="select-email-from">
@@ -462,34 +495,14 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
                 <div className="space-y-2">
                   <Label htmlFor="updateStatus">Update Status</Label>
                   <Select
-                    value={formData.updateStatus || undefined}
+                    value={(formData.updateStatus as string | undefined) || undefined}
                     onValueChange={(value) => handleChange('updateStatus', value)}
                   >
                     <SelectTrigger id="updateStatus" data-testid="select-email-update-status">
                       <SelectValue placeholder="No change" />
                     </SelectTrigger>
                     <SelectContent>
-                      {formData.entityType === 'lead' && (
-                        <>
-                          <SelectItem value="contacted">Contacted</SelectItem>
-                          <SelectItem value="scheduled">Scheduled</SelectItem>
-                          <SelectItem value="disqualified">Disqualified</SelectItem>
-                        </>
-                      )}
-                      {formData.entityType === 'estimate' && (
-                        <>
-                          <SelectItem value="sent">Sent</SelectItem>
-                          <SelectItem value="viewed">Viewed</SelectItem>
-                          <SelectItem value="accepted">Accepted</SelectItem>
-                          <SelectItem value="rejected">Rejected</SelectItem>
-                        </>
-                      )}
-                      {formData.entityType === 'job' && (
-                        <>
-                          <SelectItem value="in_progress">In Progress</SelectItem>
-                          <SelectItem value="completed">Completed</SelectItem>
-                        </>
-                      )}
+                      <StatusOptions entityType={String(formData.entityType)} />
                     </SelectContent>
                   </Select>
                 </div>
@@ -509,14 +522,14 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
               <div className="flex items-center justify-between">
                 <Label htmlFor="to">To (Phone Number)</Label>
                 <VariablePicker
-                  entityType={formData.entityType || 'lead'}
+                  entityType={(formData.entityType as "lead" | "estimate" | "job" | "customer") || "lead"}
                   onSelect={(v) => handleVariableInsert('to', v, smsToRef)}
                 />
               </div>
               <Input
                 ref={smsToRef}
                 id="to"
-                value={formData.to || ''}
+                value={String(formData.to || '')}
                 onChange={(e) => handleChange('to', e.target.value)}
                 placeholder="(555) 123-4567 or {{lead.phones}}"
                 data-testid="input-sms-to"
@@ -526,14 +539,14 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
               <div className="flex items-center justify-between">
                 <Label htmlFor="message">Message</Label>
                 <VariablePicker
-                  entityType={formData.entityType || 'lead'}
+                  entityType={(formData.entityType as "lead" | "estimate" | "job" | "customer") || "lead"}
                   onSelect={(v) => handleVariableInsert('message', v, messageRef)}
                 />
               </div>
               <Textarea
                 ref={messageRef}
                 id="message"
-                value={formData.message || ''}
+                value={String(formData.message || '')}
                 onChange={(e) => handleChange('message', e.target.value)}
                 placeholder="SMS message content (use Insert Variable button)"
                 rows={3}
@@ -548,7 +561,7 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
                 <div className="space-y-2">
                   <Label htmlFor="fromNumber">From Phone Number (Optional)</Label>
                   <Select
-                    value={formData.fromNumber || undefined}
+                    value={(formData.fromNumber as string | undefined) || undefined}
                     onValueChange={(value) => handleChange('fromNumber', value === 'default' ? undefined : value)}
                   >
                     <SelectTrigger id="fromNumber" data-testid="select-sms-from">
@@ -577,34 +590,14 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
                 <div className="space-y-2">
                   <Label htmlFor="updateStatus">Update Status</Label>
                   <Select
-                    value={formData.updateStatus || undefined}
+                    value={(formData.updateStatus as string | undefined) || undefined}
                     onValueChange={(value) => handleChange('updateStatus', value)}
                   >
                     <SelectTrigger id="updateStatus" data-testid="select-sms-update-status">
                       <SelectValue placeholder="No change" />
                     </SelectTrigger>
                     <SelectContent>
-                      {formData.entityType === 'lead' && (
-                        <>
-                          <SelectItem value="contacted">Contacted</SelectItem>
-                          <SelectItem value="scheduled">Scheduled</SelectItem>
-                          <SelectItem value="disqualified">Disqualified</SelectItem>
-                        </>
-                      )}
-                      {formData.entityType === 'estimate' && (
-                        <>
-                          <SelectItem value="sent">Sent</SelectItem>
-                          <SelectItem value="viewed">Viewed</SelectItem>
-                          <SelectItem value="accepted">Accepted</SelectItem>
-                          <SelectItem value="rejected">Rejected</SelectItem>
-                        </>
-                      )}
-                      {formData.entityType === 'job' && (
-                        <>
-                          <SelectItem value="in_progress">In Progress</SelectItem>
-                          <SelectItem value="completed">Completed</SelectItem>
-                        </>
-                      )}
+                      <StatusOptions entityType={String(formData.entityType)} />
                     </SelectContent>
                   </Select>
                 </div>
@@ -618,23 +611,20 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
         );
 
       case 'notification':
-        const notificationTitleRef = useRef<HTMLInputElement>(null);
-        const notificationMessageRef = useRef<HTMLTextAreaElement>(null);
-        
         return (
           <>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label htmlFor="title">Notification Title</Label>
                 <VariablePicker
-                  entityType={formData.entityType || 'lead'}
+                  entityType={(formData.entityType as "lead" | "estimate" | "job" | "customer") || "lead"}
                   onSelect={(v) => handleVariableInsert('title', v, notificationTitleRef)}
                 />
               </div>
               <Input
                 ref={notificationTitleRef}
                 id="title"
-                value={formData.title || ''}
+                value={String(formData.title || '')}
                 onChange={(e) => handleChange('title', e.target.value)}
                 placeholder="Important update"
                 data-testid="input-notification-title"
@@ -644,14 +634,14 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
               <div className="flex items-center justify-between">
                 <Label htmlFor="message">Message</Label>
                 <VariablePicker
-                  entityType={formData.entityType || 'lead'}
+                  entityType={(formData.entityType as "lead" | "estimate" | "job" | "customer") || "lead"}
                   onSelect={(v) => handleVariableInsert('message', v, notificationMessageRef)}
                 />
               </div>
               <Textarea
                 ref={notificationMessageRef}
                 id="message"
-                value={formData.message || ''}
+                value={String(formData.message || '')}
                 onChange={(e) => handleChange('message', e.target.value)}
                 placeholder="Notification message"
                 rows={3}
@@ -665,33 +655,47 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
       case 'assignUser':
         return (
           <div className="space-y-2">
-            <Label htmlFor="userId">Assign to User ID</Label>
-            <Input
-              id="userId"
-              value={formData.userId || ''}
-              onChange={(e) => handleChange('userId', e.target.value)}
-              placeholder="user-id"
-              data-testid="input-assign-user"
-            />
+            <Label htmlFor="userId">Assign to Team Member</Label>
+            {isAdmin ? (
+              <Select
+                value={String(formData.userId || '')}
+                onValueChange={(v) => handleChange('userId', v)}
+              >
+                <SelectTrigger id="userId" data-testid="select-assign-user">
+                  <SelectValue placeholder="Select team member" />
+                </SelectTrigger>
+                <SelectContent>
+                  {teamUsers.map((u) => (
+                    <SelectItem key={u.id} value={u.id}>{u.name} ({u.email})</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Input
+                id="userId"
+                value={String(formData.userId || '')}
+                onChange={(e) => handleChange('userId', e.target.value)}
+                placeholder="user-id"
+                data-testid="input-assign-user"
+              />
+            )}
           </div>
         );
 
       case 'aiGenerate':
-        const aiPromptRef = useRef<HTMLTextAreaElement>(null);
-        
         return (
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label htmlFor="prompt">AI Prompt</Label>
               <VariablePicker
-                entityType={formData.entityType || 'lead'}
+                entityType={(formData.entityType as "lead" | "estimate" | "job" | "customer") || "lead"}
                 onSelect={(v) => handleVariableInsert('prompt', v, aiPromptRef)}
               />
             </div>
             <Textarea
               ref={aiPromptRef}
               id="prompt"
-              value={formData.prompt || ''}
+              value={String(formData.prompt || '')}
               onChange={(e) => handleChange('prompt', e.target.value)}
               placeholder="Generate a personalized welcome email for {{lead.name}}"
               rows={4}
@@ -708,7 +712,7 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
           <div className="space-y-2">
             <Label htmlFor="analysisType">Analysis Type</Label>
             <Select
-              value={formData.analysisType || 'general'}
+              value={String(formData.analysisType || 'general')}
               onValueChange={(value) => handleChange('analysisType', value)}
             >
               <SelectTrigger id="analysisType" data-testid="select-analysis-type">
@@ -738,7 +742,7 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
               <div className="space-y-2">
                 <Label htmlFor="conditionField" className="text-xs">Field</Label>
                 <Select
-                  value={formData.conditionField || ''}
+                  value={String(formData.conditionField || '')}
                   onValueChange={(value) => handleChange('conditionField', value)}
                 >
                   <SelectTrigger id="conditionField" data-testid="select-condition-field">
@@ -788,7 +792,7 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
               <div className="space-y-2">
                 <Label htmlFor="conditionOperator" className="text-xs">Operator</Label>
                 <Select
-                  value={formData.conditionOperator || ''}
+                  value={String(formData.conditionOperator || '')}
                   onValueChange={(value) => handleChange('conditionOperator', value)}
                 >
                   <SelectTrigger id="conditionOperator" data-testid="select-condition-operator">
@@ -816,7 +820,7 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
                 <Label htmlFor="conditionValue" className="text-xs">Value</Label>
                 <Input
                   id="conditionValue"
-                  value={formData.conditionValue || ''}
+                  value={String(formData.conditionValue || '')}
                   onChange={(e) => handleChange('conditionValue', e.target.value)}
                   placeholder="Enter value"
                   data-testid="input-condition-value"
@@ -825,20 +829,20 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
               </div>
             </div>
 
-            {/* Preview of the condition */}
-            {formData.conditionField && formData.conditionOperator && (
+            {Boolean(formData.conditionField) && Boolean(formData.conditionOperator) && (
               <div className="p-3 bg-muted rounded-md">
                 <p className="text-sm font-medium mb-1">Condition Preview:</p>
                 <code className="text-sm">
-                  {formData.conditionField} {
-                    formData.conditionOperator === 'equals' ? '=' :
+                  {String(formData.conditionField)}{' '}
+                  {formData.conditionOperator === 'equals' ? '=' :
                     formData.conditionOperator === 'not_equals' ? '!=' :
                     formData.conditionOperator === 'greater_than' ? '>' :
                     formData.conditionOperator === 'less_than' ? '<' :
                     formData.conditionOperator === 'greater_or_equal' ? '>=' :
                     formData.conditionOperator === 'less_or_equal' ? '<=' :
-                    formData.conditionOperator
-                  } {formData.conditionOperator !== 'is_empty' && formData.conditionOperator !== 'is_not_empty' ? (formData.conditionValue || '?') : ''}
+                    String(formData.conditionOperator)
+                  }{' '}
+                  {formData.conditionOperator !== 'is_empty' && formData.conditionOperator !== 'is_not_empty' ? (String(formData.conditionValue) || '?') : ''}
                 </code>
               </div>
             )}
@@ -927,7 +931,7 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
           return { value: '1', unit: 'm' };
         };
         
-        const { value: durationValue, unit: durationUnit } = parseDuration(formData.duration || '');
+        const { value: durationValue, unit: durationUnit } = parseDuration(String(formData.duration || ''));
         
         const handleDurationChange = (newValue: string, newUnit: string) => {
           // Create duration string in short format (e.g., "30m", "1h", "2d")
@@ -976,7 +980,7 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
             <Input
               id="dateTime"
               type="datetime-local"
-              value={formData.dateTime || ''}
+              value={String(formData.dateTime || '')}
               onChange={(e) => handleChange('dateTime', e.target.value)}
               data-testid="input-wait-datetime"
             />
@@ -989,40 +993,68 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent data-testid="dialog-node-edit">
-        <DialogHeader>
-          <DialogTitle>Edit Node</DialogTitle>
-          <DialogDescription>
-            Configure the properties for this workflow node.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4 py-4">
-          {renderFields()}
-        </div>
-        <DialogFooter className="flex justify-between items-center">
-          <div>
-            {onDelete && (
-              <Button 
-                variant="destructive" 
-                onClick={handleDelete} 
-                data-testid="button-delete-node"
-              >
-                <Trash2 className="h-4 w-4 mr-2" />
-                Delete Node
+    <>
+      <Dialog open={open} onOpenChange={onClose}>
+        <DialogContent data-testid="dialog-node-edit">
+          <DialogHeader>
+            <DialogTitle>Edit Node</DialogTitle>
+            <DialogDescription>
+              Configure the properties for this workflow node.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {renderFields()}
+          </div>
+          <DialogFooter className="flex justify-between items-center">
+            <div>
+              {onDelete && (
+                <Button 
+                  variant="destructive" 
+                  onClick={handleDelete} 
+                  data-testid="button-delete-node"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete Node
+                </Button>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={onClose} data-testid="button-cancel-edit">
+                Cancel
               </Button>
-            )}
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={onClose} data-testid="button-cancel-edit">
-              Cancel
-            </Button>
-            <Button onClick={handleSave} data-testid="button-save-edit">
-              Save Changes
-            </Button>
-          </div>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+              <Button onClick={handleSave} data-testid="button-save-edit">
+                Save Changes
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Node</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this node? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete-node">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              data-testid="button-confirm-delete-node"
+              onClick={() => {
+                if (node && onDelete) {
+                  onDelete(node.id);
+                  onClose();
+                }
+                setShowDeleteConfirm(false);
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }

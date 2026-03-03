@@ -7701,15 +7701,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Workflow approval endpoints
-  app.get("/api/workflows/pending-approval", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/workflows/pending-approval", requireAuth, requireManagerOrAdmin, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      // Check if user is admin or manager
-      const userContractor = await storage.getUserContractor(req.user!.userId, req.user!.contractorId);
-      if (!userContractor || (userContractor.role !== 'admin' && userContractor.role !== 'manager' && userContractor.role !== 'super_admin')) {
-        res.status(403).json({ error: 'Only admins and managers can view pending approvals' });
-        return;
-      }
-      
       const workflows = await storage.getWorkflowsPendingApproval(req.user!.contractorId);
       res.json(workflows);
     } catch (error) {
@@ -7718,16 +7711,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/workflows/:id/approve", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/workflows/:id/approve", requireAuth, requireManagerOrAdmin, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      // Check if user is admin or manager
-      const userContractor = await storage.getUserContractor(req.user!.userId, req.user!.contractorId);
-      if (!userContractor || (userContractor.role !== 'admin' && userContractor.role !== 'manager' && userContractor.role !== 'super_admin')) {
-        res.status(403).json({ error: 'Only admins and managers can approve workflows' });
-        return;
-      }
-      
-      // Verify workflow belongs to contractor
       const existingWorkflow = await storage.getWorkflow(req.params.id, req.user!.contractorId);
       if (!existingWorkflow) {
         res.status(404).json({ error: 'Workflow not found' });
@@ -7747,16 +7732,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/workflows/:id/reject", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/workflows/:id/reject", requireAuth, requireManagerOrAdmin, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      // Check if user is admin or manager
-      const userContractor = await storage.getUserContractor(req.user!.userId, req.user!.contractorId);
-      if (!userContractor || (userContractor.role !== 'admin' && userContractor.role !== 'manager' && userContractor.role !== 'super_admin')) {
-        res.status(403).json({ error: 'Only admins and managers can reject workflows' });
-        return;
-      }
-      
-      // Verify workflow belongs to contractor
       const existingWorkflow = await storage.getWorkflow(req.params.id, req.user!.contractorId);
       if (!existingWorkflow) {
         res.status(404).json({ error: 'Workflow not found' });
@@ -7832,19 +7809,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return;
       }
 
-      // Atomically replace all steps: delete existing, then create new ones
-      await storage.deleteWorkflowSteps(req.params.workflowId);
-
-      const createdSteps = [];
+      // Validate all steps first — fail before touching the DB
+      const validatedSteps: Array<ReturnType<typeof insertWorkflowStepSchema.parse>> = [];
       for (const stepData of steps) {
         const validation = insertWorkflowStepSchema.safeParse({ ...stepData, workflowId: req.params.workflowId });
         if (!validation.success) {
           res.status(400).json({ error: 'Invalid workflow step data', details: validation.error });
           return;
         }
-        const step = await storage.createWorkflowStep(validation.data);
-        createdSteps.push(step);
+        validatedSteps.push(validation.data);
       }
+
+      // All valid — now atomically replace
+      await storage.deleteWorkflowSteps(req.params.workflowId);
+      const createdSteps = await Promise.all(validatedSteps.map((s) => storage.createWorkflowStep(s)));
 
       res.json(createdSteps);
     } catch (error) {

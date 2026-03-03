@@ -533,7 +533,7 @@ export default function WorkflowBuilder() {
     setSelectedNode(nodeWithEntityType);
   }, [currentNodes]);
 
-  const handleNodeSave = useCallback((nodeId: string, newData: any) => {
+  const handleNodeSave = useCallback((nodeId: string, newData: Record<string, unknown>) => {
     setCurrentNodes(prevNodes =>
       prevNodes.map(node =>
         node.id === nodeId ? { ...node, data: { ...node.data, ...newData } } : node
