@@ -146,13 +146,15 @@ export default function Settings() {
     || currentUser?.user?.canManageIntegrations === true;
 
   const {
-    data: integrations = [],
+    data: integrationsResponse,
     isLoading,
     error
-  } = useQuery<IntegrationData[]>({
+  } = useQuery<{ integrations: IntegrationData[] }>({
     queryKey: ['/api/integrations'],
-    enabled: userCanManageIntegrations, // Only query if user has permission
+    enabled: userCanManageIntegrations,
   });
+
+  const integrations: IntegrationData[] = integrationsResponse?.integrations ?? [];
 
   const {
     data: employees = [],

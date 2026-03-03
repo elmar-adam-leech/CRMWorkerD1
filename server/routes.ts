@@ -4517,13 +4517,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Housecall Pro sync start date management
-  app.get("/api/housecall-pro/sync-start-date", async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/housecall-pro/sync-start-date", requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      if (req.user!.role !== 'admin') {
-        res.status(403).json({ message: "Only admins can view sync settings" });
-        return;
-      }
-
       const syncStartDate = await storage.getHousecallProSyncStartDate(req.user!.contractorId);
       res.json({ syncStartDate: syncStartDate ? syncStartDate.toISOString() : null });
     } catch (error) {
@@ -4532,13 +4527,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/housecall-pro/sync-start-date", async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/housecall-pro/sync-start-date", requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      if (req.user!.role !== 'admin') {
-        res.status(403).json({ message: "Only admins can modify sync settings" });
-        return;
-      }
-
       const { syncStartDate } = req.body;
       const parsedDate = syncStartDate ? new Date(syncStartDate) : null;
 

@@ -7,7 +7,6 @@ import { EmailComposerModal } from "@/components/EmailComposerModal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,7 +19,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { PageHeader } from "@/components/ui/page-header-v2";
 import { PageLayout } from "@/components/ui/page-layout";
-import { Plus, Search, Filter, Calendar, FileText } from "lucide-react";
+import { Plus, Search, Filter, Calendar, FileText, Download } from "lucide-react";
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -35,11 +34,21 @@ import { useHousecallProIntegration } from "@/hooks/useHousecallProIntegration";
 import { BulkActionToolbar } from "@/components/BulkActionToolbar";
 import { FilterPanel, type FilterState } from "@/components/FilterPanel";
 import { EmptyState } from "@/components/EmptyState";
-import { CreateEstimateForm } from "@/components/CreateEstimateForm";
+import { CreateEstimateModal } from "@/components/CreateEstimateModal";
 import { EditEstimateModal, type EditEstimateFormValues } from "@/components/EditEstimateModal";
 import { FollowUpDateModal } from "@/components/FollowUpDateModal";
 import { EstimateDetailsModal, type EstimateListItem } from "@/components/EstimateDetailsModal";
 import { HCPImportModal } from "@/components/HCPImportModal";
+
+const ESTIMATE_FILTER_STATUSES = ["sent", "pending", "approved", "rejected"] as const;
+
+const ESTIMATE_BULK_STATUSES = [
+  { value: "draft", label: "Draft" },
+  { value: "sent", label: "Sent" },
+  { value: "approved", label: "Approved" },
+  { value: "rejected", label: "Rejected" },
+  { value: "cancelled", label: "Cancelled" },
+];
 
 export default function Estimates({ externalSearch = "" }: { externalSearch?: string }) {
   const [location] = useLocation();
@@ -47,12 +56,11 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
   const { fetchContact } = useFetchContact();
   const [searchQuery, setSearchQuery] = useState(externalSearch);
 
-  // Sync global search bar into local search state
   useEffect(() => {
     setSearchQuery(externalSearch);
   }, [externalSearch]);
 
-  const [filterStatus, setFilterStatus] = useState<"all" | "sent" | "pending" | "approved" | "rejected">("all");
+  const [filterStatus, setFilterStatus] = useState<"all" | (typeof ESTIMATE_FILTER_STATUSES)[number]>("all");
   const [advancedFilters, setAdvancedFilters] = useState<FilterState>({});
 
   const {
@@ -70,9 +78,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
     estimate?: EstimateSummary;
   }>({ isOpen: false });
 
-  const [addModal, setAddModal] = useState<{
-    isOpen: boolean;
-  }>({ isOpen: false });
+  const [addModal, setAddModal] = useState(false);
 
   const [detailsModal, setDetailsModal] = useState<{
     isOpen: boolean;
@@ -96,23 +102,19 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
     estimateTitle?: string;
   }>({ isOpen: false });
 
-  // Fetch terminology settings
   const { data: terminology } = useQuery<TerminologySettings>({
     queryKey: ["/api/terminology"],
   });
 
-  // Fetch users for assigned filter
   const { data: usersData } = useQuery<Array<{ id: string; fullName: string }>>({
     queryKey: ["/api/users"],
   });
 
-  // Fetch contact data for details modal
   const { data: detailsContact } = useQuery<Contact>({
     queryKey: ["/api/contacts", detailsModal.estimate?.contactId],
     enabled: detailsModal.isOpen && !!detailsModal.estimate?.contactId,
   });
 
-  // Fetch estimates with pagination
   const {
     data: estimatesData,
     isLoading: estimatesLoading,
@@ -139,16 +141,12 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
       if (advancedFilters.assignedTo) params.append("assignedTo", advancedFilters.assignedTo);
       if (advancedFilters.dateFrom) params.append("dateFrom", advancedFilters.dateFrom.toISOString());
       if (advancedFilters.dateTo) params.append("dateTo", advancedFilters.dateTo.toISOString());
-
-      const response = await fetch(`/api/estimates/paginated?${params}`);
-      if (!response.ok) throw new Error("Failed to fetch estimates");
-      return response.json() as Promise<PaginatedEstimates>;
+      return (await apiRequest("GET", `/api/estimates/paginated?${params}`)).json() as Promise<PaginatedEstimates>;
     },
     getNextPageParam: (lastPage) => lastPage.pagination.nextCursor,
     initialPageParam: null as string | null,
   });
 
-  // Flatten paginated data into single array
   const estimates = estimatesData?.pages.flatMap((page) => page.data) || [];
   const totalEstimates = estimatesData?.pages[0]?.pagination.total || 0;
 
@@ -157,23 +155,20 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Enable global keyboard shortcuts
   useGlobalShortcuts((type) => {
     if (type === "estimate") {
-      setAddModal({ isOpen: true });
+      setAddModal(true);
     }
   });
 
-  // Check URL parameters to auto-open modal
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get("add") === "true") {
-      setAddModal({ isOpen: true });
+      setAddModal(true);
       window.history.replaceState({}, "", window.location.pathname);
     }
   }, [location]);
 
-  // Subscribe to WebSocket updates for estimates
   useEffect(() => {
     const unsubscribe = subscribe((message: { type: string }) => {
       if (
@@ -190,14 +185,12 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
     return unsubscribe;
   }, [subscribe, queryClient]);
 
-  // Set default import date when sync start date is fetched
   useEffect(() => {
     if (syncStartDate) {
       setSelectedImportDate(new Date(syncStartDate));
     }
   }, [syncStartDate]);
 
-  // Transform paginated estimates data (EstimateSummary) into display-friendly EstimateListItem
   const allEstimates: EstimateListItem[] = (estimates || []).map((e) => ({
     id: e.id,
     title: e.title,
@@ -211,7 +204,6 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
     priority: "medium" as const,
   }));
 
-  // Fetch status counts from backend
   const { data: statusCountsData } = useQuery<{
     all: number;
     sent: number;
@@ -223,26 +215,16 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
     queryFn: async () => {
       const params = new URLSearchParams();
       if (searchQuery) params.append("search", searchQuery);
-      const response = await fetch(`/api/estimates/status-counts?${params}`);
-      if (!response.ok) throw new Error("Failed to fetch status counts");
-      return response.json();
+      return (await apiRequest("GET", `/api/estimates/status-counts?${params}`)).json();
     },
   });
 
-  // Use status counts from backend, fallback to 0 if not loaded yet
-  const statusCounts = statusCountsData || {
-    all: 0,
-    sent: 0,
-    pending: 0,
-    approved: 0,
-    rejected: 0,
-  };
+  const statusCounts = statusCountsData || { all: 0, sent: 0, pending: 0, approved: 0, rejected: 0 };
 
-  const handleAddEstimate = () => {
-    setAddModal({ isOpen: true });
-  };
+  const handleAddEstimate = () => setAddModal(true);
 
-  // Handle actual import with selected date
+  const handleImportFromHousecallPro = () => setImportDateModal({ isOpen: true });
+
   const handleConfirmImport = async () => {
     setImportDateModal({ isOpen: false });
 
@@ -295,7 +277,6 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
     }
   };
 
-  // Wrapper functions to adapt estimateId-based calls to entity-based calls
   const handleContactById = async (estimateId: string, method: "phone" | "email") => {
     const estimate = (allEstimates || []).find((e) => e.id === estimateId);
     if (!estimate) return;
@@ -303,7 +284,6 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
     const contact = await fetchContact(estimate.contactId);
     if (!contact) return;
 
-    // Log activity (best-effort)
     apiRequest("POST", "/api/activities", {
       type: method === "phone" ? "call" : "email",
       content: `${method === "phone" ? "Called" : "Emailed"} ${contact.name} regarding ${estimate.title}`,
@@ -365,7 +345,6 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
     }
   };
 
-  // Update estimate mutation
   const updateEstimateMutation = useMutation({
     mutationFn: async ({ estimateId, data }: { estimateId: string; data: EditEstimateFormValues }) => {
       return apiRequest("PUT", `/api/estimates/${estimateId}`, data);
@@ -387,7 +366,6 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
     },
   });
 
-  // Follow-up date mutation
   const updateFollowUpDateMutation = useMutation({
     mutationFn: async ({ estimateId, followUpDate }: { estimateId: string; followUpDate: Date | null }) => {
       return apiRequest("PATCH", `/api/estimates/${estimateId}/follow-up`, {
@@ -416,7 +394,6 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
     setFollowUpModal({ isOpen: true, estimate });
   };
 
-  // Delete estimate mutation
   const deleteEstimateMutation = useMutation({
     mutationFn: async (estimateId: string) => {
       return apiRequest("DELETE", `/api/estimates/${estimateId}`);
@@ -445,6 +422,45 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
     setDeleteConfirm({ isOpen: true, estimateId, estimateTitle: estimate.title });
   };
 
+  const handleEditSave = (values: EditEstimateFormValues) => {
+    if (!editModal.estimate) return;
+    updateEstimateMutation.mutate({ estimateId: editModal.estimate.id, data: values });
+  };
+
+  const handleFollowUpSave = (date: Date | null | undefined) => {
+    if (!followUpModal.estimate) return;
+    updateFollowUpDateMutation.mutate({
+      estimateId: followUpModal.estimate.id,
+      followUpDate: date ?? null,
+    });
+  };
+
+  const handleBulkDelete = async (ids: string[]) => {
+    await Promise.all(ids.map((id) => apiRequest("DELETE", `/api/estimates/${id}`)));
+    queryClient.invalidateQueries({ queryKey: ["/api/estimates/paginated"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/estimates/status-counts"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/estimates"] });
+    toast({ title: `Deleted ${ids.length} estimate(s)` });
+  };
+
+  const handleBulkStatusChange = async (ids: string[], status: string) => {
+    await Promise.all(ids.map((id) => apiRequest("PATCH", `/api/estimates/${id}/status`, { status })));
+    queryClient.invalidateQueries({ queryKey: ["/api/estimates/paginated"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/estimates/status-counts"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/estimates"] });
+    toast({ title: `Updated ${ids.length} estimate(s) to ${status}` });
+  };
+
+  const handleBulkExport = async (ids: string[]) => {
+    const selectedEstimates = allEstimates.filter((est) => ids.includes(est.id));
+    downloadCsv(
+      `estimates-export-${new Date().toISOString().split("T")[0]}.csv`,
+      ["Title", "Customer", "Status", "Value", "Created Date", "Expiry Date"],
+      selectedEstimates.map((est) => [est.title, est.contactName, est.status, est.value, est.createdDate, est.expiryDate])
+    );
+    toast({ title: `Exported ${ids.length} estimate(s)` });
+  };
+
   return (
     <PageLayout>
       <PageHeader
@@ -452,10 +468,18 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
         description="Create and manage estimates for potential jobs"
         icon={<Calendar className="h-6 w-6" />}
         actions={
-          <Button onClick={handleAddEstimate} data-testid="button-add-estimate">
-            <Plus className="h-4 w-4 mr-2" />
-            Add {terminology?.estimateLabel || "Estimate"}
-          </Button>
+          <div className="flex items-center gap-2">
+            {isHousecallProConfigured && (
+              <Button variant="outline" onClick={handleImportFromHousecallPro} data-testid="button-import-hcp-estimates">
+                <Download className="h-4 w-4 mr-2" />
+                Import from Housecall Pro
+              </Button>
+            )}
+            <Button onClick={handleAddEstimate} data-testid="button-add-estimate">
+              <Plus className="h-4 w-4 mr-2" />
+              Add {terminology?.estimateLabel || "Estimate"}
+            </Button>
+          </div>
         }
       />
 
@@ -477,7 +501,15 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
               <span className="text-sm text-muted-foreground hidden sm:inline">Quick Filter:</span>
             </div>
             <div className="flex flex-wrap gap-2">
-              {(["all", "sent", "pending", "approved", "rejected"] as const).map((status) => (
+              <Badge
+                variant={filterStatus === "all" ? "default" : "outline"}
+                className="cursor-pointer hover-elevate"
+                onClick={() => setFilterStatus("all")}
+                data-testid="filter-all"
+              >
+                All ({statusCounts.all})
+              </Badge>
+              {ESTIMATE_FILTER_STATUSES.map((status) => (
                 <Badge
                   key={status}
                   variant={filterStatus === status ? "default" : "outline"}
@@ -485,7 +517,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
                   onClick={() => setFilterStatus(status)}
                   data-testid={`filter-${status}`}
                 >
-                  {status === "all" ? "All" : formatStatusLabel(status)} ({statusCounts[status]})
+                  {formatStatusLabel(status)} ({statusCounts[status]})
                 </Badge>
               ))}
             </div>
@@ -495,18 +527,12 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
         <FilterPanel
           filters={advancedFilters}
           onFiltersChange={setAdvancedFilters}
-          statusOptions={[
-            { value: "sent", label: "Sent" },
-            { value: "pending", label: "Pending" },
-            { value: "approved", label: "Approved" },
-            { value: "rejected", label: "Rejected" },
-          ]}
+          statusOptions={ESTIMATE_FILTER_STATUSES.map((s) => ({ value: s, label: formatStatusLabel(s) }))}
           userOptions={usersData?.map((u) => ({ value: u.id, label: u.fullName })) || []}
           dateLabel="Created Date"
         />
       </div>
 
-      {/* Pagination Info */}
       {estimates.length > 0 && (
         <div className="text-sm text-muted-foreground">
           Showing {estimates.length} of {totalEstimates}{" "}
@@ -533,7 +559,6 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
         ))}
       </div>
 
-      {/* Initial loading state with skeletons */}
       {estimatesLoading && allEstimates.length === 0 && (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {Array.from({ length: 6 }).map((_, index) => (
@@ -542,7 +567,6 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
         </div>
       )}
 
-      {/* Loading more skeletons during pagination */}
       {isFetchingNextPage && (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {Array.from({ length: 3 }).map((_, index) => (
@@ -551,7 +575,6 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
         </div>
       )}
 
-      {/* Load More Button */}
       {hasNextPage && !isFetchingNextPage && (
         <div className="text-center py-8">
           <Button onClick={() => fetchNextPage()} variant="outline" data-testid="button-load-more-estimates">
@@ -560,7 +583,6 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
         </div>
       )}
 
-      {/* Empty state */}
       {allEstimates.length === 0 && !estimatesLoading &&
         (searchQuery || filterStatus !== "all" ? (
           <EmptyState
@@ -589,37 +611,16 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
           />
         ))}
 
-      {/* Edit Estimate Modal */}
       <EditEstimateModal
         isOpen={editModal.isOpen}
         estimate={editModal.estimate}
         onClose={() => setEditModal({ isOpen: false })}
-        onSave={(values) => {
-          if (!editModal.estimate) return;
-          updateEstimateMutation.mutate({ estimateId: editModal.estimate.id, data: values });
-        }}
+        onSave={handleEditSave}
         isSaving={updateEstimateMutation.isPending}
       />
 
-      {/* Add Estimate Modal */}
-      <Dialog open={addModal.isOpen} onOpenChange={(open) => setAddModal({ isOpen: open })}>
-        <DialogContent className="sm:max-w-[600px]" data-testid="modal-add-estimate">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Plus className="h-5 w-5" />
-              Create New Estimate
-            </DialogTitle>
-            <DialogDescription>Create a new estimate for a lead or customer.</DialogDescription>
-          </DialogHeader>
+      <CreateEstimateModal isOpen={addModal} onClose={() => setAddModal(false)} />
 
-          <CreateEstimateForm
-            onSuccess={() => setAddModal({ isOpen: false })}
-            onCancel={() => setAddModal({ isOpen: false })}
-          />
-        </DialogContent>
-      </Dialog>
-
-      {/* Estimate Details Modal */}
       <EstimateDetailsModal
         isOpen={detailsModal.isOpen}
         onClose={() => setDetailsModal({ isOpen: false })}
@@ -630,28 +631,23 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
         onSendEmail={handleSendEmail}
       />
 
-      {/* Texting Modal */}
       <TextingModal
         isOpen={textingModal.isOpen}
         onClose={closeTextingModal}
         recipientName={textingModal.estimate?.name || ""}
         recipientPhone={textingModal.estimate?.phones?.[0] || textingModal.estimate?.phone || ""}
         recipientEmail={textingModal.estimate?.emails?.[0] || textingModal.estimate?.email || ""}
-        companyName="Our Company"
         estimateId={textingModal.estimate?.id}
       />
 
-      {/* Email Composer Modal */}
       <EmailComposerModal
         isOpen={emailModal.isOpen}
         onClose={closeEmailModal}
         recipientName={emailModal.estimate?.name || ""}
         recipientEmail={emailModal.estimate?.emails?.[0] || emailModal.estimate?.email || ""}
-        companyName=""
         estimateId={emailModal.estimate?.id}
       />
 
-      {/* Import Date Selection Modal */}
       <HCPImportModal
         isOpen={importDateModal.isOpen}
         onClose={() => setImportDateModal({ isOpen: false })}
@@ -661,56 +657,21 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
         entityLabel="estimates"
       />
 
-      {/* Follow-Up Date Modal */}
       <FollowUpDateModal
         isOpen={followUpModal.isOpen}
         onClose={() => setFollowUpModal({ isOpen: false })}
-        onSave={(date) => {
-          if (!followUpModal.estimate) return;
-          updateFollowUpDateMutation.mutate({
-            estimateId: followUpModal.estimate.id,
-            followUpDate: date ?? null,
-          });
-        }}
+        onSave={handleFollowUpSave}
         entityName={followUpModal.estimate?.title}
         isSaving={updateFollowUpDateMutation.isPending}
       />
 
-      {/* Bulk Action Toolbar */}
       <BulkActionToolbar
-        onDelete={async (ids) => {
-          await Promise.all(ids.map((id) => apiRequest("DELETE", `/api/estimates/${id}`)));
-          queryClient.invalidateQueries({ queryKey: ["/api/estimates/paginated"] });
-          queryClient.invalidateQueries({ queryKey: ["/api/estimates/status-counts"] });
-          queryClient.invalidateQueries({ queryKey: ["/api/estimates"] });
-          toast({ title: `Deleted ${ids.length} estimate(s)` });
-        }}
-        onStatusChange={async (ids, status) => {
-          await Promise.all(ids.map((id) => apiRequest("PATCH", `/api/estimates/${id}/status`, { status })));
-          queryClient.invalidateQueries({ queryKey: ["/api/estimates/paginated"] });
-          queryClient.invalidateQueries({ queryKey: ["/api/estimates/status-counts"] });
-          queryClient.invalidateQueries({ queryKey: ["/api/estimates"] });
-          toast({ title: `Updated ${ids.length} estimate(s) to ${status}` });
-        }}
-        onExport={async (ids) => {
-          const selectedEstimates = allEstimates.filter((est) => ids.includes(est.id));
-          downloadCsv(
-            `estimates-export-${new Date().toISOString().split("T")[0]}.csv`,
-            ["Title", "Customer", "Email", "Phone", "Status", "Value", "Created Date", "Expiry Date"],
-            selectedEstimates.map((est) => [est.title, est.contactName, "", "", est.status, est.value, est.createdDate, est.expiryDate])
-          );
-          toast({ title: `Exported ${ids.length} estimate(s)` });
-        }}
-        statusOptions={[
-          { value: "draft", label: "Draft" },
-          { value: "sent", label: "Sent" },
-          { value: "approved", label: "Approved" },
-          { value: "rejected", label: "Rejected" },
-          { value: "cancelled", label: "Cancelled" },
-        ]}
+        onDelete={handleBulkDelete}
+        onStatusChange={handleBulkStatusChange}
+        onExport={handleBulkExport}
+        statusOptions={ESTIMATE_BULK_STATUSES}
       />
 
-      {/* Delete Confirmation Dialog */}
       <AlertDialog
         open={deleteConfirm.isOpen}
         onOpenChange={(open) => setDeleteConfirm((prev) => ({ ...prev, isOpen: open }))}
