@@ -20,11 +20,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { PageHeader } from "@/components/ui/page-header-v2";
 import { PageLayout } from "@/components/ui/page-layout";
-import { Calendar as CalendarComponent } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Plus, Search, Filter, Calendar, FileText, CalendarIcon } from "lucide-react";
-import { format } from "date-fns";
-import { cn } from "@/lib/utils";
+import { Plus, Search, Filter, Calendar, FileText } from "lucide-react";
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -40,6 +36,7 @@ import { CreateEstimateForm } from "@/components/CreateEstimateForm";
 import { EditEstimateModal, type EditEstimateFormValues } from "@/components/EditEstimateModal";
 import { FollowUpDateModal } from "@/components/FollowUpDateModal";
 import { EstimateDetailsModal, type EstimateListItem } from "@/components/EstimateDetailsModal";
+import { HCPImportModal } from "@/components/HCPImportModal";
 
 export default function Estimates({ externalSearch = "" }: { externalSearch?: string }) {
   const [location] = useLocation();
@@ -678,73 +675,14 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
       />
 
       {/* Import Date Selection Modal */}
-      <Dialog open={importDateModal.isOpen} onOpenChange={(open) => setImportDateModal({ isOpen: open })}>
-        <DialogContent className="sm:max-w-[400px]" data-testid="modal-import-date">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <CalendarIcon className="h-5 w-5" />
-              Select Import Date
-            </DialogTitle>
-            <DialogDescription>
-              Choose the starting date for importing estimates from Housecall Pro.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Import estimates modified since:</label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-full justify-start text-left font-normal",
-                      !selectedImportDate && "text-muted-foreground"
-                    )}
-                    data-testid="button-select-date"
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {selectedImportDate ? format(selectedImportDate, "PPP") : "Pick a date"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <CalendarComponent
-                    mode="single"
-                    selected={selectedImportDate}
-                    onSelect={setSelectedImportDate}
-                    disabled={(date) => date > new Date() || date < new Date("1900-01-01")}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            <div className="text-sm text-muted-foreground">
-              Only estimates modified on or after this date will be imported. This will temporarily override your
-              sync settings.
-            </div>
-
-            <div className="flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setImportDateModal({ isOpen: false })}
-                data-testid="button-cancel-import"
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                onClick={handleConfirmImport}
-                disabled={!selectedImportDate}
-                data-testid="button-confirm-import"
-              >
-                Import Estimates
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <HCPImportModal
+        isOpen={importDateModal.isOpen}
+        onClose={() => setImportDateModal({ isOpen: false })}
+        onConfirm={handleConfirmImport}
+        selectedDate={selectedImportDate}
+        onDateChange={setSelectedImportDate}
+        entityLabel="estimates"
+      />
 
       {/* Follow-Up Date Modal */}
       <FollowUpDateModal
