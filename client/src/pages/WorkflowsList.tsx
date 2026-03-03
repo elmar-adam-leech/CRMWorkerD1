@@ -1,22 +1,11 @@
 import { useState, useMemo, useEffect } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { Check, X, Eye, Edit, Play, AlertCircle, Search, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Check, X, Eye, Edit, AlertCircle, Search, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -24,34 +13,10 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { PageLayout } from "@/components/ui/page-layout";
-
-type WorkflowApprovalStatus = "approved" | "pending_approval" | "rejected";
-
-type Workflow = {
-  id: string;
-  contractorId: string;
-  name: string;
-  description: string | null;
-  isActive: boolean;
-  triggerType: string;
-  approvalStatus: WorkflowApprovalStatus;
-  approvedBy: string | null;
-  approvedAt: string | null;
-  rejectionReason: string | null;
-  createdBy: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type UserData = {
-  user: {
-    id: string;
-    name: string;
-    email: string;
-    role: string;
-    contractorId: string;
-  };
-};
+import { useCurrentUser, isAdminUser } from "@/hooks/useCurrentUser";
+import { DeleteConfirmDialog } from "@/components/DeleteConfirmDialog";
+import { EmptyState } from "@/components/EmptyState";
+import type { Workflow, WorkflowApprovalStatus } from "@/types/workflow";
 
 export default function WorkflowsList() {
   const [, navigate] = useLocation();
@@ -62,19 +27,12 @@ export default function WorkflowsList() {
   const [rejectionReason, setRejectionReason] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [deletingWorkflowId, setDeletingWorkflowId] = useState<string | null>(null);
+  const [workflowToDelete, setWorkflowToDelete] = useState<string | null>(null);
   const itemsPerPage = 15;
 
-  // Get current user to check if admin
-  const { data: currentUser } = useQuery<UserData>({
-    queryKey: ['/api/auth/me'],
-  });
+  const { data: currentUser } = useCurrentUser();
+  const isAdmin = isAdminUser(currentUser?.user?.role);
 
-  const isAdmin = currentUser?.user?.role === 'admin' 
-    || currentUser?.user?.role === 'super_admin' 
-    || currentUser?.user?.role === 'manager';
-
-  // Fetch workflows with server-side filtering
   const { data: workflows = [], isLoading } = useQuery<Workflow[]>({
     queryKey: ['/api/workflows', { approvalStatus: statusFilter === 'all' ? undefined : statusFilter }],
     queryFn: async () => {
@@ -91,28 +49,19 @@ export default function WorkflowsList() {
     },
   });
 
-  // Approve mutation
   const approveMutation = useMutation({
     mutationFn: async (workflowId: string) => {
       return await apiRequest('POST', `/api/workflows/${workflowId}/approve`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/workflows'], exact: false });
-      toast({
-        title: "Workflow Approved",
-        description: "The workflow has been approved and can now be activated.",
-      });
+      toast({ title: "Workflow Approved", description: "The workflow has been approved and can now be activated." });
     },
-    onError: (error: any) => {
-      toast({
-        title: "Approval Failed",
-        description: error.message || "Failed to approve workflow",
-        variant: "destructive",
-      });
+    onError: (error: Error) => {
+      toast({ title: "Approval Failed", description: error.message || "Failed to approve workflow", variant: "destructive" });
     },
   });
 
-  // Reject mutation
   const rejectMutation = useMutation({
     mutationFn: async ({ workflowId, reason }: { workflowId: string; reason: string }) => {
       return await apiRequest('POST', `/api/workflows/${workflowId}/reject`, { rejectionReason: reason });
@@ -122,46 +71,29 @@ export default function WorkflowsList() {
       setRejectDialogOpen(false);
       setRejectionReason("");
       setRejectingWorkflowId(null);
-      toast({
-        title: "Workflow Rejected",
-        description: "The workflow has been rejected.",
-      });
+      toast({ title: "Workflow Rejected", description: "The workflow has been rejected." });
     },
-    onError: (error: any) => {
-      toast({
-        title: "Rejection Failed",
-        description: error.message || "Failed to reject workflow",
-        variant: "destructive",
-      });
+    onError: (error: Error) => {
+      toast({ title: "Rejection Failed", description: error.message || "Failed to reject workflow", variant: "destructive" });
     },
   });
 
-  // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: async (workflowId: string) => {
       await apiRequest('DELETE', `/api/workflows/${workflowId}`);
     },
     onSuccess: () => {
-      toast({
-        title: "Workflow deleted",
-        description: "The workflow has been deleted successfully.",
-      });
+      toast({ title: "Workflow deleted", description: "The workflow has been deleted successfully." });
       queryClient.invalidateQueries({ queryKey: ['/api/workflows'], exact: false });
-      setDeletingWorkflowId(null);
+      setWorkflowToDelete(null);
     },
     onError: (error: Error) => {
-      toast({
-        title: "Error deleting workflow",
-        description: error.message,
-        variant: "destructive",
-      });
-      setDeletingWorkflowId(null);
+      toast({ title: "Error deleting workflow", description: error.message, variant: "destructive" });
+      setWorkflowToDelete(null);
     },
   });
 
-  const handleApprove = (workflowId: string) => {
-    approveMutation.mutate(workflowId);
-  };
+  const handleApprove = (workflowId: string) => approveMutation.mutate(workflowId);
 
   const handleRejectClick = (workflowId: string) => {
     setRejectingWorkflowId(workflowId);
@@ -170,38 +102,23 @@ export default function WorkflowsList() {
 
   const handleRejectConfirm = () => {
     if (rejectingWorkflowId) {
-      rejectMutation.mutate({ 
-        workflowId: rejectingWorkflowId, 
-        reason: rejectionReason 
-      });
+      rejectMutation.mutate({ workflowId: rejectingWorkflowId, reason: rejectionReason });
     }
   };
 
-  const handleDelete = (workflowId: string) => {
-    setDeletingWorkflowId(workflowId);
-    deleteMutation.mutate(workflowId);
-  };
-
-  // Filter and paginate workflows
   const filteredWorkflows = useMemo(() => {
     if (!workflows) return [];
-    
-    // Filter by search query
-    return workflows.filter(workflow => 
+    return workflows.filter(workflow =>
       workflow.name.toLowerCase().includes(searchQuery.toLowerCase())
     );
   }, [workflows, searchQuery]);
 
-  // Pagination logic
   const totalPages = Math.ceil(filteredWorkflows.length / itemsPerPage);
-  
-  // Clamp current page to valid range
   const clampedPage = Math.max(1, Math.min(currentPage, totalPages || 1));
   const startIndex = (clampedPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
   const paginatedWorkflows = filteredWorkflows.slice(startIndex, endIndex);
 
-  // Auto-adjust page when filter changes or results shrink
   useEffect(() => {
     if (currentPage > totalPages && totalPages > 0) {
       setCurrentPage(totalPages);
@@ -210,35 +127,29 @@ export default function WorkflowsList() {
     }
   }, [totalPages, currentPage, clampedPage]);
 
-  // Reset to page 1 when search or status filter changes
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, statusFilter]);
-
-  // Reset to page 1 when search changes
-  const handleSearchChange = (value: string) => {
-    setSearchQuery(value);
-  };
 
   const getStatusBadge = (status: WorkflowApprovalStatus) => {
     switch (status) {
       case "approved":
         return (
-          <Badge variant="default" data-testid={`badge-status-approved`}>
+          <Badge variant="default" data-testid="badge-status-approved">
             <Check className="h-3 w-3 mr-1" />
             Approved
           </Badge>
         );
       case "pending_approval":
         return (
-          <Badge variant="secondary" data-testid={`badge-status-pending`}>
+          <Badge variant="secondary" data-testid="badge-status-pending">
             <AlertCircle className="h-3 w-3 mr-1" />
             Pending Approval
           </Badge>
         );
       case "rejected":
         return (
-          <Badge variant="destructive" data-testid={`badge-status-rejected`}>
+          <Badge variant="destructive" data-testid="badge-status-rejected">
             <X className="h-3 w-3 mr-1" />
             Rejected
           </Badge>
@@ -246,16 +157,16 @@ export default function WorkflowsList() {
     }
   };
 
+  const selectedWorkflowName = workflows.find(w => w.id === workflowToDelete)?.name ?? "";
+
   return (
     <PageLayout>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
             <h1 className="text-3xl font-bold">Workflows</h1>
-            <p className="text-muted-foreground">
-              Manage and approve workflow automations
-            </p>
+            <p className="text-muted-foreground">Manage and approve workflow automations</p>
           </div>
           <Button
             variant="default"
@@ -273,7 +184,7 @@ export default function WorkflowsList() {
             type="text"
             placeholder="Search workflows by name..."
             value={searchQuery}
-            onChange={(e) => handleSearchChange(e.target.value)}
+            onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-10"
             data-testid="input-search-workflows"
           />
@@ -300,25 +211,33 @@ export default function WorkflowsList() {
               <Card key={i}>
                 <CardContent className="p-6">
                   <div className="space-y-3">
-                    <div className="h-6 bg-muted rounded w-1/3"></div>
-                    <div className="h-4 bg-muted rounded w-2/3"></div>
-                    <div className="h-4 bg-muted rounded w-1/4"></div>
+                    <div className="h-6 bg-muted rounded w-1/3" />
+                    <div className="h-4 bg-muted rounded w-2/3" />
+                    <div className="h-4 bg-muted rounded w-1/4" />
                   </div>
                 </CardContent>
               </Card>
             ))}
           </div>
         ) : filteredWorkflows.length === 0 ? (
-          <Card>
-            <CardContent className="p-12">
-              <div className="text-center text-muted-foreground">
-                {searchQuery ? "No workflows match your search" : 
-                 statusFilter === "pending_approval" 
-                  ? "No workflows pending approval" 
-                  : "No workflows created yet"}
-              </div>
-            </CardContent>
-          </Card>
+          <EmptyState
+            icon={AlertCircle}
+            title={
+              searchQuery
+                ? "No workflows match your search"
+                : statusFilter === "pending_approval"
+                ? "No workflows pending approval"
+                : "No workflows yet"
+            }
+            description={
+              searchQuery
+                ? "Try a different search term."
+                : "Create your first workflow automation to get started."
+            }
+            ctaLabel={!searchQuery && statusFilter === "all" ? "Create Workflow" : undefined}
+            onCtaClick={!searchQuery && statusFilter === "all" ? () => navigate('/workflows/new') : undefined}
+            ctaTestId="button-empty-create-workflow"
+          />
         ) : (
           <div className="space-y-4">
             {paginatedWorkflows.map((workflow: Workflow) => (
@@ -326,7 +245,7 @@ export default function WorkflowsList() {
                 <CardHeader>
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 space-y-2">
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 flex-wrap">
                         <CardTitle data-testid={`text-workflow-name-${workflow.id}`}>
                           {workflow.name}
                         </CardTitle>
@@ -342,7 +261,7 @@ export default function WorkflowsList() {
                           {workflow.description}
                         </p>
                       )}
-                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                      <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
                         <span>Trigger: {workflow.triggerType}</span>
                         <span>Created: {new Date(workflow.createdAt).toLocaleDateString()}</span>
                         {workflow.approvedAt && (
@@ -357,9 +276,8 @@ export default function WorkflowsList() {
                         </div>
                       )}
                     </div>
-                    
-                    <div className="flex items-center gap-2">
-                      {/* Admin Actions for Pending Workflows */}
+
+                    <div className="flex items-center gap-2 flex-wrap">
                       {isAdmin && workflow.approvalStatus === "pending_approval" && (
                         <>
                           <Button
@@ -384,8 +302,7 @@ export default function WorkflowsList() {
                           </Button>
                         </>
                       )}
-                      
-                      {/* Edit Button */}
+
                       <Button
                         variant="outline"
                         size="sm"
@@ -395,8 +312,7 @@ export default function WorkflowsList() {
                         <Edit className="h-4 w-4 mr-1" />
                         Edit
                       </Button>
-                      
-                      {/* View Executions */}
+
                       <Button
                         variant="ghost"
                         size="sm"
@@ -407,36 +323,15 @@ export default function WorkflowsList() {
                         Executions
                       </Button>
 
-                      {/* Delete Button */}
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            data-testid={`button-delete-${workflow.id}`}
-                            disabled={deleteMutation.isPending && deletingWorkflowId === workflow.id}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete Workflow</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Are you sure you want to delete "{workflow.name}"? This action cannot be undone.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction
-                              onClick={() => handleDelete(workflow.id)}
-                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                            >
-                              Delete
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        data-testid={`button-delete-${workflow.id}`}
+                        onClick={() => setWorkflowToDelete(workflow.id)}
+                        disabled={deleteMutation.isPending && workflowToDelete === workflow.id}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
                     </div>
                   </div>
                 </CardHeader>
@@ -447,9 +342,9 @@ export default function WorkflowsList() {
 
         {/* Pagination */}
         {!isLoading && filteredWorkflows.length > itemsPerPage && (
-          <div className="flex items-center justify-between border-t pt-4">
+          <div className="flex items-center justify-between border-t pt-4 flex-wrap gap-4">
             <div className="text-sm text-muted-foreground">
-              Showing {startIndex + 1}-{Math.min(endIndex, filteredWorkflows.length)} of {filteredWorkflows.length} workflows
+              Showing {startIndex + 1}–{Math.min(endIndex, filteredWorkflows.length)} of {filteredWorkflows.length} workflows
             </div>
             <div className="flex items-center gap-2">
               <Button
@@ -536,6 +431,16 @@ export default function WorkflowsList() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirm Dialog */}
+      <DeleteConfirmDialog
+        isOpen={workflowToDelete !== null}
+        onOpenChange={(open) => { if (!open) setWorkflowToDelete(null); }}
+        title="Delete Workflow"
+        description={`Are you sure you want to delete "${selectedWorkflowName}"? This action cannot be undone.`}
+        onConfirm={() => { if (workflowToDelete) deleteMutation.mutate(workflowToDelete); }}
+        confirmTestId="button-confirm-delete-workflow"
+      />
     </PageLayout>
   );
 }

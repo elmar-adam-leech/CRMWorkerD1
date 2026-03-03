@@ -29,38 +29,68 @@ import { WorkflowTestDialog } from "@/components/workflow/WorkflowTestDialog";
 import { WorkflowTemplate } from "@/data/workflow-templates";
 import { Node, Edge } from 'reactflow';
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import type { Workflow, WorkflowApprovalStatus } from "@/types/workflow";
 
-type WorkflowApprovalStatus = "approved" | "pending_approval" | "rejected";
+function extractTriggerConfig(nodes: Node[]): { triggerType: string; triggerConfig: Record<string, unknown> } {
+  const triggerNode = nodes.find(n => n.type === 'trigger');
+  const triggerData = triggerNode?.data || {};
+  let triggerType: string = triggerData.triggerType || 'manual';
+  let triggerConfig: Record<string, unknown> = {};
 
-type Workflow = {
-  id: string;
-  contractorId: string;
-  name: string;
-  description: string | null;
-  isActive: boolean;
-  triggerType: string;
-  triggerConfig?: string;
-  approvalStatus: WorkflowApprovalStatus;
-  approvedBy: string | null;
-  approvedAt: string | null;
-  rejectionReason: string | null;
-  createdBy: string;
-  createdAt: string;
-  updatedAt: string;
-};
+  if (triggerType === 'entity_event') {
+    const entityType = triggerData.entityType || triggerData.entity || 'lead';
+    const eventType = triggerData.event || triggerData.eventType || 'created';
+    if (eventType === 'created') {
+      triggerType = 'entity_created';
+      triggerConfig = {
+        entity: entityType,
+        event: 'created',
+        ...(triggerData.tags && (triggerData.tags as unknown[]).length > 0 && { tags: triggerData.tags }),
+      };
+    } else if (eventType === 'updated') {
+      triggerType = 'entity_updated';
+      triggerConfig = {
+        entity: entityType,
+        event: 'updated',
+        ...(triggerData.tags && (triggerData.tags as unknown[]).length > 0 && { tags: triggerData.tags }),
+      };
+    } else {
+      triggerConfig = {
+        entity: entityType,
+        event: eventType,
+        ...(triggerData.statusValue && { targetStatus: triggerData.statusValue }),
+        ...(triggerData.tags && (triggerData.tags as unknown[]).length > 0 && { tags: triggerData.tags }),
+      };
+    }
+  } else if (triggerType === 'entity_created' || triggerType === 'entity_updated') {
+    const entityType = triggerData.entity || triggerData.entityType || 'lead';
+    const eventType = triggerType === 'entity_created' ? 'created' : 'updated';
+    triggerConfig = {
+      entity: entityType,
+      event: eventType,
+      ...(triggerData.tags && (triggerData.tags as unknown[]).length > 0 && { tags: triggerData.tags }),
+    };
+  } else if (triggerType === 'time_based') {
+    triggerConfig = {
+      schedule: triggerData.schedule || 'daily',
+      time: triggerData.time || '09:00',
+    };
+  } else {
+    triggerConfig = { entity: triggerData.entity || triggerData.entityType || 'lead' };
+  }
+
+  return { triggerType, triggerConfig };
+}
 
 export default function WorkflowBuilder() {
   const params = useParams<{ id?: string }>();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   
-  // Track workflow ID in state to handle navigation updates
   const [workflowId, setWorkflowId] = useState<string | undefined>(params.id);
   
-  // Update workflowId when params change
   useEffect(() => {
     setWorkflowId(params.id);
-    // Reset dirty state when switching workflows
     isInitialized.current = false;
     setIsDirty(false);
   }, [params.id]);
@@ -72,6 +102,7 @@ export default function WorkflowBuilder() {
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [workflowName, setWorkflowName] = useState<string>('New Workflow');
   const [isDirty, setIsDirty] = useState(false);
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const isInitialized = useRef(false);
 
   // Fetch existing workflow if editing
@@ -248,147 +279,27 @@ export default function WorkflowBuilder() {
     return mapping[actionType] || 'notification';
   };
 
-  // Save workflow mutation
   const saveWorkflowMutation = useMutation({
     mutationFn: async () => {
-      // If no workflow ID, create a new workflow first
+      const { triggerType, triggerConfig } = extractTriggerConfig(currentNodes);
+
       if (!workflowId) {
-        // Find trigger node to extract trigger configuration
-        const triggerNode = currentNodes.find(node => node.type === 'trigger');
-        const triggerData = triggerNode?.data || {};
-        
-        // Determine trigger type from node data
-        let triggerType = triggerData.triggerType || 'manual';
-        let triggerConfig: any = {};
-        
-        // For entity event triggers, extract entityType and eventType from node data
-        if (triggerType === 'entity_event') {
-          const entityType = triggerData.entityType || 'lead';
-          const eventType = triggerData.event || triggerData.eventType || 'created';
-          
-          // Map to the legacy entity_created/entity_updated types if applicable
-          if (eventType === 'created') {
-            triggerType = 'entity_created';
-            triggerConfig = { 
-              entity: entityType, 
-              event: 'created',
-              ...(triggerData.tags && triggerData.tags.length > 0 && { tags: triggerData.tags })
-            };
-          } else if (eventType === 'updated') {
-            triggerType = 'entity_updated';
-            triggerConfig = { 
-              entity: entityType, 
-              event: 'updated',
-              ...(triggerData.tags && triggerData.tags.length > 0 && { tags: triggerData.tags })
-            };
-          } else {
-            // For other event types, use entity_event
-            triggerConfig = { 
-              entity: entityType, 
-              event: eventType,
-              ...(triggerData.statusValue && { targetStatus: triggerData.statusValue }),
-              ...(triggerData.tags && triggerData.tags.length > 0 && { tags: triggerData.tags })
-            };
-          }
-        } else if (triggerType === 'entity_created' || triggerType === 'entity_updated') {
-          // For direct entity_created/entity_updated triggers, extract entity from node data
-          const entityType = triggerData.entity || triggerData.entityType || 'lead';
-          const eventType = triggerType === 'entity_created' ? 'created' : 'updated';
-          triggerConfig = { 
-            entity: entityType, 
-            event: eventType,
-            ...(triggerData.tags && triggerData.tags.length > 0 && { tags: triggerData.tags })
-          };
-        } else if (triggerType === 'time_based') {
-          triggerConfig = {
-            schedule: triggerData.schedule || 'daily',
-            time: triggerData.time || '09:00'
-          };
-        } else {
-          // Manual trigger or default
-          triggerConfig = { entity: 'lead' };
-        }
-        
-        // Create new workflow
-        const workflowData = {
+        const response = await apiRequest('POST', '/api/workflows', {
           name: workflowName,
           description: 'Created in workflow builder',
           isActive: false,
           triggerType,
           triggerConfig: JSON.stringify(triggerConfig),
-        };
-
-        const response = await apiRequest('POST', '/api/workflows', workflowData);
+        });
         const newWorkflow = await response.json() as Workflow;
-
-        // Save steps for new workflow
         await saveWorkflowSteps(newWorkflow.id);
         return newWorkflow;
       } else {
-        // Update existing workflow - extract trigger configuration just like for new workflows
-        const triggerNode = currentNodes.find(node => node.type === 'trigger');
-        const triggerData = triggerNode?.data || {};
-        
-        // Determine trigger type from node data
-        let triggerType = triggerData.triggerType || 'manual';
-        let triggerConfig: any = {};
-        
-        // For entity event triggers, extract entityType and eventType from node data
-        if (triggerType === 'entity_event') {
-          const entityType = triggerData.entityType || triggerData.entity || 'lead';
-          const eventType = triggerData.event || triggerData.eventType || 'created';
-          
-          // Map to the legacy entity_created/entity_updated types if applicable
-          if (eventType === 'created') {
-            triggerType = 'entity_created';
-            triggerConfig = { 
-              entity: entityType, 
-              event: 'created',
-              ...(triggerData.tags && triggerData.tags.length > 0 && { tags: triggerData.tags })
-            };
-          } else if (eventType === 'updated') {
-            triggerType = 'entity_updated';
-            triggerConfig = { 
-              entity: entityType, 
-              event: 'updated',
-              ...(triggerData.tags && triggerData.tags.length > 0 && { tags: triggerData.tags })
-            };
-          } else {
-            // For other event types, use entity_event
-            triggerConfig = { 
-              entity: entityType, 
-              event: eventType,
-              ...(triggerData.statusValue && { targetStatus: triggerData.statusValue }),
-              ...(triggerData.tags && triggerData.tags.length > 0 && { tags: triggerData.tags })
-            };
-          }
-        } else if (triggerType === 'entity_created' || triggerType === 'entity_updated') {
-          // For direct entity_created/entity_updated triggers, extract entity from node data
-          const entityType = triggerData.entity || triggerData.entityType || 'lead';
-          const eventType = triggerType === 'entity_created' ? 'created' : 'updated';
-          triggerConfig = { 
-            entity: entityType, 
-            event: eventType,
-            ...(triggerData.tags && triggerData.tags.length > 0 && { tags: triggerData.tags })
-          };
-        } else if (triggerType === 'time_based') {
-          triggerConfig = {
-            schedule: triggerData.schedule || 'daily',
-            time: triggerData.time || '09:00'
-          };
-        } else {
-          // Manual trigger or default
-          triggerConfig = { entity: triggerData.entity || triggerData.entityType || 'lead' };
-        }
-        
-        // Update existing workflow with name and trigger configuration
-        await apiRequest('PATCH', `/api/workflows/${workflowId}`, { 
+        await apiRequest('PATCH', `/api/workflows/${workflowId}`, {
           name: workflowName,
           triggerType,
-          triggerConfig: JSON.stringify(triggerConfig)
+          triggerConfig: JSON.stringify(triggerConfig),
         });
-        
-        // Update existing workflow steps
         await saveWorkflowSteps(workflowId);
         return workflow;
       }
@@ -565,20 +476,7 @@ export default function WorkflowBuilder() {
     setCurrentEdges(template.edges);
   };
 
-  const handleNewWorkflow = async () => {
-    // Save current workflow if there are unsaved changes
-    if (currentNodes.length > 0 && workflowId) {
-      try {
-        await saveWorkflowMutation.mutateAsync();
-      } catch (error) {
-        // If save fails, ask user if they want to continue
-        if (!confirm('Failed to save current workflow. Continue anyway?')) {
-          return;
-        }
-      }
-    }
-
-    // Reset to default state
+  const resetToNewWorkflow = () => {
     const defaultNodes: Node[] = [{
       id: 'trigger-1',
       type: 'trigger',
@@ -590,6 +488,19 @@ export default function WorkflowBuilder() {
     setCurrentNodes(defaultNodes);
     setCurrentEdges([]);
     setLocation('/workflows/new');
+  };
+
+  const handleNewWorkflow = async () => {
+    if (currentNodes.length > 0 && workflowId) {
+      try {
+        await saveWorkflowMutation.mutateAsync();
+        resetToNewWorkflow();
+      } catch {
+        setShowDiscardConfirm(true);
+      }
+    } else {
+      resetToNewWorkflow();
+    }
   };
 
   const handleSave = () => {
@@ -634,9 +545,12 @@ export default function WorkflowBuilder() {
     // Find the node to delete
     const nodeToDelete = currentNodes.find(node => node.id === nodeId);
     
-    // Prevent deleting trigger nodes
     if (nodeToDelete?.type === 'trigger') {
-      alert('Cannot delete trigger node. Every workflow must have a trigger.');
+      toast({
+        title: 'Cannot delete trigger',
+        description: 'Every workflow must have a trigger.',
+        variant: 'destructive',
+      });
       return;
     }
     
@@ -651,7 +565,7 @@ export default function WorkflowBuilder() {
   const getApprovalStatusBadge = (status: WorkflowApprovalStatus) => {
     switch (status) {
       case 'approved':
-        return <Badge variant="default" className="bg-green-500 hover:bg-green-600" data-testid="badge-workflow-approved">Approved</Badge>;
+        return <Badge variant="default" data-testid="badge-workflow-approved">Approved</Badge>;
       case 'pending_approval':
         return <Badge variant="secondary" data-testid="badge-workflow-pending">Pending Approval</Badge>;
       case 'rejected':
@@ -858,6 +772,32 @@ export default function WorkflowBuilder() {
         onSave={handleNodeSave}
         onDelete={handleNodeDelete}
       />
+
+      {/* Discard Changes Confirmation Dialog */}
+      <AlertDialog open={showDiscardConfirm} onOpenChange={setShowDiscardConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Unsaved Changes</AlertDialogTitle>
+            <AlertDialogDescription>
+              Failed to save the current workflow. Do you want to discard your changes and start a new workflow?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-discard">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setShowDiscardConfirm(false);
+                resetToNewWorkflow();
+              }}
+              data-testid="button-confirm-discard"
+            >
+              Discard Changes
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -14,24 +14,19 @@ import {
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { Link } from 'wouter';
+import { PageLayout } from '@/components/ui/page-layout';
+import type { Workflow } from '@/types/workflow';
 
 type WorkflowExecution = {
   id: string;
   workflowId: string;
   status: 'running' | 'completed' | 'failed';
   triggeredBy: 'manual' | 'entity_event' | 'time_based';
-  triggerData: any;
+  triggerData: Record<string, unknown>;
   error: string | null;
   startedAt: string;
   completedAt: string | null;
   currentStep: number | null;
-};
-
-type Workflow = {
-  id: string;
-  name: string;
-  description: string | null;
-  isActive: boolean;
 };
 
 export default function WorkflowExecutions() {
@@ -46,26 +41,33 @@ export default function WorkflowExecutions() {
   const { data: executions, isLoading: executionsLoading } = useQuery<WorkflowExecution[]>({
     queryKey: ['/api/workflows', workflowId, 'executions'],
     enabled: !!workflowId,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      const hasRunning = Array.isArray(data) && data.some(e => e.status === 'running');
+      return hasRunning ? 5000 : false;
+    },
   });
 
   if (!workflowId) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <Card className="p-6">
-          <p className="text-muted-foreground">Invalid workflow ID</p>
-        </Card>
-      </div>
+      <PageLayout>
+        <div className="flex items-center justify-center h-full">
+          <Card className="p-6">
+            <p className="text-muted-foreground">Invalid workflow ID</p>
+          </Card>
+        </div>
+      </PageLayout>
     );
   }
 
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'completed':
-        return <CheckCircle2 className="h-4 w-4 text-green-600" />;
+        return <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />;
       case 'failed':
         return <XCircle className="h-4 w-4 text-destructive" />;
       case 'running':
-        return <Clock className="h-4 w-4 text-blue-600" />;
+        return <Clock className="h-4 w-4 text-blue-600 dark:text-blue-400" />;
       default:
         return <AlertCircle className="h-4 w-4 text-muted-foreground" />;
     }
@@ -77,7 +79,7 @@ export default function WorkflowExecutions() {
       failed: 'destructive',
       running: 'secondary',
     } as const;
-    
+
     return (
       <Badge variant={variants[status as keyof typeof variants] || 'secondary'} className="text-xs">
         {status}
@@ -86,35 +88,29 @@ export default function WorkflowExecutions() {
   };
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Header */}
-      <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="flex items-center justify-between p-4">
-          <div className="flex items-center gap-3">
-            <Link href="/workflows">
-              <Button variant="ghost" size="icon" data-testid="button-back">
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-            </Link>
-            <div>
-              <h1 className="text-2xl font-bold" data-testid="text-page-title">
-                Execution History
-              </h1>
-              {workflowLoading ? (
-                <Skeleton className="h-4 w-48 mt-1" />
-              ) : workflow ? (
-                <p className="text-sm text-muted-foreground">
-                  {workflow.name}
-                </p>
-              ) : null}
-            </div>
+    <PageLayout>
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex items-center gap-3">
+          <Link href="/workflows">
+            <Button variant="ghost" size="icon" data-testid="button-back">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          </Link>
+          <div>
+            <h1 className="text-2xl font-bold" data-testid="text-page-title">
+              Execution History
+            </h1>
+            {workflowLoading ? (
+              <Skeleton className="h-4 w-48 mt-1" />
+            ) : workflow ? (
+              <p className="text-sm text-muted-foreground">{workflow.name}</p>
+            ) : null}
           </div>
         </div>
-      </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-auto p-6">
-        <div className="max-w-4xl mx-auto space-y-4">
+        {/* Executions */}
+        <div className="space-y-4">
           {executionsLoading ? (
             Array.from({ length: 3 }).map((_, i) => (
               <Card key={i}>
@@ -165,9 +161,7 @@ export default function WorkflowExecutions() {
                     <div>
                       <p className="text-muted-foreground mb-1">Started</p>
                       <p className="font-medium">
-                        {formatDistanceToNow(new Date(execution.startedAt), {
-                          addSuffix: true,
-                        })}
+                        {formatDistanceToNow(new Date(execution.startedAt), { addSuffix: true })}
                       </p>
                     </div>
                   </div>
@@ -176,9 +170,7 @@ export default function WorkflowExecutions() {
                     <div className="text-sm">
                       <p className="text-muted-foreground mb-1">Completed</p>
                       <p className="font-medium">
-                        {formatDistanceToNow(new Date(execution.completedAt), {
-                          addSuffix: true,
-                        })}
+                        {formatDistanceToNow(new Date(execution.completedAt), { addSuffix: true })}
                       </p>
                     </div>
                   )}
@@ -195,12 +187,8 @@ export default function WorkflowExecutions() {
                       <div className="flex items-start gap-2">
                         <XCircle className="h-4 w-4 text-destructive mt-0.5" />
                         <div className="flex-1">
-                          <p className="text-sm font-medium text-destructive mb-1">
-                            Error
-                          </p>
-                          <p className="text-sm text-destructive/90">
-                            {execution.error}
-                          </p>
+                          <p className="text-sm font-medium text-destructive mb-1">Error</p>
+                          <p className="text-sm text-destructive/90">{execution.error}</p>
                         </div>
                       </div>
                     </div>
@@ -222,6 +210,6 @@ export default function WorkflowExecutions() {
           )}
         </div>
       </div>
-    </div>
+    </PageLayout>
   );
 }

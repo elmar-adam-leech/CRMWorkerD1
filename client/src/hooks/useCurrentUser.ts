@@ -18,6 +18,14 @@ export interface CurrentUserResponse {
 }
 
 /**
+ * Returns true if the given role has elevated (admin/manager) access.
+ * Use this instead of repeating the three-way role check across pages.
+ */
+export function isAdminUser(role?: string): boolean {
+  return role === 'admin' || role === 'super_admin' || role === 'manager';
+}
+
+/**
  * Hook to access the current authenticated user's data.
  * This data is cached at the app level and reused across all components.
  */
