@@ -23,6 +23,7 @@ import type { Contact } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { getInitials, formatCurrency } from "@/lib/utils";
 
 type EstimateCardProps = {
   estimate: {
@@ -113,21 +114,6 @@ export function EstimateCard({ estimate, onSend, onViewDetails, onConvertToJob, 
   const handleDelete = () => {
     console.log(`Deleting estimate ${estimate.title}`);
     onDelete?.(estimate.id);
-  };
-
-  const getInitials = (name: string) => {
-    return name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase();
-  };
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-    }).format(amount);
   };
 
   const getPriorityColor = (priority: string) => {

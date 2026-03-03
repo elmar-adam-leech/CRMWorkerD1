@@ -13,6 +13,7 @@ import { ViewDetailsButton } from "./ViewDetailsButton";
 import { useBulkSelection } from "@/contexts/BulkSelectionContext";
 import { InlineEdit } from "./InlineEdit";
 import { TagsDialog } from "./TagsDialog";
+import { getInitials, formatCurrency } from "@/lib/utils";
 
 type LeadCardProps = {
   lead: any; // Accept both real Lead type and mock data structure
@@ -52,21 +53,6 @@ export function LeadCard({ lead, onContact, onSchedule, onSendText, onSendEmail,
   const handleSchedule = () => {
     console.log(`Scheduling lead ${leadName}`);
     onSchedule?.(lead.id);
-  };
-
-  const getInitials = (name: string) => {
-    return name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase();
-  };
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-    }).format(amount);
   };
 
   const getPriorityDotClass = (priority: string) => {

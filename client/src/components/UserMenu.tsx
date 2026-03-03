@@ -1,5 +1,6 @@
 import { LogOut, Settings, User, HelpCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { getInitials } from "@/lib/utils";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,14 +32,6 @@ export function UserMenu({
   onHelpClick,
   onLogout,
 }: UserMenuProps) {
-  const getInitials = (name: string) => {
-    return name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase();
-  };
-
   const handleProfileClick = () => {
     console.log("Profile clicked");
     onProfileClick?.();

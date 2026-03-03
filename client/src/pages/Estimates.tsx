@@ -7,16 +7,7 @@ import { EmailComposerModal } from "@/components/EmailComposerModal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { DeleteConfirmDialog } from "@/components/DeleteConfirmDialog";
 import { PageHeader } from "@/components/ui/page-header-v2";
 import { PageLayout } from "@/components/ui/page-layout";
 import { Plus, Search, Filter, Calendar, FileText, Download } from "lucide-react";
@@ -672,35 +663,19 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
         statusOptions={ESTIMATE_BULK_STATUSES}
       />
 
-      <AlertDialog
-        open={deleteConfirm.isOpen}
+      <DeleteConfirmDialog
+        isOpen={deleteConfirm.isOpen}
         onOpenChange={(open) => setDeleteConfirm((prev) => ({ ...prev, isOpen: open }))}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Estimate</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete{" "}
-              {deleteConfirm.estimateTitle ? `"${deleteConfirm.estimateTitle}"` : "this estimate"}? This action
-              cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel data-testid="button-cancel-delete-estimate">Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                if (deleteConfirm.estimateId) {
-                  deleteEstimateMutation.mutate(deleteConfirm.estimateId);
-                }
-                setDeleteConfirm({ isOpen: false });
-              }}
-              data-testid="button-confirm-delete-estimate"
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        title="Delete Estimate"
+        description={`Are you sure you want to delete "${deleteConfirm.estimateTitle ?? "this estimate"}"? This action cannot be undone.`}
+        onConfirm={() => {
+          if (deleteConfirm.estimateId) {
+            deleteEstimateMutation.mutate(deleteConfirm.estimateId);
+          }
+          setDeleteConfirm({ isOpen: false });
+        }}
+        confirmTestId="button-confirm-delete-estimate"
+      />
     </PageLayout>
   );
 }

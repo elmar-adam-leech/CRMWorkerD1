@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Phone, Mail, MapPin, Calendar, MoreHorizontal } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { CallButton } from "./CallButton";
+import { getInitials } from "@/lib/utils";
 
 type CustomerCardProps = {
   customer: {
@@ -30,14 +31,6 @@ export function CustomerCard({ customer, onContact, onViewJobs }: CustomerCardPr
   const handleViewJobs = () => {
     console.log(`Viewing jobs for customer ${customer.name}`);
     onViewJobs?.(customer.id);
-  };
-
-  const getInitials = (name: string) => {
-    return name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase();
   };
 
   return (

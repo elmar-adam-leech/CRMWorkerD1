@@ -9,16 +9,6 @@ import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/ui/page-header-v2";
 import { PageLayout } from "@/components/ui/page-layout";
 import { Plus, Search, Filter, LayoutGrid, List, Briefcase, CalendarIcon } from "lucide-react";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { useQuery, useMutation, useInfiniteQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -27,7 +17,6 @@ import { downloadCsv } from "@/lib/csv";
 import type { PaginatedJobs, TerminologySettings } from "@shared/schema";
 import { useWebSocketContext } from "@/contexts/WebSocketContext";
 import { useGlobalShortcuts } from "@/hooks/use-keyboard-shortcuts";
-import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useHousecallProIntegration } from "@/hooks/useHousecallProIntegration";
 import { BulkActionToolbar } from "@/components/BulkActionToolbar";
 import { FilterPanel, type FilterState } from "@/components/FilterPanel";
@@ -35,6 +24,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { JobDetailsModal, type JobListItem } from "@/components/JobDetailsModal";
 import { HCPImportModal } from "@/components/HCPImportModal";
 import { CreateJobModal } from "@/components/CreateJobModal";
+import { DeleteConfirmDialog } from "@/components/DeleteConfirmDialog";
 
 const JOB_STATUSES = ["scheduled", "in_progress", "completed", "cancelled"] as const;
 type JobStatus = (typeof JOB_STATUSES)[number];
@@ -43,7 +33,6 @@ type FilterStatus = "all" | JobStatus;
 export default function Jobs({ externalSearch = "" }: { externalSearch?: string }) {
   const [location] = useLocation();
   const { subscribe } = useWebSocketContext();
-  const { data: currentUserData } = useCurrentUser();
   const { isHousecallProConfigured, syncStartDate } = useHousecallProIntegration();
 
   const [searchQuery, setSearchQuery] = useState(externalSearch);
@@ -200,8 +189,6 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
       type: job.type,
       priority: job.priority,
       estimatedHours: 8,
-      externalSource: undefined,
-      estimateId: undefined,
     }))
   ) ?? [];
 
@@ -481,28 +468,14 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
         statusOptions={JOB_STATUSES.map((s) => ({ value: s, label: formatStatusLabel(s) }))}
       />
 
-      <AlertDialog
-        open={deleteConfirm.isOpen}
+      <DeleteConfirmDialog
+        isOpen={deleteConfirm.isOpen}
         onOpenChange={(open) => !open && setDeleteConfirm({ isOpen: false })}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Job</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete "{deleteConfirm.jobTitle}"? This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => deleteConfirm.jobId && deleteJobMutation.mutate(deleteConfirm.jobId)}
-              data-testid="button-confirm-delete-job"
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        title="Delete Job"
+        description={`Are you sure you want to delete "${deleteConfirm.jobTitle}"? This action cannot be undone.`}
+        onConfirm={() => deleteConfirm.jobId && deleteJobMutation.mutate(deleteConfirm.jobId)}
+        confirmTestId="button-confirm-delete-job"
+      />
     </PageLayout>
   );
 }

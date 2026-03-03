@@ -4,8 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "./StatusBadge";
-import { Calendar, User, Clock, MoreHorizontal, ExternalLink, Phone, Mail, Edit, Settings, Tag, Trash2 } from "lucide-react";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Calendar, Clock, MoreHorizontal, ExternalLink, Phone, Mail, Edit, Settings, Tag, Trash2 } from "lucide-react";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { ViewDetailsButton } from "./ViewDetailsButton";
 import { useBulkSelection } from "@/contexts/BulkSelectionContext";
@@ -14,6 +14,7 @@ import { TagsDialog } from "./TagsDialog";
 import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { getInitials, formatCurrency } from "@/lib/utils";
 import type { Contact } from "@shared/schema";
 
 type JobCardProps = {
@@ -75,23 +76,7 @@ export function JobCard({ job, onStatusChange, onViewDetails, onEdit, onEditStat
   
 
   const handleViewDetails = () => {
-    console.log(`Viewing details for job ${job.title}`);
     onViewDetails?.(job.id);
-  };
-
-  const getInitials = (name: string) => {
-    return name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase();
-  };
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-    }).format(amount);
   };
 
   const getPriorityColor = (priority: string) => {
