@@ -670,26 +670,123 @@ export class SyncScheduler {
             await storage.updateJob(existingJob.id, updateData, tenantId);
             updatedJobs++;
           } else {
-            // Create new job if it doesn't exist
-            const jobData = {
-              id: randomUUID(),
-              contactId: '', // We'll need to map this or create contact
+            // Resolve contact from HCP job customer data
+            let contactId: string | null = null;
+            const hcpCustomerId = hcpJob.customer_id;
+            const hcpCustomer = hcpJob.customer;
+
+            if (hcpCustomerId) {
+              const existingContact = await storage.getContactByHousecallProCustomerId(hcpCustomerId, tenantId);
+              if (existingContact) {
+                contactId = existingContact.id;
+                console.log(`[sync-scheduler] Found existing contact ${contactId} for HCP customer ${hcpCustomerId} (job)`);
+              }
+            }
+
+            if (!contactId && hcpCustomer) {
+              const customerPhone = hcpCustomer.mobile_number || hcpCustomer.home_number || hcpCustomer.work_number ||
+                (hcpCustomer.phone_numbers && hcpCustomer.phone_numbers[0]?.phone_number);
+              const customerEmail = hcpCustomer.email;
+
+              if (customerPhone) {
+                const phoneMatch = await storage.getContactByPhone(customerPhone, tenantId);
+                if (phoneMatch) {
+                  contactId = phoneMatch.id;
+                  if (hcpCustomerId) {
+                    await storage.updateContact(phoneMatch.id, { housecallProCustomerId: hcpCustomerId }, tenantId);
+                  }
+                  console.log(`[sync-scheduler] Found contact ${contactId} by phone match (job)`);
+                }
+              }
+
+              if (!contactId && customerEmail) {
+                const emailMatch = await storage.findMatchingContact(tenantId, [customerEmail], undefined);
+                if (emailMatch) {
+                  contactId = emailMatch;
+                  if (hcpCustomerId) {
+                    await storage.updateContact(emailMatch, { housecallProCustomerId: hcpCustomerId }, tenantId);
+                  }
+                  console.log(`[sync-scheduler] Found contact ${contactId} by email match (job)`);
+                }
+              }
+
+              if (!contactId) {
+                // Create contact + job atomically
+                const customerName = [hcpCustomer.first_name, hcpCustomer.last_name].filter(Boolean).join(' ') ||
+                  hcpCustomer.company || 'Unknown Customer';
+                const phones = [hcpCustomer.mobile_number, hcpCustomer.home_number, hcpCustomer.work_number]
+                  .filter(Boolean) as string[];
+                const emails = customerEmail ? [customerEmail] : [];
+                const address = hcpCustomer.address ?
+                  [hcpCustomer.address.street, hcpCustomer.address.city, hcpCustomer.address.state, hcpCustomer.address.zip]
+                    .filter(Boolean).join(', ') : undefined;
+
+                const newContactId = randomUUID();
+                const newJobId = randomUUID();
+                const jobStatus = hcpJob.work_status === 'completed' ? 'completed' as const :
+                  hcpJob.work_status === 'canceled' ? 'cancelled' as const : 'in_progress' as const;
+
+                await db.transaction(async (tx) => {
+                  await tx.insert(contacts).values({
+                    id: newContactId,
+                    name: customerName,
+                    emails,
+                    phones,
+                    address,
+                    type: 'customer',
+                    status: 'new',
+                    source: 'housecall-pro',
+                    housecallProCustomerId: hcpCustomerId || undefined,
+                    externalId: hcpCustomerId || undefined,
+                    externalSource: hcpCustomerId ? 'housecall-pro' : undefined,
+                    contractorId: tenantId,
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                  });
+
+                  await tx.insert(jobs).values({
+                    id: newJobId,
+                    contactId: newContactId,
+                    title: hcpJob.description || 'Job from Housecall Pro',
+                    type: 'Service',
+                    status: jobStatus,
+                    value: (hcpJob.total_amount || 0).toString(),
+                    priority: 'medium',
+                    contractorId: tenantId,
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                    scheduledDate: hcpJob.scheduled_start ? new Date(hcpJob.scheduled_start) : null,
+                    estimatedHours: 4,
+                    externalId: hcpJob.id,
+                    externalSource: 'housecall-pro',
+                  });
+                });
+
+                console.log(`[sync-scheduler] Created contact ${newContactId} and job ${newJobId} atomically from HCP data`);
+                newJobs++;
+                continue;
+              }
+            }
+
+            if (!contactId) {
+              console.log(`[sync-scheduler] Skipping job ${hcpJob.id} - no customer data available to create contact`);
+              continue;
+            }
+
+            // Contact resolved — create job normally
+            await storage.createJob({
+              contactId,
               title: hcpJob.description || 'Job from Housecall Pro',
-              type: 'Service', // Default type
+              type: 'Service',
               status: hcpJob.work_status === 'completed' ? 'completed' as const :
                      hcpJob.work_status === 'canceled' ? 'cancelled' as const : 'in_progress' as const,
               value: (hcpJob.total_amount || 0).toString(),
               priority: 'medium' as const,
-              contractorId: tenantId,
-              createdAt: new Date(),
-              updatedAt: new Date(),
               scheduledDate: hcpJob.scheduled_start ? new Date(hcpJob.scheduled_start) : null,
-              estimatedHours: 4, // Default hours
+              estimatedHours: 4,
               externalId: hcpJob.id,
               externalSource: 'housecall-pro' as const,
-            };
-
-            await storage.createJob(jobData, tenantId);
+            }, tenantId);
             newJobs++;
           }
         } catch (itemError) {
