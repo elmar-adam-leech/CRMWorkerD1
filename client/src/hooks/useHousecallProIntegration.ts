@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 type HCPIntegration = { name: string; hasCredentials: boolean; isEnabled: boolean };
+type IntegrationsResponse = { integrations: HCPIntegration[] };
 
 export function useHousecallProIntegration() {
   const { data: currentUserData } = useCurrentUser();
@@ -13,11 +14,12 @@ export function useHousecallProIntegration() {
     user?.role === "manager" ||
     user?.canManageIntegrations === true;
 
-  const { data: integrations = [] } = useQuery<HCPIntegration[]>({
+  const { data: integrationsData } = useQuery<IntegrationsResponse>({
     queryKey: ["/api/integrations"],
     enabled: canManageIntegrations,
   });
 
+  const integrations = integrationsData?.integrations ?? [];
   const housecallProIntegration = integrations.find((i) => i.name === "housecall-pro");
   const isHousecallProConfigured =
     (housecallProIntegration?.hasCredentials && housecallProIntegration?.isEnabled) ?? false;
