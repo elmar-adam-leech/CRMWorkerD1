@@ -663,7 +663,7 @@ export class SyncScheduler {
             const updateData = {
               status: hcpJob.work_status === 'completed' ? 'completed' as const :
                      hcpJob.work_status === 'canceled' ? 'cancelled' as const : 'in_progress' as const,
-              value: (hcpJob.total_amount || 0).toString(),
+              value: ((hcpJob.total_amount || 0) / 100).toFixed(2),
               scheduledDate: hcpJob.scheduled_start ? new Date(hcpJob.scheduled_start) : null,
             };
             
@@ -750,7 +750,7 @@ export class SyncScheduler {
                     title: hcpJob.description || 'Job from Housecall Pro',
                     type: 'Service',
                     status: jobStatus,
-                    value: (hcpJob.total_amount || 0).toString(),
+                    value: ((hcpJob.total_amount || 0) / 100).toFixed(2),
                     priority: 'medium',
                     contractorId: tenantId,
                     createdAt: new Date(),
@@ -780,7 +780,7 @@ export class SyncScheduler {
               type: 'Service',
               status: hcpJob.work_status === 'completed' ? 'completed' as const :
                      hcpJob.work_status === 'canceled' ? 'cancelled' as const : 'in_progress' as const,
-              value: (hcpJob.total_amount || 0).toString(),
+              value: ((hcpJob.total_amount || 0) / 100).toFixed(2),
               priority: 'medium' as const,
               scheduledDate: hcpJob.scheduled_start ? new Date(hcpJob.scheduled_start) : null,
               estimatedHours: 4,
