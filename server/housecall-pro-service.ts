@@ -92,6 +92,64 @@ export interface HousecallProEstimate {
   }>;
 }
 
+export interface HousecallProJob {
+  id: string;
+  invoice_number?: string;
+  description?: string;
+  customer_id?: string;
+  customer?: HousecallProCustomer;
+  work_status?: string;
+  total_amount?: number;
+  outstanding_balance?: number;
+  subtotal?: number;
+  schedule?: {
+    scheduled_start?: string;
+    scheduled_end?: string;
+    arrival_window?: number;
+    appointments?: unknown[];
+  };
+  scheduled_start?: string;
+  address?: {
+    id?: string;
+    type?: string;
+    street?: string;
+    street_line_2?: string;
+    city?: string;
+    state?: string;
+    zip?: string;
+    country?: string;
+  };
+  notes?: Array<{ id: string; content: string }>;
+  work_timestamps?: {
+    on_my_way_at?: string | null;
+    started_at?: string | null;
+    completed_at?: string | null;
+  };
+  assigned_employees?: Array<{
+    id: string;
+    first_name: string;
+    last_name: string;
+    email?: string;
+    mobile_number?: string;
+    role?: string;
+  }>;
+  tags?: string[];
+  original_estimate_id?: string | null;
+  original_estimate_uuids?: string[];
+  lead_source?: string | null;
+  job_fields?: {
+    job_type?: string | null;
+    business_unit?: string | null;
+  };
+  locked_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  company_name?: string;
+  company_id?: string;
+  recurrence_number?: number | null;
+  recurrence_rule?: string | null;
+}
+
 export interface HousecallProResponse<T> {
   success: boolean;
   data?: T;
@@ -509,7 +567,7 @@ export class HousecallProService {
     sort_direction?: string;
     page_size?: number;
     include?: string;
-  }): Promise<HousecallProResponse<HousecallProEstimate[]>> {
+  }): Promise<HousecallProResponse<HousecallProJob[]>> {
     const queryParams = new URLSearchParams();
     
     if (params?.modified_since) {

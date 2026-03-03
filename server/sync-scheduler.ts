@@ -660,11 +660,14 @@ export class SyncScheduler {
           
           if (existingJob) {
             // Update existing job with latest data
+            const scheduledStart = hcpJob.schedule?.scheduled_start || hcpJob.scheduled_start;
             const updateData = {
+              title: hcpJob.description || hcpJob.invoice_number || 'Job from Housecall Pro',
               status: hcpJob.work_status === 'completed' ? 'completed' as const :
-                     hcpJob.work_status === 'canceled' ? 'cancelled' as const : 'in_progress' as const,
+                     hcpJob.work_status === 'canceled' ? 'cancelled' as const :
+                     hcpJob.work_status === 'scheduled' ? 'scheduled' as const : 'in_progress' as const,
               value: ((hcpJob.total_amount || 0) / 100).toFixed(2),
-              scheduledDate: hcpJob.scheduled_start ? new Date(hcpJob.scheduled_start) : null,
+              scheduledDate: scheduledStart ? new Date(scheduledStart) : null,
             };
             
             await storage.updateJob(existingJob.id, updateData, tenantId);
@@ -723,8 +726,10 @@ export class SyncScheduler {
 
                 const newContactId = randomUUID();
                 const newJobId = randomUUID();
+                const scheduledStartTx = hcpJob.schedule?.scheduled_start || hcpJob.scheduled_start;
                 const jobStatus = hcpJob.work_status === 'completed' ? 'completed' as const :
-                  hcpJob.work_status === 'canceled' ? 'cancelled' as const : 'in_progress' as const;
+                  hcpJob.work_status === 'canceled' ? 'cancelled' as const :
+                  hcpJob.work_status === 'scheduled' ? 'scheduled' as const : 'in_progress' as const;
 
                 await db.transaction(async (tx) => {
                   await tx.insert(contacts).values({
@@ -747,7 +752,7 @@ export class SyncScheduler {
                   await tx.insert(jobs).values({
                     id: newJobId,
                     contactId: newContactId,
-                    title: hcpJob.description || 'Job from Housecall Pro',
+                    title: hcpJob.description || hcpJob.invoice_number || 'Job from Housecall Pro',
                     type: 'Service',
                     status: jobStatus,
                     value: ((hcpJob.total_amount || 0) / 100).toFixed(2),
@@ -755,7 +760,7 @@ export class SyncScheduler {
                     contractorId: tenantId,
                     createdAt: new Date(),
                     updatedAt: new Date(),
-                    scheduledDate: hcpJob.scheduled_start ? new Date(hcpJob.scheduled_start) : null,
+                    scheduledDate: scheduledStartTx ? new Date(scheduledStartTx) : null,
                     estimatedHours: 4,
                     externalId: hcpJob.id,
                     externalSource: 'housecall-pro',
@@ -774,15 +779,17 @@ export class SyncScheduler {
             }
 
             // Contact resolved — create job normally
+            const scheduledStartNormal = hcpJob.schedule?.scheduled_start || hcpJob.scheduled_start;
             await storage.createJob({
               contactId,
-              title: hcpJob.description || 'Job from Housecall Pro',
+              title: hcpJob.description || hcpJob.invoice_number || 'Job from Housecall Pro',
               type: 'Service',
               status: hcpJob.work_status === 'completed' ? 'completed' as const :
-                     hcpJob.work_status === 'canceled' ? 'cancelled' as const : 'in_progress' as const,
+                     hcpJob.work_status === 'canceled' ? 'cancelled' as const :
+                     hcpJob.work_status === 'scheduled' ? 'scheduled' as const : 'in_progress' as const,
               value: ((hcpJob.total_amount || 0) / 100).toFixed(2),
               priority: 'medium' as const,
-              scheduledDate: hcpJob.scheduled_start ? new Date(hcpJob.scheduled_start) : null,
+              scheduledDate: scheduledStartNormal ? new Date(scheduledStartNormal) : null,
               estimatedHours: 4,
               externalId: hcpJob.id,
               externalSource: 'housecall-pro' as const,
