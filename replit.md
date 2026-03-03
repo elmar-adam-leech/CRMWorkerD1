@@ -62,6 +62,17 @@ The system employs strategic database indexing (54 indexes), application caching
 - `GOOGLE_MAPS_API_KEY` (secret): Google Maps API key with Places API + Maps JavaScript API enabled. Must have your domain added to "Allowed HTTP referrers" in Google Cloud Console (API Keys → Restrictions).
 - `DATABASE_URL`, `JWT_SECRET`, `CREDENTIAL_ENCRYPTION_KEY`, `NODE_ENV`, `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL`, `APP_URL`, `XAI_API_KEY`
 
+### Shared Component Library
+Reusable components extracted to avoid duplication across Jobs, Estimates, and Leads pages:
+- `DeleteConfirmDialog` — standardised AlertDialog for destructive confirmations
+- `EditStatusModal` — Dialog with status-picker button grid; used by Leads page
+- `StatusFilterBar` — Quick-filter badge row with counts; used by Jobs, Estimates, Leads
+- `LoadMoreButton` — Cursor-pagination load trigger; used by Jobs, Estimates, Leads
+- `ViewToggle` — Card/Kanban view switch; used by Jobs and Leads
+
+### Page Preferences Hook
+`usePagePreferences({ pageKey })` persists `viewMode`, `filterStatus`, `advancedFilters` to localStorage per page. Currently wired into Jobs and Leads.
+
 ### Known Pending Issues
 - `GET /api/contacts/[object%20Object]` 404 — object being stringified as contact ID (source not yet traced)
 - Several TypeScript errors in example/demo components (`examples/`) are pre-existing and don't affect production

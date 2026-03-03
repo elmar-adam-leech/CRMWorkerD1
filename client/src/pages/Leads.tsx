@@ -8,23 +8,19 @@ import { LocalSchedulingModal } from "@/components/LocalSchedulingModal";
 import { FollowUpDateModal } from "@/components/FollowUpDateModal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { PageHeader } from "@/components/ui/page-header-v2";
 import { PageLayout } from "@/components/ui/page-layout";
-import { Plus, Search, Filter, Download, Upload, UserPlus, Users, AlertCircle } from "lucide-react";
+import { Plus, Search, Filter, UserPlus, Users, AlertCircle } from "lucide-react";
 import { LeadKanbanBoard } from "@/components/LeadKanbanBoard";
 import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Contact, TerminologySettings } from "@shared/schema";
+import type { Contact, PaginatedContacts, TerminologySettings } from "@shared/schema";
 import { cn, formatStatusLabel } from "@/lib/utils";
 import { downloadCsv } from "@/lib/csv";
 import { useWebSocketContext } from "@/contexts/WebSocketContext";
 import { useCommunicationActions } from "@/hooks/useCommunicationActions";
 import { useGlobalShortcuts } from "@/hooks/use-keyboard-shortcuts";
-import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { BulkActionToolbar } from "@/components/BulkActionToolbar";
 import { StatusFilterBar } from "@/components/StatusFilterBar";
 import { LoadMoreButton } from "@/components/LoadMoreButton";
@@ -35,6 +31,9 @@ import { EmptyState } from "@/components/EmptyState";
 import { CreateLeadModal } from "@/components/CreateLeadModal";
 import { EditLeadModal } from "@/components/EditLeadModal";
 import { LeadDetailsModal } from "@/components/LeadDetailsModal";
+import { DeleteConfirmDialog } from "@/components/DeleteConfirmDialog";
+import { EditStatusModal } from "@/components/EditStatusModal";
+import { usePagePreferences } from "@/hooks/use-page-preferences";
 
 const LEAD_STATUSES = ["new", "contacted", "scheduled", "disqualified"] as const;
 
@@ -46,9 +45,8 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
     setSearchQuery(externalSearch);
   }, [externalSearch]);
 
-  const [filterStatus, setFilterStatus] = useState<"all" | "new" | "contacted" | "scheduled" | "disqualified">("all");
-  const [advancedFilters, setAdvancedFilters] = useState<FilterState>({});
-  const [viewMode, setViewMode] = useState<"cards" | "kanban">("cards");
+  const { viewMode, setViewMode, filterStatus, setFilterStatus, advancedFilters, setAdvancedFilters } =
+    usePagePreferences({ pageKey: "leads" });
 
   const {
     emailModal,
@@ -97,9 +95,6 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
   const queryClient = useQueryClient();
   const { subscribe } = useWebSocketContext();
 
-  const { data: currentUserData } = useCurrentUser();
-  const gmailConnected = currentUserData?.user?.gmailConnected ?? false;
-
   const { data: terminology } = useQuery<TerminologySettings>({
     queryKey: ["/api/terminology"],
   });
@@ -136,7 +131,6 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
     }
   }, [location]);
 
-
   const {
     data: leadsData,
     fetchNextPage,
@@ -149,9 +143,9 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
       type: "lead",
       status: filterStatus,
       search: searchQuery,
-      assignedTo: advancedFilters.assignedTo,
-      dateFrom: advancedFilters.dateFrom?.toISOString(),
-      dateTo: advancedFilters.dateTo?.toISOString(),
+      assignedTo: (advancedFilters as FilterState).assignedTo,
+      dateFrom: (advancedFilters as FilterState).dateFrom?.toISOString(),
+      dateTo: (advancedFilters as FilterState).dateTo?.toISOString(),
     }],
     queryFn: async ({ pageParam }) => {
       const url = new URL("/api/contacts/paginated", window.location.origin);
@@ -159,17 +153,18 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
       if (pageParam) url.searchParams.set("cursor", pageParam as string);
       if (filterStatus !== "all") url.searchParams.set("status", filterStatus);
       if (searchQuery) url.searchParams.set("search", searchQuery);
-      if (advancedFilters.assignedTo) url.searchParams.set("assignedTo", advancedFilters.assignedTo);
-      if (advancedFilters.dateFrom) url.searchParams.set("dateFrom", advancedFilters.dateFrom.toISOString());
-      if (advancedFilters.dateTo) url.searchParams.set("dateTo", advancedFilters.dateTo.toISOString());
+      const filters = advancedFilters as FilterState;
+      if (filters.assignedTo) url.searchParams.set("assignedTo", filters.assignedTo);
+      if (filters.dateFrom) url.searchParams.set("dateFrom", filters.dateFrom.toISOString());
+      if (filters.dateTo) url.searchParams.set("dateTo", filters.dateTo.toISOString());
       url.searchParams.set("limit", "50");
       return (await apiRequest("GET", url.toString())).json();
     },
-    getNextPageParam: (lastPage: any) => lastPage.pagination.nextCursor,
+    getNextPageParam: (lastPage: PaginatedContacts) => lastPage.pagination.nextCursor,
     initialPageParam: undefined as string | undefined,
   });
 
-  const leads = leadsData?.pages.flatMap((page: any) => page.data) || [];
+  const leads = (leadsData?.pages.flatMap((page: PaginatedContacts) => page.data) || []) as Contact[];
   const totalLeads = leadsData?.pages[0]?.pagination.total || 0;
 
   const updateStatusMutation = useMutation({
@@ -271,11 +266,6 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
     if (contact) setContactDetailsModal({ isOpen: true, contact });
   };
 
-  const handleViewDuplicate = (contactId: string) => {
-    const contact = leads.find((l: Contact) => l.id === contactId);
-    if (contact) setContactDetailsModal({ isOpen: true, contact });
-  };
-
   const handleEditStatus = (contactId: string) => {
     const contact = leads.find((l: Contact) => l.id === contactId);
     if (contact) setEditStatusModal({ isOpen: true, contact });
@@ -311,19 +301,35 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
   };
 
   const handleBulkDelete = async (ids: string[]) => {
-    await Promise.all(ids.map((id) => apiRequest("DELETE", `/api/contacts/${id}`)));
-    queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
-    queryClient.invalidateQueries({ queryKey: ["/api/contacts/paginated"] });
-    queryClient.invalidateQueries({ queryKey: ["/api/contacts/status-counts"] });
-    toast({ title: `Deleted ${ids.length} lead(s)` });
+    try {
+      await Promise.all(ids.map((id) => apiRequest("DELETE", `/api/contacts/${id}`)));
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts/paginated"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts/status-counts"] });
+      toast({ title: `Deleted ${ids.length} lead(s)` });
+    } catch (error) {
+      toast({
+        title: "Bulk delete failed",
+        description: error instanceof Error ? error.message : "Some leads could not be deleted.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleBulkStatusChange = async (ids: string[], status: string) => {
-    await Promise.all(ids.map((id) => apiRequest("PATCH", `/api/contacts/${id}/status`, { status })));
-    queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
-    queryClient.invalidateQueries({ queryKey: ["/api/contacts/paginated"] });
-    queryClient.invalidateQueries({ queryKey: ["/api/contacts/status-counts"] });
-    toast({ title: `Updated ${ids.length} lead(s) to ${status}` });
+    try {
+      await Promise.all(ids.map((id) => apiRequest("PATCH", `/api/contacts/${id}/status`, { status })));
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts/paginated"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts/status-counts"] });
+      toast({ title: `Updated ${ids.length} lead(s) to ${status}` });
+    } catch (error) {
+      toast({
+        title: "Bulk status update failed",
+        description: error instanceof Error ? error.message : "Some leads could not be updated.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleBulkExport = async (ids: string[]) => {
@@ -380,7 +386,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
         />
 
         <FilterPanel
-          filters={advancedFilters}
+          filters={advancedFilters as FilterState}
           onFiltersChange={setAdvancedFilters}
           statusOptions={LEAD_STATUSES.map((s) => ({ value: s, label: formatStatusLabel(s) }))}
           userOptions={usersData?.map((u) => ({ value: u.id, label: u.fullName })) || []}
@@ -455,7 +461,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
       )}
 
       {leads.length === 0 && !leadsLoading && !leadsError && (
-        searchQuery || filterStatus !== "all" ? (
+        filterStatus !== "all" || searchQuery ? (
           <EmptyState
             icon={Filter}
             title="No leads match your filters"
@@ -514,7 +520,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
           queryClient.invalidateQueries({ queryKey: ["/api/contacts/status-counts"] });
         }}
         leads={leads}
-        onViewDuplicate={handleViewDuplicate}
+        onViewDuplicate={handleViewDetails}
       />
 
       <EditLeadModal
@@ -532,35 +538,19 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
         onClose={() => setContactDetailsModal({ isOpen: false })}
       />
 
-      <Dialog
-        open={editStatusModal.isOpen}
+      <EditStatusModal
+        isOpen={editStatusModal.isOpen}
         onOpenChange={(open) => setEditStatusModal((prev) => ({ ...prev, isOpen: open }))}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Update Lead Status</DialogTitle>
-            <DialogDescription>Change the status of {editStatusModal.contact?.name}</DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-2 gap-2">
-            {LEAD_STATUSES.map((status) => (
-              <Button
-                key={status}
-                variant={editStatusModal.contact?.status === status ? "default" : "outline"}
-                onClick={() => {
-                  if (editStatusModal.contact) {
-                    updateStatusMutation.mutate({ contactId: editStatusModal.contact.id, status });
-                  }
-                }}
-                disabled={updateStatusMutation.isPending}
-                data-testid={`button-status-${status}`}
-                className="justify-start"
-              >
-                {formatStatusLabel(status)}
-              </Button>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
+        contactName={editStatusModal.contact?.name}
+        currentStatus={editStatusModal.contact?.status ?? undefined}
+        statuses={LEAD_STATUSES}
+        onStatusChange={(status) => {
+          if (editStatusModal.contact) {
+            updateStatusMutation.mutate({ contactId: editStatusModal.contact.id, status });
+          }
+        }}
+        isPending={updateStatusMutation.isPending}
+      />
 
       <FollowUpDateModal
         isOpen={followUpModal.isOpen}
@@ -571,32 +561,18 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
         isSaving={updateFollowUpDateMutation.isPending}
       />
 
-      <AlertDialog
-        open={deleteConfirmDialog.isOpen}
+      <DeleteConfirmDialog
+        isOpen={deleteConfirmDialog.isOpen}
         onOpenChange={(open) => setDeleteConfirmDialog((prev) => ({ ...prev, isOpen: open }))}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Lead</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete {deleteConfirmDialog.contactName}? This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                if (deleteConfirmDialog.contactId) {
-                  deleteContactMutation.mutate(deleteConfirmDialog.contactId);
-                }
-              }}
-              disabled={deleteContactMutation.isPending}
-            >
-              {deleteContactMutation.isPending ? "Deleting..." : "Delete"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        title="Delete Lead"
+        description={`Are you sure you want to delete "${deleteConfirmDialog.contactName}"? This action cannot be undone.`}
+        onConfirm={() => {
+          if (deleteConfirmDialog.contactId) {
+            deleteContactMutation.mutate(deleteConfirmDialog.contactId);
+          }
+        }}
+        confirmTestId="button-confirm-delete-lead"
+      />
 
       <BulkActionToolbar
         onDelete={handleBulkDelete}
