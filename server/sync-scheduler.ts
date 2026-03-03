@@ -662,7 +662,7 @@ export class SyncScheduler {
             // Update existing job with latest data
             const scheduledStart = hcpJob.schedule?.scheduled_start || hcpJob.scheduled_start;
             const updateData = {
-              title: hcpJob.description || hcpJob.invoice_number || 'Job from Housecall Pro',
+              title: hcpJob.invoice_number || hcpJob.description || 'Job from Housecall Pro',
               status: hcpJob.work_status === 'completed' ? 'completed' as const :
                      hcpJob.work_status === 'canceled' ? 'cancelled' as const :
                      hcpJob.work_status === 'scheduled' ? 'scheduled' as const : 'in_progress' as const,
@@ -752,7 +752,7 @@ export class SyncScheduler {
                   await tx.insert(jobs).values({
                     id: newJobId,
                     contactId: newContactId,
-                    title: hcpJob.description || hcpJob.invoice_number || 'Job from Housecall Pro',
+                    title: hcpJob.invoice_number || hcpJob.description || 'Job from Housecall Pro',
                     type: 'Service',
                     status: jobStatus,
                     value: ((hcpJob.total_amount || 0) / 100).toFixed(2),
@@ -782,7 +782,7 @@ export class SyncScheduler {
             const scheduledStartNormal = hcpJob.schedule?.scheduled_start || hcpJob.scheduled_start;
             await storage.createJob({
               contactId,
-              title: hcpJob.description || hcpJob.invoice_number || 'Job from Housecall Pro',
+              title: hcpJob.invoice_number || hcpJob.description || 'Job from Housecall Pro',
               type: 'Service',
               status: hcpJob.work_status === 'completed' ? 'completed' as const :
                      hcpJob.work_status === 'canceled' ? 'cancelled' as const :
