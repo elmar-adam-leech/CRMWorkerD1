@@ -5,10 +5,9 @@ import { JobCardSkeleton } from "@/components/JobCardSkeleton";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/ui/page-header-v2";
 import { PageLayout } from "@/components/ui/page-layout";
-import { Plus, Search, Filter, LayoutGrid, List, Briefcase, CalendarIcon } from "lucide-react";
+import { Plus, Search, Briefcase, CalendarIcon } from "lucide-react";
 import { useQuery, useMutation, useInfiniteQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -18,6 +17,7 @@ import type { PaginatedJobs, TerminologySettings } from "@shared/schema";
 import { useWebSocketContext } from "@/contexts/WebSocketContext";
 import { useGlobalShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useHousecallProIntegration } from "@/hooks/useHousecallProIntegration";
+import { usePagePreferences } from "@/hooks/use-page-preferences";
 import { BulkActionToolbar } from "@/components/BulkActionToolbar";
 import { FilterPanel, type FilterState } from "@/components/FilterPanel";
 import { EmptyState } from "@/components/EmptyState";
@@ -25,6 +25,9 @@ import { JobDetailsModal, type JobListItem } from "@/components/JobDetailsModal"
 import { HCPImportModal } from "@/components/HCPImportModal";
 import { CreateJobModal } from "@/components/CreateJobModal";
 import { DeleteConfirmDialog } from "@/components/DeleteConfirmDialog";
+import { StatusFilterBar } from "@/components/StatusFilterBar";
+import { LoadMoreButton } from "@/components/LoadMoreButton";
+import { ViewToggle } from "@/components/ViewToggle";
 
 const JOB_STATUSES = ["scheduled", "in_progress", "completed", "cancelled"] as const;
 type JobStatus = (typeof JOB_STATUSES)[number];
@@ -35,10 +38,16 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
   const { subscribe } = useWebSocketContext();
   const { isHousecallProConfigured, syncStartDate } = useHousecallProIntegration();
 
+  const {
+    viewMode,
+    setViewMode,
+    filterStatus,
+    setFilterStatus,
+    advancedFilters,
+    setAdvancedFilters,
+  } = usePagePreferences({ pageKey: "jobs" });
+
   const [searchQuery, setSearchQuery] = useState(externalSearch);
-  const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
-  const [advancedFilters, setAdvancedFilters] = useState<FilterState>({});
-  const [viewMode, setViewMode] = useState<"cards" | "kanban">("cards");
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [jobDetailsModal, setJobDetailsModal] = useState<{ isOpen: boolean; job?: JobListItem }>({ isOpen: false });
   const [importDateModalOpen, setImportDateModalOpen] = useState(false);
@@ -123,7 +132,7 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
     },
   });
 
-  const statusCounts: Record<FilterStatus, number> = statusCountsData ?? {
+  const statusCounts: Record<string, number> = statusCountsData ?? {
     all: 0, scheduled: 0, in_progress: 0, completed: 0, cancelled: 0,
   };
 
@@ -188,7 +197,7 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
       scheduledDate: job.scheduledDate ? new Date(job.scheduledDate).toLocaleDateString() : "No date",
       type: job.type,
       priority: job.priority,
-      estimatedHours: 8,
+      estimatedHours: job.estimatedHours ?? null,
     }))
   ) ?? [];
 
@@ -245,7 +254,6 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
         description: error instanceof Error ? error.message : "Failed to import jobs from Housecall Pro",
         variant: "destructive",
       });
-    } finally {
       if (dateChanged) {
         await apiRequest("POST", "/api/housecall-pro/sync-start-date", { syncStartDate: syncStartDate }).catch(() => {});
       }
@@ -255,19 +263,35 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
   // ----- Bulk action handlers -----
 
   const handleBulkDelete = async (ids: string[]) => {
-    await Promise.all(ids.map((id) => apiRequest("DELETE", `/api/jobs/${id}`)));
-    queryClient.invalidateQueries({ queryKey: ["/api/jobs/paginated"] });
-    queryClient.invalidateQueries({ queryKey: ["/api/jobs/status-counts"] });
-    queryClient.invalidateQueries({ queryKey: ["/api/jobs"] });
-    toast({ title: `Deleted ${ids.length} job(s)` });
+    try {
+      await Promise.all(ids.map((id) => apiRequest("DELETE", `/api/jobs/${id}`)));
+      queryClient.invalidateQueries({ queryKey: ["/api/jobs/paginated"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/jobs/status-counts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/jobs"] });
+      toast({ title: `Deleted ${ids.length} job(s)` });
+    } catch (error: unknown) {
+      toast({
+        title: "Delete Failed",
+        description: error instanceof Error ? error.message : "Failed to delete one or more jobs.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleBulkStatusChange = async (ids: string[], status: string) => {
-    await Promise.all(ids.map((id) => apiRequest("PATCH", `/api/jobs/${id}/status`, { status })));
-    queryClient.invalidateQueries({ queryKey: ["/api/jobs/paginated"] });
-    queryClient.invalidateQueries({ queryKey: ["/api/jobs/status-counts"] });
-    queryClient.invalidateQueries({ queryKey: ["/api/jobs"] });
-    toast({ title: `Updated ${ids.length} job(s) to ${status}` });
+    try {
+      await Promise.all(ids.map((id) => apiRequest("PATCH", `/api/jobs/${id}/status`, { status })));
+      queryClient.invalidateQueries({ queryKey: ["/api/jobs/paginated"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/jobs/status-counts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/jobs"] });
+      toast({ title: `Updated ${ids.length} job(s) to ${status}` });
+    } catch (error: unknown) {
+      toast({
+        title: "Status Update Failed",
+        description: error instanceof Error ? error.message : "Failed to update one or more jobs.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleBulkExport = async (ids: string[]) => {
@@ -277,7 +301,7 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
       ["Title", "Customer", "Status", "Value", "Scheduled Date", "Type", "Priority", "Estimated Hours"],
       selectedJobs.map((job) => [
         job.title, job.contactName, job.status, job.value,
-        job.scheduledDate, job.type, job.priority, job.estimatedHours,
+        job.scheduledDate, job.type, job.priority, job.estimatedHours ?? "",
       ])
     );
     toast({ title: `Exported ${ids.length} job(s)` });
@@ -324,35 +348,15 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
               data-testid="input-job-search"
             />
           </div>
-          <div className="flex items-center border rounded-md self-start sm:self-auto">
-            <Button variant={viewMode === "cards" ? "default" : "ghost"} size="sm" onClick={() => setViewMode("cards")} data-testid="view-cards">
-              <LayoutGrid className="h-4 w-4" />
-            </Button>
-            <Button variant={viewMode === "kanban" ? "default" : "ghost"} size="sm" onClick={() => setViewMode("kanban")} data-testid="view-kanban">
-              <List className="h-4 w-4" />
-            </Button>
-          </div>
+          <ViewToggle viewMode={viewMode} onViewModeChange={setViewMode} />
         </div>
 
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm text-muted-foreground hidden sm:inline">Quick Filter:</span>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {(["all", ...JOB_STATUSES] as const).map((status) => (
-              <Badge
-                key={status}
-                variant={filterStatus === status ? "default" : "outline"}
-                className="cursor-pointer hover-elevate"
-                onClick={() => setFilterStatus(status)}
-                data-testid={`filter-${status}`}
-              >
-                {status === "all" ? "All" : formatStatusLabel(status)} ({statusCounts[status]})
-              </Badge>
-            ))}
-          </div>
-        </div>
+        <StatusFilterBar
+          statuses={JOB_STATUSES}
+          activeStatus={filterStatus}
+          counts={statusCounts}
+          onStatusChange={setFilterStatus}
+        />
 
         <FilterPanel
           filters={advancedFilters}
@@ -401,27 +405,19 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
         </div>
       )}
 
-      {/* Load more */}
-      {hasNextPage && (
-        <div className="flex justify-center mt-8">
-          <Button onClick={() => fetchNextPage()} disabled={isFetchingNextPage} variant="outline" data-testid="button-load-more-jobs">
-            {isFetchingNextPage ? (
-              <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2" />
-                Loading...
-              </>
-            ) : (
-              "Load More Jobs"
-            )}
-          </Button>
-        </div>
-      )}
+      <LoadMoreButton
+        hasNextPage={hasNextPage}
+        isFetchingNextPage={isFetchingNextPage}
+        onLoadMore={() => fetchNextPage()}
+        label="Load More Jobs"
+        testId="button-load-more-jobs"
+      />
 
       {/* Empty states */}
       {allJobs.length === 0 && !jobsLoading && (
         isFiltered ? (
           <EmptyState
-            icon={Filter}
+            icon={Search}
             title="No jobs match your filters"
             description="Try adjusting your search criteria or filters to find more jobs."
             tips={[

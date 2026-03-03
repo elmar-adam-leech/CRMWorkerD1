@@ -14,7 +14,7 @@ export type JobListItem = {
   scheduledDate: string;
   type: string;
   priority: "high" | "low" | "medium";
-  estimatedHours: number;
+  estimatedHours: number | null;
   externalSource?: string;
   estimateId?: string;
 };
@@ -74,9 +74,11 @@ export function JobDetailsModal({ isOpen, job, onClose }: JobDetailsModalProps) 
                 <div>
                   <strong>Scheduled Date:</strong> {job.scheduledDate}
                 </div>
-                <div>
-                  <strong>Estimated Hours:</strong> {job.estimatedHours}h
-                </div>
+                {job.estimatedHours != null && (
+                  <div>
+                    <strong>Estimated Hours:</strong> {job.estimatedHours}h
+                  </div>
+                )}
                 {job.externalSource && (
                   <div>
                     <strong>Source:</strong>{" "}

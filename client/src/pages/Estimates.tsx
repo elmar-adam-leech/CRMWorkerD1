@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { DeleteConfirmDialog } from "@/components/DeleteConfirmDialog";
 import { PageHeader } from "@/components/ui/page-header-v2";
 import { PageLayout } from "@/components/ui/page-layout";
-import { Plus, Search, Filter, Calendar, FileText, Download } from "lucide-react";
+import { Plus, Search, Calendar, FileText, Download, Filter } from "lucide-react";
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -23,6 +23,8 @@ import { useGlobalShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useFetchContact } from "@/hooks/useFetchContact";
 import { useHousecallProIntegration } from "@/hooks/useHousecallProIntegration";
 import { BulkActionToolbar } from "@/components/BulkActionToolbar";
+import { StatusFilterBar } from "@/components/StatusFilterBar";
+import { LoadMoreButton } from "@/components/LoadMoreButton";
 import { FilterPanel, type FilterState } from "@/components/FilterPanel";
 import { EmptyState } from "@/components/EmptyState";
 import { CreateEstimateModal } from "@/components/CreateEstimateModal";
@@ -486,34 +488,14 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
               data-testid="input-estimate-search"
             />
           </div>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <div className="flex items-center gap-2">
-              <Filter className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground hidden sm:inline">Quick Filter:</span>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Badge
-                variant={filterStatus === "all" ? "default" : "outline"}
-                className="cursor-pointer hover-elevate"
-                onClick={() => setFilterStatus("all")}
-                data-testid="filter-all"
-              >
-                All ({statusCounts.all})
-              </Badge>
-              {ESTIMATE_FILTER_STATUSES.map((status) => (
-                <Badge
-                  key={status}
-                  variant={filterStatus === status ? "default" : "outline"}
-                  className="cursor-pointer hover-elevate"
-                  onClick={() => setFilterStatus(status)}
-                  data-testid={`filter-${status}`}
-                >
-                  {formatStatusLabel(status)} ({statusCounts[status]})
-                </Badge>
-              ))}
-            </div>
-          </div>
         </div>
+
+        <StatusFilterBar
+          statuses={ESTIMATE_FILTER_STATUSES}
+          activeStatus={filterStatus}
+          counts={statusCounts}
+          onStatusChange={setFilterStatus}
+        />
 
         <FilterPanel
           filters={advancedFilters}
@@ -566,13 +548,13 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
         </div>
       )}
 
-      {hasNextPage && !isFetchingNextPage && (
-        <div className="text-center py-8">
-          <Button onClick={() => fetchNextPage()} variant="outline" data-testid="button-load-more-estimates">
-            Load More Estimates
-          </Button>
-        </div>
-      )}
+      <LoadMoreButton
+        hasNextPage={hasNextPage}
+        isFetchingNextPage={isFetchingNextPage}
+        onLoadMore={() => fetchNextPage()}
+        label="Load More Estimates"
+        testId="button-load-more-estimates"
+      />
 
       {allEstimates.length === 0 && !estimatesLoading &&
         (searchQuery || filterStatus !== "all" ? (

@@ -730,6 +730,7 @@ export const jobSummarySchema = z.object({
   scheduledDate: z.date().nullable(),
   contactName: z.string(),
   contactId: z.string(),
+  estimatedHours: z.number().nullable(),
   createdAt: z.date(),
   updatedAt: z.date(),
 });

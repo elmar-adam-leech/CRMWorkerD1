@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { PageHeader } from "@/components/ui/page-header-v2";
 import { PageLayout } from "@/components/ui/page-layout";
-import { Plus, Search, Filter, Download, Upload, UserPlus, Users, AlertCircle, Loader2, LayoutGrid, List } from "lucide-react";
+import { Plus, Search, Filter, Download, Upload, UserPlus, Users, AlertCircle } from "lucide-react";
 import { LeadKanbanBoard } from "@/components/LeadKanbanBoard";
 import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -26,6 +26,9 @@ import { useCommunicationActions } from "@/hooks/useCommunicationActions";
 import { useGlobalShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { BulkActionToolbar } from "@/components/BulkActionToolbar";
+import { StatusFilterBar } from "@/components/StatusFilterBar";
+import { LoadMoreButton } from "@/components/LoadMoreButton";
+import { ViewToggle } from "@/components/ViewToggle";
 import { useBulkSelection } from "@/contexts/BulkSelectionContext";
 import { FilterPanel, type FilterState } from "@/components/FilterPanel";
 import { EmptyState } from "@/components/EmptyState";
@@ -45,10 +48,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
 
   const [filterStatus, setFilterStatus] = useState<"all" | "new" | "contacted" | "scheduled" | "disqualified">("all");
   const [advancedFilters, setAdvancedFilters] = useState<FilterState>({});
-  const [viewMode, setViewMode] = useState<"cards" | "kanban">(() => {
-    const saved = localStorage.getItem("leads-view-mode");
-    return (saved as "cards" | "kanban") || "cards";
-  });
+  const [viewMode, setViewMode] = useState<"cards" | "kanban">("cards");
 
   const {
     emailModal,
@@ -136,9 +136,6 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
     }
   }, [location]);
 
-  useEffect(() => {
-    localStorage.setItem("leads-view-mode", viewMode);
-  }, [viewMode]);
 
   const {
     data: leadsData,
@@ -372,46 +369,15 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
               data-testid="input-lead-search"
             />
           </div>
-          <div className="flex items-center border rounded-md self-start sm:self-auto">
-            <Button
-              variant={viewMode === "cards" ? "default" : "ghost"}
-              size="sm"
-              onClick={() => setViewMode("cards")}
-              data-testid="view-cards"
-            >
-              <LayoutGrid className="h-4 w-4" />
-            </Button>
-            <Button
-              variant={viewMode === "kanban" ? "default" : "ghost"}
-              size="sm"
-              onClick={() => setViewMode("kanban")}
-              data-testid="view-kanban"
-            >
-              <List className="h-4 w-4" />
-            </Button>
-          </div>
+          <ViewToggle viewMode={viewMode} onViewModeChange={setViewMode} />
         </div>
 
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm text-muted-foreground hidden sm:inline">Quick Filter:</span>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {(["all", ...LEAD_STATUSES] as const).map((status) => (
-              <Badge
-                key={status}
-                variant={filterStatus === status ? "default" : "outline"}
-                className="cursor-pointer hover-elevate"
-                onClick={() => setFilterStatus(status)}
-                data-testid={`filter-${status}`}
-              >
-                {status === "all" ? "All" : formatStatusLabel(status)}{" "}
-                {statusCounts[status] !== undefined ? `(${statusCounts[status]})` : ""}
-              </Badge>
-            ))}
-          </div>
-        </div>
+        <StatusFilterBar
+          statuses={LEAD_STATUSES}
+          activeStatus={filterStatus}
+          counts={statusCounts}
+          onStatusChange={setFilterStatus}
+        />
 
         <FilterPanel
           filters={advancedFilters}
@@ -470,24 +436,14 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
         />
       )}
 
-      {hasNextPage && !leadsLoading && (
-        <div className="flex justify-center mt-8">
-          <Button
-            onClick={() => fetchNextPage()}
-            disabled={isFetchingNextPage}
-            variant="outline"
-            data-testid="button-load-more-leads"
-          >
-            {isFetchingNextPage ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Loading...
-              </>
-            ) : (
-              `Load More ${terminology?.leadsLabel || "Leads"}`
-            )}
-          </Button>
-        </div>
+      {!leadsLoading && (
+        <LoadMoreButton
+          hasNextPage={hasNextPage}
+          isFetchingNextPage={isFetchingNextPage}
+          onLoadMore={() => fetchNextPage()}
+          label={`Load More ${terminology?.leadsLabel || "Leads"}`}
+          testId="button-load-more-leads"
+        />
       )}
 
       {leadsError && !leadsLoading && (

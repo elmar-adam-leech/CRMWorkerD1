@@ -27,7 +27,7 @@ type JobCardProps = {
     scheduledDate: string;
     type: string;
     priority: "low" | "medium" | "high";
-    estimatedHours: number;
+    estimatedHours: number | null;
     externalSource?: string; // 'housecall-pro' for tracking-only jobs
     estimateId?: string; // Link back to original estimate
   };
@@ -205,10 +205,12 @@ export function JobCard({ job, onStatusChange, onViewDetails, onEdit, onEditStat
                 <Calendar className="h-4 w-4" />
                 <span>{job.scheduledDate}</span>
               </div>
-              <div className="flex items-center gap-2">
-                <Clock className="h-4 w-4" />
-                <span>{job.estimatedHours}h estimated</span>
-              </div>
+              {job.estimatedHours != null && (
+                <div className="flex items-center gap-2">
+                  <Clock className="h-4 w-4" />
+                  <span>{job.estimatedHours}h estimated</span>
+                </div>
+              )}
             </div>
             
             {isHousecallProJob && (

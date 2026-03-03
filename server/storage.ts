@@ -1297,6 +1297,7 @@ export class DatabaseStorage implements IStorage {
       scheduledDate: jobs.scheduledDate,
       contactId: jobs.contactId,
       contactName: contacts.name,
+      estimatedHours: jobs.estimatedHours,
       createdAt: jobs.createdAt,
       updatedAt: jobs.updatedAt,
     })
