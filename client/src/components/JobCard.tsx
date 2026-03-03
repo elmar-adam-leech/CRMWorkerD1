@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "./StatusBadge";
-import { Calendar, User, Clock, MoreHorizontal, ExternalLink, Phone, Mail, Edit, Settings, Tag } from "lucide-react";
+import { Calendar, User, Clock, MoreHorizontal, ExternalLink, Phone, Mail, Edit, Settings, Tag, Trash2 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { ViewDetailsButton } from "./ViewDetailsButton";
@@ -35,10 +35,11 @@ type JobCardProps = {
   onEdit?: (jobId: string) => void;
   onEditStatus?: (jobId: string) => void;
   onUpdateJob?: (jobId: string, updates: Partial<any>) => Promise<void>;
+  onDelete?: (jobId: string, jobTitle: string) => void;
   selectable?: boolean;
 };
 
-export function JobCard({ job, onStatusChange, onViewDetails, onEdit, onEditStatus, onUpdateJob, selectable = false }: JobCardProps) {
+export function JobCard({ job, onStatusChange, onViewDetails, onEdit, onEditStatus, onUpdateJob, onDelete, selectable = false }: JobCardProps) {
   const { toggleItem, isSelected } = useBulkSelection();
   const { toast } = useToast();
   const [tagsDialogOpen, setTagsDialogOpen] = useState(false);
@@ -158,6 +159,15 @@ export function JobCard({ job, onStatusChange, onViewDetails, onEdit, onEditStat
             <DropdownMenuItem onClick={() => setTagsDialogOpen(true)} data-testid={`menu-add-tags-${job.id}`}>
               <Tag className="h-4 w-4 mr-2" />
               Add Tags
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={() => onDelete?.(job.id, job.title)}
+              className="text-destructive focus:text-destructive"
+              data-testid={`menu-delete-job-${job.id}`}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete Job
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

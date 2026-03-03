@@ -9,6 +9,16 @@ import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/ui/page-header-v2";
 import { PageLayout } from "@/components/ui/page-layout";
 import { Plus, Search, Filter, LayoutGrid, List, Briefcase, CalendarIcon } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useQuery, useMutation, useInfiniteQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -44,6 +54,7 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
   const [jobDetailsModal, setJobDetailsModal] = useState<{ isOpen: boolean; job?: JobListItem }>({ isOpen: false });
   const [importDateModalOpen, setImportDateModalOpen] = useState(false);
   const [selectedImportDate, setSelectedImportDate] = useState<Date | undefined>(undefined);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; jobId?: string; jobTitle?: string }>({ isOpen: false });
 
   const { toast } = useToast();
 
@@ -140,6 +151,25 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
       toast({ title: "Update Failed", description: error.message || "Failed to update job status", variant: "destructive" });
     },
   });
+
+  // Delete a single job
+  const deleteJobMutation = useMutation({
+    mutationFn: (jobId: string) => apiRequest("DELETE", `/api/jobs/${jobId}`),
+    onSuccess: () => {
+      toast({ title: "Job Deleted", description: "Job has been successfully deleted." });
+      queryClient.invalidateQueries({ queryKey: ["/api/jobs/paginated"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/jobs/status-counts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/jobs"] });
+      setDeleteConfirm({ isOpen: false });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to Delete Job", description: error.message || "Something went wrong.", variant: "destructive" });
+    },
+  });
+
+  const handleDeleteJob = (jobId: string, jobTitle: string) => {
+    setDeleteConfirm({ isOpen: true, jobId, jobTitle });
+  };
 
   // Global keyboard shortcuts
   useGlobalShortcuts((type) => {
@@ -359,7 +389,7 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
           {jobsLoading
             ? Array.from({ length: 6 }).map((_, i) => <JobCardSkeleton key={`skeleton-${i}`} />)
             : allJobs.map((job) => (
-                <JobCard key={job.id} job={job} onStatusChange={handleStatusChange} onViewDetails={handleViewDetails} selectable />
+                <JobCard key={job.id} job={job} onStatusChange={handleStatusChange} onViewDetails={handleViewDetails} onDelete={handleDeleteJob} selectable />
               ))}
         </div>
       ) : (
@@ -376,7 +406,7 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
                 {jobsLoading
                   ? Array.from({ length: 2 }).map((_, i) => <JobCardSkeleton key={`kanban-skeleton-${status}-${i}`} />)
                   : jobsByStatus[status].map((job) => (
-                      <JobCard key={job.id} job={job} onStatusChange={handleStatusChange} onViewDetails={handleViewDetails} selectable />
+                      <JobCard key={job.id} job={job} onStatusChange={handleStatusChange} onViewDetails={handleViewDetails} onDelete={handleDeleteJob} selectable />
                     ))}
               </div>
             </div>
@@ -450,6 +480,30 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
         onExport={handleBulkExport}
         statusOptions={JOB_STATUSES.map((s) => ({ value: s, label: formatStatusLabel(s) }))}
       />
+
+      <AlertDialog
+        open={deleteConfirm.isOpen}
+        onOpenChange={(open) => !open && setDeleteConfirm({ isOpen: false })}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Job</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{deleteConfirm.jobTitle}"? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteConfirm.jobId && deleteJobMutation.mutate(deleteConfirm.jobId)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-testid="button-confirm-delete-job"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </PageLayout>
   );
 }
