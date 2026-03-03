@@ -243,7 +243,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
         });
       }
 
-      const response = await apiRequest("POST", "/api/housecall-pro/sync");
+      const response = await apiRequest("POST", "/api/housecall-pro/sync?type=estimates");
       const data = await response.json();
 
       queryClient.invalidateQueries({ queryKey: ["/api/estimates/paginated"] });

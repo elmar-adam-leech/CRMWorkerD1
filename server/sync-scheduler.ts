@@ -612,7 +612,7 @@ export class SyncScheduler {
   /**
    * Sync jobs from Housecall Pro
    */
-  private async syncHousecallProJobs(tenantId: string): Promise<void> {
+  async syncHousecallProJobs(tenantId: string): Promise<void> {
     console.log(`[sync-scheduler] Syncing Housecall Pro jobs for tenant ${tenantId}`);
     
     // Get sync start date for filtering

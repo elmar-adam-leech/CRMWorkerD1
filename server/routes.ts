@@ -4087,6 +4087,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/housecall-pro/sync", async (req: AuthenticatedRequest, res: Response) => {
     const contractorId = req.user!.contractorId;
+    // type: 'estimates' | 'jobs' | 'all' (default: 'all')
+    const syncType = (req.query.type as string) || 'all';
     
     try {
       // Check if Housecall Pro integration is enabled
@@ -4108,230 +4110,229 @@ export async function registerRoutes(app: Express): Promise<Server> {
         startTime: new Date()
       });
 
-      console.log(`[housecall-pro-sync] Starting manual sync for tenant ${contractorId}`);
+      console.log(`[housecall-pro-sync] Starting manual sync (type=${syncType}) for tenant ${contractorId}`);
       
       // Get sync start date for filtering
       const syncStartDate = await storage.getHousecallProSyncStartDate(req.user!.contractorId);
       console.log(`[housecall-pro-sync] Using sync start date filter: ${syncStartDate ? syncStartDate.toISOString() : 'none'}`);
-      
-      // Sync estimates with embedded customer data (following working App Script pattern)
-      syncStatus.set(contractorId, {
-        isRunning: true,
-        progress: 'Syncing estimates...',
-        error: null,
-        lastSync: null,
-        startTime: new Date()
-      });
-      
-      // Fetch ALL estimates from Housecall Pro with pagination (like the working Google Apps Script)
-      const baseEstimatesParams = syncStartDate ? {
-        modified_since: syncStartDate.toISOString(),
-        sort_by: 'created_at',
-        sort_direction: 'desc',
-        page_size: 100
-      } : {
-        sort_by: 'created_at',
-        sort_direction: 'desc',
-        page_size: 100
-      };
-      
-      let allHousecallProEstimates: any[] = [];
-      let page = 1;
-      let keepGoing = true;
-      const maxRunTime = 5 * 60 * 1000; // 5-minute guard like Google Apps Script
-      const startTime = Date.now();
-      
-      while (keepGoing) {
-        // Check time limit (like Google Apps Script)
-        if (Date.now() - startTime > maxRunTime) {
-          console.log(`[housecall-pro-sync] Time limit reached at page ${page}, aborting pagination`);
-          break;
-        }
-        
-        const estimatesParams = { ...baseEstimatesParams, page };
-        console.log(`[housecall-pro-sync] Fetching estimates page ${page}...`);
-        
-        // Update progress status for UI
+
+      let newEstimates = 0;
+      let updatedEstimates = 0;
+      let newJobs = 0;
+
+      // ── Estimates sync ────────────────────────────────────────────────────────
+      if (syncType === 'estimates' || syncType === 'all') {
         syncStatus.set(contractorId, {
           isRunning: true,
-          progress: `Fetching estimates page ${page}...`,
+          progress: 'Syncing estimates...',
           error: null,
           lastSync: null,
           startTime: new Date()
         });
+
+        // Fetch ALL estimates from Housecall Pro with pagination
+        const baseEstimatesParams = syncStartDate ? {
+          modified_since: syncStartDate.toISOString(),
+          sort_by: 'created_at',
+          sort_direction: 'desc',
+          page_size: 100
+        } : {
+          sort_by: 'created_at',
+          sort_direction: 'desc',
+          page_size: 100
+        };
         
-        const estimatesResult = await housecallProService.getEstimates(req.user!.contractorId, estimatesParams);
-        if (!estimatesResult.success) {
-          console.error(`[housecall-pro-sync] Failed to fetch estimates page ${page}: ${estimatesResult.error}`);
-          res.status(400).json({ message: estimatesResult.error });
-          return;
-        }
-
-        const pageEstimates = estimatesResult.data || [];
-        console.log(`[housecall-pro-sync] Page ${page}: fetched ${pageEstimates.length} estimates`);
-
-        if (!pageEstimates.length) {
-          console.log(`[housecall-pro-sync] No more estimates found, stopping pagination`);
-          break;
-        }
+        let allHousecallProEstimates: any[] = [];
+        let page = 1;
+        let keepGoing = true;
+        const maxRunTime = 5 * 60 * 1000;
+        const startTime = Date.now();
         
-        // Add estimates from this page to our collection
-        allHousecallProEstimates = allHousecallProEstimates.concat(pageEstimates);
-        
-        // If we got less than page_size, we've reached the end
-        if (pageEstimates.length < baseEstimatesParams.page_size) {
-          console.log(`[housecall-pro-sync] Page ${page} returned ${pageEstimates.length} estimates (< ${baseEstimatesParams.page_size}), stopping pagination`);
-          keepGoing = false;
-        } else {
-          page++;
-        }
-      }
-      
-      const housecallProEstimates = allHousecallProEstimates;
-      console.log(`[housecall-pro-sync] Fetched ${housecallProEstimates.length} total estimates from Housecall Pro across ${page} pages`);
-
-      let newEstimates = 0;
-      let updatedEstimates = 0;
-
-      // Helper function to extract phone number (following App Script pattern)
-      const extractPhone = (customer?: any) => {
-        if (!customer) return '';
-        
-        // Try multiple possible phone field names from Housecall Pro
-        return customer.phone_numbers?.[0]?.phone_number || 
-               customer.mobile_number || 
-               customer.home_number || 
-               customer.work_number || 
-               customer.phone || 
-               customer.primary_phone || 
-               customer.contact_phone || 
-               customer.phone_number || 
-               '';
-      };
-
-      // Helper function to extract address (following App Script pattern)  
-      const extractAddress = (location?: any) => {
-        if (!location) return '';
-        const addr = location.service_location || location.address || location;
-        if (!addr) return '';
-        return `${addr.street || ''}, ${addr.city || ''}, ${addr.state || ''} ${addr.zip || ''}`.replace(/^,\s*/, '').trim();
-      };
-
-      for (const hcpEstimate of housecallProEstimates) {
-        try {
-          // Check if estimate already exists in our system
-          const existingEstimate = await storage.getEstimateByHousecallProEstimateId(hcpEstimate.id, req.user!.contractorId);
+        while (keepGoing) {
+          if (Date.now() - startTime > maxRunTime) {
+            console.log(`[housecall-pro-sync] Time limit reached at page ${page}, aborting pagination`);
+            break;
+          }
           
-          if (existingEstimate) {
-            // Update existing estimate with latest data
-            const updateData = {
-              status: hcpEstimate.work_status === 'completed' ? 'approved' as const :
-                     hcpEstimate.work_status === 'canceled' ? 'rejected' as const : 'pending' as const,
-              amount: (Math.round((hcpEstimate.total_amount || hcpEstimate.total || hcpEstimate.total_price || hcpEstimate.amount || 0) / 100 * 100) / 100).toFixed(2), // Convert cents to dollars
-              description: hcpEstimate.description || '',
-              scheduledStart: hcpEstimate.scheduled_start ? new Date(hcpEstimate.scheduled_start) : null,
-            };
-            
-            await storage.updateEstimate(existingEstimate.id, updateData, req.user!.contractorId);
-            updatedEstimates++;
-            console.log(`[housecall-pro-sync] Updated estimate ${existingEstimate.id} from HCP ${hcpEstimate.id}`);
+          const estimatesParams = { ...baseEstimatesParams, page };
+          console.log(`[housecall-pro-sync] Fetching estimates page ${page}...`);
+          
+          syncStatus.set(contractorId, {
+            isRunning: true,
+            progress: `Fetching estimates page ${page}...`,
+            error: null,
+            lastSync: null,
+            startTime: new Date()
+          });
+          
+          const estimatesResult = await housecallProService.getEstimates(req.user!.contractorId, estimatesParams);
+          if (!estimatesResult.success) {
+            console.error(`[housecall-pro-sync] Failed to fetch estimates page ${page}: ${estimatesResult.error}`);
+            res.status(400).json({ message: estimatesResult.error });
+            return;
+          }
+
+          const pageEstimates = estimatesResult.data || [];
+          console.log(`[housecall-pro-sync] Page ${page}: fetched ${pageEstimates.length} estimates`);
+
+          if (!pageEstimates.length) {
+            console.log(`[housecall-pro-sync] No more estimates found, stopping pagination`);
+            break;
+          }
+          
+          allHousecallProEstimates = allHousecallProEstimates.concat(pageEstimates);
+          
+          if (pageEstimates.length < baseEstimatesParams.page_size) {
+            console.log(`[housecall-pro-sync] Page ${page} returned ${pageEstimates.length} estimates (< ${baseEstimatesParams.page_size}), stopping pagination`);
+            keepGoing = false;
           } else {
-            // Extract embedded customer data (following App Script pattern)
-            const customerData = hcpEstimate.customer;
-            if (!customerData) {
-              console.warn(`[housecall-pro-sync] Skipping estimate ${hcpEstimate.id} - no customer data`);
-              continue;
-            }
+            page++;
+          }
+        }
+        
+        console.log(`[housecall-pro-sync] Fetched ${allHousecallProEstimates.length} total estimates from Housecall Pro across ${page} pages`);
 
-            // Create or find customer inline (following App Script pattern)
-            let localCustomer = await storage.getContactByExternalId(customerData.id, 'housecall-pro', req.user!.contractorId);
+        // Helper function to extract phone number
+        const extractPhone = (customer?: any) => {
+          if (!customer) return '';
+          return customer.phone_numbers?.[0]?.phone_number || 
+                 customer.mobile_number || 
+                 customer.home_number || 
+                 customer.work_number || 
+                 customer.phone || 
+                 customer.primary_phone || 
+                 customer.contact_phone || 
+                 customer.phone_number || 
+                 '';
+        };
+
+        // Helper function to extract address
+        const extractAddress = (location?: any) => {
+          if (!location) return '';
+          const addr = location.service_location || location.address || location;
+          if (!addr) return '';
+          return `${addr.street || ''}, ${addr.city || ''}, ${addr.state || ''} ${addr.zip || ''}`.replace(/^,\s*/, '').trim();
+        };
+
+        for (const hcpEstimate of allHousecallProEstimates) {
+          try {
+            const existingEstimate = await storage.getEstimateByHousecallProEstimateId(hcpEstimate.id, req.user!.contractorId);
             
-            if (!localCustomer) {
-              // Create customer from embedded data
-              // Extract email with multiple possible field names
-              const extractEmail = (customer?: any) => {
-                if (!customer) return '';
-                return customer.email || 
-                       customer.email_address || 
-                       customer.primary_email || 
-                       customer.contact_email || 
-                       '';
-              };
-
-              const newCustomerData = {
-                id: crypto.randomUUID(),
-                name: `${customerData.first_name || ''} ${customerData.last_name || ''}`.trim() || 'Unknown Customer',
-                type: 'customer' as const,
-                email: extractEmail(customerData),
-                phone: extractPhone(customerData),
-                address: extractAddress(hcpEstimate),
-                externalId: customerData.id,
-                externalSource: 'housecall-pro' as const,
-                createdAt: hcpEstimate.created_at ? new Date(hcpEstimate.created_at) : new Date(),
-                updatedAt: hcpEstimate.modified_at ? new Date(hcpEstimate.modified_at) : new Date(),
+            if (existingEstimate) {
+              const updateData = {
+                status: hcpEstimate.work_status === 'completed' ? 'approved' as const :
+                       hcpEstimate.work_status === 'canceled' ? 'rejected' as const : 'pending' as const,
+                amount: (Math.round((hcpEstimate.total_amount || hcpEstimate.total || hcpEstimate.total_price || hcpEstimate.amount || 0) / 100 * 100) / 100).toFixed(2),
+                description: hcpEstimate.description || '',
+                scheduledStart: hcpEstimate.scheduled_start ? new Date(hcpEstimate.scheduled_start) : null,
               };
               
-              localCustomer = await storage.createContact(newCustomerData, req.user!.contractorId);
-              console.log(`[housecall-pro-sync] Created customer ${localCustomer.id} from embedded data in estimate ${hcpEstimate.id}`);
-            }
-            
-            // Calculate amount (following App Script cents->dollars pattern)
-            let amount = hcpEstimate.total_amount ?? hcpEstimate.total ?? hcpEstimate.total_price ?? hcpEstimate.amount ?? null;
-            if (amount === null && Array.isArray(hcpEstimate.options)) {
-              amount = hcpEstimate.options.reduce((max: number, option: any) => Math.max(max, Number(option.total_amount || 0)), 0);
-            }
-            const amountInDollars = typeof amount === 'number' ? (amount / 100).toFixed(2) : '0.00';
-            
-            // Create a proper estimate title from available fields
-            let estimateTitle = 'Estimate from Housecall Pro'; // Fallback
-            
-            if (hcpEstimate.number) {
-              estimateTitle = `Estimate #${hcpEstimate.number}`;
-            } else if (hcpEstimate.estimate_number) {
-              estimateTitle = `Estimate #${hcpEstimate.estimate_number}`;
-            } else if (hcpEstimate.name) {
-              estimateTitle = hcpEstimate.name;
-            } else if (hcpEstimate.id) {
-              // Use the Housecall Pro ID as a last resort before generic title
-              estimateTitle = `Estimate #${hcpEstimate.id}`;
-            }
+              await storage.updateEstimate(existingEstimate.id, updateData, req.user!.contractorId);
+              updatedEstimates++;
+              console.log(`[housecall-pro-sync] Updated estimate ${existingEstimate.id} from HCP ${hcpEstimate.id}`);
+            } else {
+              const customerData = hcpEstimate.customer;
+              if (!customerData) {
+                console.warn(`[housecall-pro-sync] Skipping estimate ${hcpEstimate.id} - no customer data`);
+                continue;
+              }
 
-            const estimateData = {
-              id: crypto.randomUUID(),
-              contactId: localCustomer.id,
-              title: estimateTitle,
-              description: hcpEstimate.description || '',
-              amount: amountInDollars,
-              status: hcpEstimate.work_status === 'completed' ? 'approved' as const :
-                     hcpEstimate.work_status === 'canceled' ? 'rejected' as const : 'pending' as const,
-              createdAt: hcpEstimate.created_at ? new Date(hcpEstimate.created_at) : new Date(),
-              updatedAt: hcpEstimate.modified_at ? new Date(hcpEstimate.modified_at) : new Date(),
-              validUntil: hcpEstimate.expires_at ? new Date(hcpEstimate.expires_at) : 
-                         hcpEstimate.expiry_date ? new Date(hcpEstimate.expiry_date) :
-                         hcpEstimate.valid_until ? new Date(hcpEstimate.valid_until) : null,
-              scheduledStart: hcpEstimate.scheduled_start ? new Date(hcpEstimate.scheduled_start) : null,
-              externalId: hcpEstimate.id,
-              externalSource: 'housecall-pro' as const,
-            };
+              let localCustomer = await storage.getContactByExternalId(customerData.id, 'housecall-pro', req.user!.contractorId);
+              
+              if (!localCustomer) {
+                const extractEmail = (customer?: any) => {
+                  if (!customer) return '';
+                  return customer.email || customer.email_address || customer.primary_email || customer.contact_email || '';
+                };
 
-            await storage.createEstimate(estimateData, req.user!.contractorId);
-            newEstimates++;
-            console.log(`[housecall-pro-sync] Created estimate ${estimateData.id} from HCP ${hcpEstimate.id}`);
+                const newCustomerData = {
+                  id: crypto.randomUUID(),
+                  name: `${customerData.first_name || ''} ${customerData.last_name || ''}`.trim() || 'Unknown Customer',
+                  type: 'customer' as const,
+                  email: extractEmail(customerData),
+                  phone: extractPhone(customerData),
+                  address: extractAddress(hcpEstimate),
+                  externalId: customerData.id,
+                  externalSource: 'housecall-pro' as const,
+                  createdAt: hcpEstimate.created_at ? new Date(hcpEstimate.created_at) : new Date(),
+                  updatedAt: hcpEstimate.modified_at ? new Date(hcpEstimate.modified_at) : new Date(),
+                };
+                
+                localCustomer = await storage.createContact(newCustomerData, req.user!.contractorId);
+                console.log(`[housecall-pro-sync] Created customer ${localCustomer.id} from embedded data in estimate ${hcpEstimate.id}`);
+              }
+              
+              let amount = hcpEstimate.total_amount ?? hcpEstimate.total ?? hcpEstimate.total_price ?? hcpEstimate.amount ?? null;
+              if (amount === null && Array.isArray(hcpEstimate.options)) {
+                amount = hcpEstimate.options.reduce((max: number, option: any) => Math.max(max, Number(option.total_amount || 0)), 0);
+              }
+              const amountInDollars = typeof amount === 'number' ? (amount / 100).toFixed(2) : '0.00';
+              
+              let estimateTitle = 'Estimate from Housecall Pro';
+              if (hcpEstimate.number) {
+                estimateTitle = `Estimate #${hcpEstimate.number}`;
+              } else if (hcpEstimate.estimate_number) {
+                estimateTitle = `Estimate #${hcpEstimate.estimate_number}`;
+              } else if (hcpEstimate.name) {
+                estimateTitle = hcpEstimate.name;
+              } else if (hcpEstimate.id) {
+                estimateTitle = `Estimate #${hcpEstimate.id}`;
+              }
+
+              const estimateData = {
+                id: crypto.randomUUID(),
+                contactId: localCustomer.id,
+                title: estimateTitle,
+                description: hcpEstimate.description || '',
+                amount: amountInDollars,
+                status: hcpEstimate.work_status === 'completed' ? 'approved' as const :
+                       hcpEstimate.work_status === 'canceled' ? 'rejected' as const : 'pending' as const,
+                createdAt: hcpEstimate.created_at ? new Date(hcpEstimate.created_at) : new Date(),
+                updatedAt: hcpEstimate.modified_at ? new Date(hcpEstimate.modified_at) : new Date(),
+                validUntil: hcpEstimate.expires_at ? new Date(hcpEstimate.expires_at) : 
+                           hcpEstimate.expiry_date ? new Date(hcpEstimate.expiry_date) :
+                           hcpEstimate.valid_until ? new Date(hcpEstimate.valid_until) : null,
+                scheduledStart: hcpEstimate.scheduled_start ? new Date(hcpEstimate.scheduled_start) : null,
+                externalId: hcpEstimate.id,
+                externalSource: 'housecall-pro' as const,
+              };
+
+              await storage.createEstimate(estimateData, req.user!.contractorId);
+              newEstimates++;
+              console.log(`[housecall-pro-sync] Created estimate ${estimateData.id} from HCP ${hcpEstimate.id}`);
+            }
+          } catch (itemError) {
+            console.error(`[housecall-pro-sync] Failed to process estimate ${hcpEstimate.id}:`, itemError);
           }
-        } catch (itemError) {
-          console.error(`[housecall-pro-sync] Failed to process estimate ${hcpEstimate.id}:`, itemError);
-          // Continue processing other estimates
         }
       }
 
-      const summary = {
-        totalFetched: housecallProEstimates.length,
-        newEstimates,
-        updatedEstimates,
-        syncedAt: new Date().toISOString(),
-      };
+      // ── Jobs sync ─────────────────────────────────────────────────────────────
+      if (syncType === 'jobs' || syncType === 'all') {
+        syncStatus.set(contractorId, {
+          isRunning: true,
+          progress: 'Syncing jobs...',
+          error: null,
+          lastSync: null,
+          startTime: new Date()
+        });
 
-      console.log(`[housecall-pro-sync] Sync completed:`, summary);
+        console.log(`[housecall-pro-sync] Starting jobs sync for tenant ${contractorId}`);
+
+        // Count jobs before sync so we can calculate how many were added
+        const jobsBefore = await storage.getJobs(contractorId);
+        const jobsCountBefore = jobsBefore.length;
+
+        const { syncScheduler } = await import('./sync-scheduler');
+        await syncScheduler.syncHousecallProJobs(contractorId);
+
+        const jobsAfter = await storage.getJobs(contractorId);
+        newJobs = Math.max(0, jobsAfter.length - jobsCountBefore);
+
+        console.log(`[housecall-pro-sync] Jobs sync complete. New jobs: ${newJobs}`);
+      }
+
+      console.log(`[housecall-pro-sync] Sync (type=${syncType}) completed for tenant ${contractorId}`);
       
       // Update sync status to completed
       syncStatus.set(contractorId, {
@@ -4344,12 +4345,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json({
         message: "Sync completed successfully",
-        summary
+        newEstimates,
+        updatedEstimates,
+        newJobs,
+        syncedAt: new Date().toISOString(),
       });
     } catch (error) {
       console.error('[housecall-pro-sync] Sync failed:', error);
       
-      // Update sync status to error
       syncStatus.set(contractorId, {
         isRunning: false,
         progress: null,

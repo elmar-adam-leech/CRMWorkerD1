@@ -214,13 +214,13 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
       if (dateChanged) {
         await apiRequest("POST", "/api/housecall-pro/sync-start-date", { syncStartDate: selectedDateISO });
       }
-      const response = await apiRequest("POST", "/api/housecall-pro/sync");
-      const contentType = response.headers.get("content-type");
-      const data = contentType?.includes("application/json") ? await response.json() : {};
+      const response = await apiRequest("POST", "/api/housecall-pro/sync?type=jobs");
+      const data = await response.json();
       queryClient.invalidateQueries({ queryKey: ["/api/jobs/paginated"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/jobs/status-counts"] });
       toast({
         title: "Import Successful",
-        description: `Successfully imported data from Housecall Pro.${data.newJobs ? ` Added ${data.newJobs} new jobs.` : ""}`,
+        description: `Successfully imported jobs from Housecall Pro.${data.newJobs ? ` Added ${data.newJobs} new jobs.` : ""}`,
       });
     } catch (error: unknown) {
       toast({
