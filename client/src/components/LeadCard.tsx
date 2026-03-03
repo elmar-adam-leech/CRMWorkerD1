@@ -46,12 +46,10 @@ export function LeadCard({ lead, onContact, onSchedule, onSendText, onSendEmail,
   const leadTags = lead.tags || [];
 
   const handleContact = (method: "phone" | "email") => {
-    console.log(`Contacting lead ${leadName} via ${method}`);
     onContact?.(lead.id, method);
   };
 
   const handleSchedule = () => {
-    console.log(`Scheduling lead ${leadName}`);
     onSchedule?.(lead.id);
   };
 

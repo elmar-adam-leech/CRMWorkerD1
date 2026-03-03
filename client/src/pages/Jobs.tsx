@@ -18,6 +18,7 @@ import { useWebSocketContext } from "@/contexts/WebSocketContext";
 import { useGlobalShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useHousecallProIntegration } from "@/hooks/useHousecallProIntegration";
 import { usePagePreferences } from "@/hooks/use-page-preferences";
+import { useAddModalFromUrl } from "@/hooks/use-add-modal-from-url";
 import { BulkActionToolbar } from "@/components/BulkActionToolbar";
 import { FilterPanel, type FilterState } from "@/components/FilterPanel";
 import { EmptyState } from "@/components/EmptyState";
@@ -68,14 +69,7 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
     }
   }, [syncStartDate]);
 
-  // Check URL parameters to auto-open add modal
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get("add") === "true") {
-      setAddModalOpen(true);
-      window.history.replaceState({}, "", window.location.pathname);
-    }
-  }, [location]);
+  useAddModalFromUrl(() => setAddModalOpen(true));
 
   // Fetch terminology settings
   const { data: terminology } = useQuery<TerminologySettings>({

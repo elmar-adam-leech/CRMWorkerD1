@@ -34,6 +34,7 @@ import { LeadDetailsModal } from "@/components/LeadDetailsModal";
 import { DeleteConfirmDialog } from "@/components/DeleteConfirmDialog";
 import { EditStatusModal } from "@/components/EditStatusModal";
 import { usePagePreferences } from "@/hooks/use-page-preferences";
+import { useAddModalFromUrl } from "@/hooks/use-add-modal-from-url";
 
 const LEAD_STATUSES = ["new", "contacted", "scheduled", "disqualified"] as const;
 
@@ -123,13 +124,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
     return () => unsubscribe();
   }, [subscribe, queryClient]);
 
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get("add") === "true") {
-      setAddContactModal(true);
-      window.history.replaceState({}, "", window.location.pathname);
-    }
-  }, [location]);
+  useAddModalFromUrl(() => setAddContactModal(true));
 
   const {
     data: leadsData,

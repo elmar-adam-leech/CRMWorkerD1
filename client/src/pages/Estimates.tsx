@@ -27,11 +27,13 @@ import { LoadMoreButton } from "@/components/LoadMoreButton";
 import { FilterPanel, type FilterState } from "@/components/FilterPanel";
 import { useBulkSelection } from "@/contexts/BulkSelectionContext";
 import { usePagePreferences } from "@/hooks/use-page-preferences";
+import { useAddModalFromUrl } from "@/hooks/use-add-modal-from-url";
 import { EmptyState } from "@/components/EmptyState";
 import { CreateEstimateModal } from "@/components/CreateEstimateModal";
 import { EditEstimateModal, type EditEstimateFormValues } from "@/components/EditEstimateModal";
 import { FollowUpDateModal } from "@/components/FollowUpDateModal";
 import { EstimateDetailsModal, type EstimateListItem } from "@/components/EstimateDetailsModal";
+import { type EstimateCardItem } from "@/components/EstimateCard";
 import { HCPImportModal } from "@/components/HCPImportModal";
 
 const ESTIMATE_FILTER_STATUSES = ["sent", "pending", "approved", "rejected"] as const;
@@ -89,7 +91,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
 
   const [followUpModal, setFollowUpModal] = useState<{
     isOpen: boolean;
-    estimate?: EstimateListItem;
+    estimate?: EstimateCardItem;
   }>({ isOpen: false });
 
   const [deleteConfirm, setDeleteConfirm] = useState<{
@@ -157,13 +159,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
     }
   });
 
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get("add") === "true") {
-      setAddModal(true);
-      window.history.replaceState({}, "", window.location.pathname);
-    }
-  }, [location]);
+  useAddModalFromUrl(() => setAddModal(true));
 
   useEffect(() => {
     const unsubscribe = subscribe((message: { type: string }) => {
@@ -314,13 +310,13 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
     }
   };
 
-  const handleSendTextByEntity = async (estimate: EstimateListItem) => {
+  const handleSendTextByEntity = async (estimate: EstimateCardItem) => {
     const contact = await fetchContact(estimate.contactId);
     if (!contact) return;
     handleSendText({ id: estimate.id, name: contact.name, emails: contact.emails, phones: contact.phones }, "estimate");
   };
 
-  const handleSendEmailByEntity = async (estimate: EstimateListItem) => {
+  const handleSendEmailByEntity = async (estimate: EstimateCardItem) => {
     const contact = await fetchContact(estimate.contactId);
     if (!contact) return;
     handleSendEmail(
@@ -385,7 +381,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
     },
   });
 
-  const handleSetFollowUp = (estimate: EstimateListItem) => {
+  const handleSetFollowUp = (estimate: EstimateCardItem) => {
     setFollowUpModal({ isOpen: true, estimate });
   };
 
@@ -394,6 +390,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
       return apiRequest("DELETE", `/api/estimates/${estimateId}`);
     },
     onSuccess: () => {
+      setDeleteConfirm({ isOpen: false });
       toast({
         title: "Estimate Deleted",
         description: "Estimate has been successfully deleted.",
@@ -672,7 +669,6 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
           if (deleteConfirm.estimateId) {
             deleteEstimateMutation.mutate(deleteConfirm.estimateId);
           }
-          setDeleteConfirm({ isOpen: false });
         }}
         confirmTestId="button-confirm-delete-estimate"
       />

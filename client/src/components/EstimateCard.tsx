@@ -25,30 +25,32 @@ import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { getInitials, formatCurrency } from "@/lib/utils";
 
+export type EstimateCardItem = {
+  id: string;
+  title: string;
+  contactId: string;
+  status: "draft" | "sent" | "pending" | "approved" | "rejected" | "cancelled";
+  value: number;
+  createdDate: string;
+  expiryDate: string;
+  description: string;
+  priority: "low" | "medium" | "high";
+  externalSource?: string;
+  externalId?: string;
+};
+
 type EstimateCardProps = {
-  estimate: {
-    id: string;
-    title: string;
-    contactId: string;
-    status: "draft" | "sent" | "pending" | "approved" | "rejected" | "cancelled";
-    value: number;
-    createdDate: string;
-    expiryDate: string;
-    description: string;
-    priority: "low" | "medium" | "high";
-    externalSource?: string;
-    externalId?: string;
-  };
+  estimate: EstimateCardItem;
   onSend?: (estimateId: string) => void;
   onViewDetails?: (estimateId: string) => void;
   onConvertToJob?: (estimateId: string) => void;
   onEdit?: (estimateId: string) => void;
   onContact?: (estimateId: string, method: "phone" | "email") => void;
-  onSendText?: (estimate: any) => void;
-  onSendEmail?: (estimate: any) => void;
-  onSetFollowUp?: (estimate: any) => void;
+  onSendText?: (estimate: EstimateCardItem) => void;
+  onSendEmail?: (estimate: EstimateCardItem) => void;
+  onSetFollowUp?: (estimate: EstimateCardItem) => void;
   onDelete?: (estimateId: string) => void;
-  onUpdateEstimate?: (estimateId: string, updates: Partial<any>) => Promise<void>;
+  onUpdateEstimate?: (estimateId: string, updates: Partial<EstimateCardItem>) => Promise<void>;
   selectable?: boolean;
 };
 
@@ -88,31 +90,25 @@ export function EstimateCard({ estimate, onSend, onViewDetails, onConvertToJob, 
   };
 
   const handleContact = (method: "phone" | "email") => {
-    console.log(`Contacting customer for estimate ${estimate.title} via ${method}`);
     onContact?.(estimate.id, method);
   };
   const handleSend = () => {
-    console.log(`Sending estimate ${estimate.title}`);
     onSend?.(estimate.id);
   };
 
   const handleViewDetails = () => {
-    console.log(`Viewing details for estimate ${estimate.title}`);
     onViewDetails?.(estimate.id);
   };
 
   const handleConvert = () => {
-    console.log(`Converting estimate ${estimate.title} to job`);
     onConvertToJob?.(estimate.id);
   };
 
   const handleEdit = () => {
-    console.log(`Editing estimate ${estimate.title}`);
     onEdit?.(estimate.id);
   };
 
   const handleDelete = () => {
-    console.log(`Deleting estimate ${estimate.title}`);
     onDelete?.(estimate.id);
   };
 
