@@ -496,7 +496,6 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => deleteConfirm.jobId && deleteJobMutation.mutate(deleteConfirm.jobId)}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               data-testid="button-confirm-delete-job"
             >
               Delete
