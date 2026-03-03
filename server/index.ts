@@ -1,4 +1,5 @@
 import express, { type Request, Response, NextFunction } from "express";
+import helmet from "helmet";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { providerService } from "./providers/provider-service";
@@ -6,6 +7,8 @@ import { syncScheduler } from "./sync-scheduler";
 import { messageCleanupService } from "./services/message-cleanup";
 
 const app = express();
+app.use(helmet({ contentSecurityPolicy: false }));
+app.set("trust proxy", 1);
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 

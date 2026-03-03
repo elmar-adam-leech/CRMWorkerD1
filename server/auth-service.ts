@@ -198,7 +198,7 @@ export class AuthService {
 
       if (!allowedRoles.includes(req.user.role)) {
         res.status(403).json({ 
-          message: `Access denied. Required roles: ${allowedRoles.join(', ')}` 
+          message: 'Access denied. Insufficient permissions.' 
         });
         return;
       }

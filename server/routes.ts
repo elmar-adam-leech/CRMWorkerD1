@@ -409,7 +409,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Reset password with token
-  app.post("/api/auth/reset-password", async (req: Request, res: Response) => {
+  app.post("/api/auth/reset-password", authForgotPasswordRateLimiter, async (req: Request, res: Response) => {
     try {
       const { token, newPassword } = req.body;
 
@@ -1252,9 +1252,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/contacts", async (req: AuthenticatedRequest, res: Response) => {
     try {
-      console.log("[CONTACT DEBUG] Received contact data:", JSON.stringify(req.body, null, 2));
       const contactData = insertContactSchema.omit({ contractorId: true }).parse(req.body);
-      console.log("[CONTACT DEBUG] Validated contact data:", JSON.stringify(contactData, null, 2));
       
       // Check for existing contact with overlapping phone numbers
       if (contactData.phones && contactData.phones.length > 0) {
@@ -1333,7 +1331,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(201).json(contact);
     } catch (error) {
       if (error instanceof z.ZodError) {
-        console.log("[CONTACT DEBUG] Validation errors:", JSON.stringify(error.errors, null, 2));
         const errorMessages = error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join('; ');
         res.status(400).json({ 
           message: `Invalid contact data: ${errorMessages}`, 
@@ -1342,7 +1339,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return;
       }
       
-      console.error("[CONTACT DEBUG] Server error:", error);
+      console.error("Failed to create contact:", error);
       res.status(500).json({ message: "Failed to create contact" });
     }
   });
@@ -5143,7 +5140,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           'content-type': req.headers['content-type'],
           'x-api-key': req.headers['x-api-key'] ? '[REDACTED]' : 'missing'
         },
-        body: JSON.stringify(req.body, null, 2)
       });
       
       // Verify contractor exists
@@ -5227,10 +5223,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Extract lead data - support both direct format and Zapier's nested format
       // Zapier sends: { data: { name, email, ... } }
       // Direct API sends: { name, email, ... }
-      
-      // Log the raw body to debug
-      console.log('[webhook] Raw req.body:', JSON.stringify(req.body, null, 2));
-      console.log('[webhook] req.body.data:', JSON.stringify(req.body.data, null, 2));
       
       // Handle different Zapier formats:
       // 1. { data: { name, email, ... } } - wrapped in data property
@@ -5656,7 +5648,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           'content-type': req.headers['content-type'],
           'x-api-key': req.headers['x-api-key'] ? '[REDACTED]' : 'missing'
         },
-        body: JSON.stringify(req.body, null, 2)
       });
       
       // Verify contractor exists
@@ -5932,7 +5923,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           'content-type': req.headers['content-type'],
           'x-api-key': req.headers['x-api-key'] ? '[REDACTED]' : 'missing'
         },
-        body: JSON.stringify(req.body, null, 2)
       });
       
       // Verify contractor exists
@@ -7272,7 +7262,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/webhooks/dialpad/sms/:tenantId", webhookRateLimiter, express.json(), async (req: Request, res: Response) => {
     try {
       const { tenantId } = req.params;
-      console.log(`[Dialpad Webhook] Received SMS webhook for tenant ${tenantId}:`, JSON.stringify(req.body, null, 2));
+      console.log(`[Dialpad Webhook] Received SMS webhook for tenant ${tenantId}`);
       
       const payload = req.body;
       
