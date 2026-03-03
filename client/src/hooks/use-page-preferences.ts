@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import { type FilterState } from "@/components/FilterPanel";
+// Re-export so callers don't need to import FilterPanel separately
+export type { FilterState };
 
 export type ViewMode = "cards" | "kanban";
 
@@ -110,7 +112,7 @@ export function usePagePreferences({
     // Convenience getters
     viewMode: preferences.viewMode || defaultViewMode,
     filterStatus: preferences.filterStatus || defaultFilterStatus,
-    advancedFilters: preferences.advancedFilters || {},
+    advancedFilters: (preferences.advancedFilters || {}) as FilterState,
     searchQuery: preferences.searchQuery || "",
     sortBy: preferences.sortBy || defaultSortBy,
     sortOrder: preferences.sortOrder || defaultSortOrder,

@@ -6,7 +6,6 @@ import { TextingModal } from "@/components/TextingModal";
 import { EmailComposerModal } from "@/components/EmailComposerModal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { DeleteConfirmDialog } from "@/components/DeleteConfirmDialog";
 import { PageHeader } from "@/components/ui/page-header-v2";
 import { PageLayout } from "@/components/ui/page-layout";
@@ -14,7 +13,7 @@ import { Plus, Search, Calendar, FileText, Download, Filter } from "lucide-react
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { formatStatusLabel } from "@/lib/utils";
+import { formatStatusLabel, cn } from "@/lib/utils";
 import { downloadCsv } from "@/lib/csv";
 import type { PaginatedEstimates, TerminologySettings, Contact, EstimateSummary } from "@shared/schema";
 import { useWebSocketContext } from "@/contexts/WebSocketContext";
@@ -26,6 +25,8 @@ import { BulkActionToolbar } from "@/components/BulkActionToolbar";
 import { StatusFilterBar } from "@/components/StatusFilterBar";
 import { LoadMoreButton } from "@/components/LoadMoreButton";
 import { FilterPanel, type FilterState } from "@/components/FilterPanel";
+import { useBulkSelection } from "@/contexts/BulkSelectionContext";
+import { usePagePreferences } from "@/hooks/use-page-preferences";
 import { EmptyState } from "@/components/EmptyState";
 import { CreateEstimateModal } from "@/components/CreateEstimateModal";
 import { EditEstimateModal, type EditEstimateFormValues } from "@/components/EditEstimateModal";
@@ -53,8 +54,10 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
     setSearchQuery(externalSearch);
   }, [externalSearch]);
 
-  const [filterStatus, setFilterStatus] = useState<"all" | (typeof ESTIMATE_FILTER_STATUSES)[number]>("all");
-  const [advancedFilters, setAdvancedFilters] = useState<FilterState>({});
+  const { filterStatus, setFilterStatus, advancedFilters, setAdvancedFilters } =
+    usePagePreferences({ pageKey: "estimates" });
+
+  const { isSelectionMode } = useBulkSelection();
 
   const {
     emailModal,
@@ -245,17 +248,16 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
         description: `Successfully imported estimates from Housecall Pro.${data.newEstimates ? ` Added ${data.newEstimates} new estimates.` : ""}`,
       });
     } catch (error: unknown) {
-      toast({
-        title: "Import Failed",
-        description: error instanceof Error ? error.message : "Failed to import estimates from Housecall Pro",
-        variant: "destructive",
-      });
-    } finally {
       if (dateChanged) {
         await apiRequest("POST", "/api/housecall-pro/sync-start-date", {
           syncStartDate: syncStartDate,
         }).catch(() => {});
       }
+      toast({
+        title: "Import Failed",
+        description: error instanceof Error ? error.message : "Failed to import estimates from Housecall Pro",
+        variant: "destructive",
+      });
     }
   };
 
@@ -429,19 +431,35 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
   };
 
   const handleBulkDelete = async (ids: string[]) => {
-    await Promise.all(ids.map((id) => apiRequest("DELETE", `/api/estimates/${id}`)));
-    queryClient.invalidateQueries({ queryKey: ["/api/estimates/paginated"] });
-    queryClient.invalidateQueries({ queryKey: ["/api/estimates/status-counts"] });
-    queryClient.invalidateQueries({ queryKey: ["/api/estimates"] });
-    toast({ title: `Deleted ${ids.length} estimate(s)` });
+    try {
+      await Promise.all(ids.map((id) => apiRequest("DELETE", `/api/estimates/${id}`)));
+      queryClient.invalidateQueries({ queryKey: ["/api/estimates/paginated"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/estimates/status-counts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/estimates"] });
+      toast({ title: `Deleted ${ids.length} estimate(s)` });
+    } catch (error) {
+      toast({
+        title: "Bulk delete failed",
+        description: error instanceof Error ? error.message : "Some estimates could not be deleted.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleBulkStatusChange = async (ids: string[], status: string) => {
-    await Promise.all(ids.map((id) => apiRequest("PATCH", `/api/estimates/${id}/status`, { status })));
-    queryClient.invalidateQueries({ queryKey: ["/api/estimates/paginated"] });
-    queryClient.invalidateQueries({ queryKey: ["/api/estimates/status-counts"] });
-    queryClient.invalidateQueries({ queryKey: ["/api/estimates"] });
-    toast({ title: `Updated ${ids.length} estimate(s) to ${status}` });
+    try {
+      await Promise.all(ids.map((id) => apiRequest("PATCH", `/api/estimates/${id}/status`, { status })));
+      queryClient.invalidateQueries({ queryKey: ["/api/estimates/paginated"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/estimates/status-counts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/estimates"] });
+      toast({ title: `Updated ${ids.length} estimate(s) to ${status}` });
+    } catch (error) {
+      toast({
+        title: "Bulk status update failed",
+        description: error instanceof Error ? error.message : "Some estimates could not be updated.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleBulkExport = async (ids: string[]) => {
@@ -455,7 +473,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
   };
 
   return (
-    <PageLayout>
+    <PageLayout className={cn(isSelectionMode && "pb-20")}>
       <PageHeader
         title={terminology?.estimatesLabel || "Estimates"}
         description="Create and manage estimates for potential jobs"

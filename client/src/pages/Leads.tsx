@@ -143,9 +143,9 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
       type: "lead",
       status: filterStatus,
       search: searchQuery,
-      assignedTo: (advancedFilters as FilterState).assignedTo,
-      dateFrom: (advancedFilters as FilterState).dateFrom?.toISOString(),
-      dateTo: (advancedFilters as FilterState).dateTo?.toISOString(),
+      assignedTo: advancedFilters.assignedTo,
+      dateFrom: advancedFilters.dateFrom?.toISOString(),
+      dateTo: advancedFilters.dateTo?.toISOString(),
     }],
     queryFn: async ({ pageParam }) => {
       const url = new URL("/api/contacts/paginated", window.location.origin);
@@ -153,10 +153,9 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
       if (pageParam) url.searchParams.set("cursor", pageParam as string);
       if (filterStatus !== "all") url.searchParams.set("status", filterStatus);
       if (searchQuery) url.searchParams.set("search", searchQuery);
-      const filters = advancedFilters as FilterState;
-      if (filters.assignedTo) url.searchParams.set("assignedTo", filters.assignedTo);
-      if (filters.dateFrom) url.searchParams.set("dateFrom", filters.dateFrom.toISOString());
-      if (filters.dateTo) url.searchParams.set("dateTo", filters.dateTo.toISOString());
+      if (advancedFilters.assignedTo) url.searchParams.set("assignedTo", advancedFilters.assignedTo);
+      if (advancedFilters.dateFrom) url.searchParams.set("dateFrom", advancedFilters.dateFrom.toISOString());
+      if (advancedFilters.dateTo) url.searchParams.set("dateTo", advancedFilters.dateTo.toISOString());
       url.searchParams.set("limit", "50");
       return (await apiRequest("GET", url.toString())).json();
     },
@@ -386,7 +385,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
         />
 
         <FilterPanel
-          filters={advancedFilters as FilterState}
+          filters={advancedFilters}
           onFiltersChange={setAdvancedFilters}
           statusOptions={LEAD_STATUSES.map((s) => ({ value: s, label: formatStatusLabel(s) }))}
           userOptions={usersData?.map((u) => ({ value: u.id, label: u.fullName })) || []}
