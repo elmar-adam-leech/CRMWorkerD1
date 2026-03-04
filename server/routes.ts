@@ -15,9 +15,9 @@ import { registerWorkflowRoutes } from './routes/workflows';
 import { registerAiRoutes } from './routes/ai';
 import { registerSettingsRoutes } from './routes/settings';
 import { registerIntegrationRoutes } from './routes/integrations';
-import { registerDialpadRoutes } from './routes/dialpad';
-import { registerHousecallProRoutes } from './routes/housecall-pro';
-import { registerGoogleSheetsRoutes } from './routes/google-sheets';
+import { registerDialpadRoutes } from './routes/integrations/dialpad';
+import { registerHousecallProRoutes } from './routes/integrations/housecall-pro';
+import { registerGoogleSheetsRoutes } from './routes/integrations/google-sheets';
 import { registerWebhookRoutes } from './routes/webhooks';
 import { registerPublicRoutes } from './routes/public';
 

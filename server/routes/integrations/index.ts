@@ -1,9 +1,9 @@
 import type { Express, Response } from "express";
-import { storage } from "../storage";
-import { dialpadEnhancedService } from "../dialpad-enhanced-service";
-import { providerService, INTEGRATION_NAMES } from "../providers/provider-service";
-import { requireManagerOrAdmin, type AuthenticatedRequest } from "../auth-service";
-import { CredentialService } from "../credential-service";
+import { storage } from "../../storage";
+import { dialpadEnhancedService } from "../../dialpad-enhanced-service";
+import { providerService, INTEGRATION_NAMES } from "../../providers/provider-service";
+import { requireManagerOrAdmin, type AuthenticatedRequest } from "../../auth-service";
+import { CredentialService } from "../../credential-service";
 import crypto from "crypto";
 
 export function registerIntegrationRoutes(app: Express): void {
@@ -84,7 +84,7 @@ export function registerIntegrationRoutes(app: Express): void {
       
       if (integrationName === 'housecall-pro') {
         try {
-          const { syncScheduler } = await import('../sync-scheduler');
+          const { syncScheduler } = await import('../../sync-scheduler');
           await syncScheduler.onIntegrationEnabled(req.user!.contractorId, 'housecall-pro');
         } catch (error) {
           console.error('Failed to schedule sync for Housecall Pro integration:', error);
@@ -153,7 +153,7 @@ export function registerIntegrationRoutes(app: Express): void {
       
       if (integrationName === 'housecall-pro') {
         try {
-          const { syncScheduler } = await import('../sync-scheduler');
+          const { syncScheduler } = await import('../../sync-scheduler');
           await syncScheduler.onIntegrationDisabled(req.user!.contractorId, 'housecall-pro');
         } catch (error) {
           console.error('Failed to cancel scheduled sync for Housecall Pro integration:', error);

@@ -1,12 +1,12 @@
 import type { Express, Response } from "express";
-import { storage } from "../storage";
+import { storage } from "../../storage";
 import { userContractors } from "@shared/schema";
-import { db } from "../db";
+import { db } from "../../db";
 import { eq, and } from "drizzle-orm";
-import { housecallProService } from "../housecall-pro-service";
-import { requireAuth, requireManagerOrAdmin, requireAdmin, type AuthenticatedRequest } from "../auth-service";
-import { CredentialService } from "../credential-service";
-import { syncStatus } from "../sync-status-store";
+import { housecallProService } from "../../housecall-pro-service";
+import { requireAuth, requireManagerOrAdmin, requireAdmin, type AuthenticatedRequest } from "../../auth-service";
+import { CredentialService } from "../../credential-service";
+import { syncStatus } from "../../sync-status-store";
 import crypto from "crypto";
 
 export function registerHousecallProRoutes(app: Express): void {
@@ -411,7 +411,7 @@ export function registerHousecallProRoutes(app: Express): void {
         const jobsBefore = await storage.getJobs(contractorId);
         const jobsCountBefore = jobsBefore.length;
 
-        const { syncScheduler } = await import('../sync-scheduler');
+        const { syncScheduler } = await import('../../sync-scheduler');
         await syncScheduler.syncHousecallProJobs(contractorId);
 
         const jobsAfter = await storage.getJobs(contractorId);
@@ -507,7 +507,7 @@ export function registerHousecallProRoutes(app: Express): void {
 
   app.post("/api/scheduling/sync-users", requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { housecallSchedulingService } = await import('../housecall-scheduling-service');
+      const { housecallSchedulingService } = await import('../../housecall-scheduling-service');
       const result = await housecallSchedulingService.syncHousecallUsers(req.user!.contractorId);
       res.json(result);
     } catch (error: any) {
@@ -518,7 +518,7 @@ export function registerHousecallProRoutes(app: Express): void {
 
   app.get("/api/scheduling/salespeople", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const { housecallSchedulingService } = await import('../housecall-scheduling-service');
+      const { housecallSchedulingService } = await import('../../housecall-scheduling-service');
       const teamMembers = await housecallSchedulingService.getTeamMembers(req.user!.contractorId);
       res.json(teamMembers);
     } catch (error: any) {
@@ -544,7 +544,7 @@ export function registerHousecallProRoutes(app: Express): void {
         end.setDate(end.getDate() + daysToFetch);
       }
       
-      const { housecallSchedulingService } = await import('../housecall-scheduling-service');
+      const { housecallSchedulingService } = await import('../../housecall-scheduling-service');
       
       const contractor = await storage.getContractor(req.user!.contractorId);
       const timezone = (contractor as any)?.timezone || 'America/New_York';
@@ -577,7 +577,7 @@ export function registerHousecallProRoutes(app: Express): void {
         return;
       }
       
-      const { housecallSchedulingService } = await import('../housecall-scheduling-service');
+      const { housecallSchedulingService } = await import('../../housecall-scheduling-service');
       const result = await housecallSchedulingService.bookAppointment(req.user!.contractorId, {
         startTime: new Date(startTime),
         title,
@@ -607,7 +607,7 @@ export function registerHousecallProRoutes(app: Express): void {
     try {
       const { startDate, endDate } = req.query;
       
-      const { housecallSchedulingService } = await import('../housecall-scheduling-service');
+      const { housecallSchedulingService } = await import('../../housecall-scheduling-service');
       const bookings = await housecallSchedulingService.getBookings(
         req.user!.contractorId,
         startDate ? new Date(startDate as string) : undefined,

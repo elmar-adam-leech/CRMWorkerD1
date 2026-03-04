@@ -1,9 +1,9 @@
 import type { Express, Response } from "express";
-import { storage } from "../storage";
+import { storage } from "../../storage";
 import { insertContactSchema } from "@shared/schema";
-import { requireAuth, type AuthenticatedRequest } from "../auth-service";
-import { CredentialService } from "../credential-service";
-import { GoogleSheetsService, suggestColumnMappings, type ColumnMapping, type LeadRowData } from "../google-sheets-service";
+import { requireAuth, type AuthenticatedRequest } from "../../auth-service";
+import { CredentialService } from "../../credential-service";
+import { GoogleSheetsService, suggestColumnMappings, type ColumnMapping, type LeadRowData } from "../../google-sheets-service";
 import { z } from "zod";
 
 export function registerGoogleSheetsRoutes(app: Express): void {

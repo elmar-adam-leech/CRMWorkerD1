@@ -1,11 +1,11 @@
 import type { Express, Response } from "express";
-import { storage } from "../storage";
+import { storage } from "../../storage";
 import { users, contractors } from "@shared/schema";
-import { db } from "../db";
+import { db } from "../../db";
 import { eq, and } from "drizzle-orm";
-import { dialpadEnhancedService } from "../dialpad-enhanced-service";
-import { requireAuth, requireManagerOrAdmin, type AuthenticatedRequest } from "../auth-service";
-import { syncStatus } from "../sync-status-store";
+import { dialpadEnhancedService } from "../../dialpad-enhanced-service";
+import { requireAuth, requireManagerOrAdmin, type AuthenticatedRequest } from "../../auth-service";
+import { syncStatus } from "../../sync-status-store";
 
 export function registerDialpadRoutes(app: Express): void {
   // Dialpad phone number management routes
