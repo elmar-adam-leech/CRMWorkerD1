@@ -10,7 +10,7 @@ interface CreateEstimateModalProps {
 export function CreateEstimateModal({ isOpen, onClose }: CreateEstimateModalProps) {
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[600px]" data-testid="modal-add-estimate">
+      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto" data-testid="modal-add-estimate">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Plus className="h-5 w-5" />
