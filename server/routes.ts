@@ -15,6 +15,9 @@ import { registerWorkflowRoutes } from './routes/workflows';
 import { registerAiRoutes } from './routes/ai';
 import { registerSettingsRoutes } from './routes/settings';
 import { registerIntegrationRoutes } from './routes/integrations';
+import { registerDialpadRoutes } from './routes/dialpad';
+import { registerHousecallProRoutes } from './routes/housecall-pro';
+import { registerGoogleSheetsRoutes } from './routes/google-sheets';
 import { registerWebhookRoutes } from './routes/webhooks';
 import { registerPublicRoutes } from './routes/public';
 
@@ -67,6 +70,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerAiRoutes(app);
   registerSettingsRoutes(app);
   registerIntegrationRoutes(app);
+  registerDialpadRoutes(app);
+  registerHousecallProRoutes(app);
+  registerGoogleSheetsRoutes(app);
   registerWebhookRoutes(app);
   registerPublicRoutes(app);
 
