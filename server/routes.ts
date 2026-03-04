@@ -1323,7 +1323,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Trigger workflows for contact creation (if contact is a lead)
       if (contact.type === 'lead') {
-        workflowEngine.triggerWorkflowsForEvent('contact_created', contact, req.user!.contractorId).catch(error => {
+        workflowEngine.triggerWorkflowsForEvent('contact_created', contact as unknown as Record<string, unknown>, req.user!.contractorId).catch(error => {
           console.error('[Workflow] Error triggering workflows for contact creation:', error);
         });
       }
@@ -1381,7 +1381,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Trigger workflows for contact update (if contact is a lead)
       if (contact.type === 'lead') {
-        workflowEngine.triggerWorkflowsForEvent('contact_updated', contact, req.user!.contractorId).catch(error => {
+        workflowEngine.triggerWorkflowsForEvent('contact_updated', contact as unknown as Record<string, unknown>, req.user!.contractorId).catch(error => {
           console.error('[Workflow] Error triggering workflows for contact update:', error);
         });
       }
@@ -1425,7 +1425,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Trigger workflows for contact update (if contact is a lead)
       if (contact.type === 'lead') {
-        workflowEngine.triggerWorkflowsForEvent('contact_updated', contact, req.user!.contractorId).catch(error => {
+        workflowEngine.triggerWorkflowsForEvent('contact_updated', contact as unknown as Record<string, unknown>, req.user!.contractorId).catch(error => {
           console.error('[Workflow] Error triggering workflows for contact update:', error);
         });
       }
@@ -1506,6 +1506,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         type: 'contact_updated',
         contactId: contact.id,
         contactType: contact.type
+      });
+
+      // Trigger status_changed workflows in addition to the general updated workflows
+      workflowEngine.triggerWorkflowsForEvent('contact_status_changed', { ...contact } as Record<string, unknown>, req.user!.contractorId).catch(error => {
+        console.error('[Workflow] Error triggering workflows for contact status change:', error);
       });
       
       res.json(contact);
@@ -1695,7 +1700,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Trigger workflows for job creation
-      workflowEngine.triggerWorkflowsForEvent('job_created', job, req.user!.contractorId).catch(error => {
+      workflowEngine.triggerWorkflowsForEvent('job_created', job as unknown as Record<string, unknown>, req.user!.contractorId).catch(error => {
         console.error('[Workflow] Error triggering workflows for job creation:', error);
       });
       
@@ -1744,9 +1749,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Trigger workflows for job update
-      workflowEngine.triggerWorkflowsForEvent('job_updated', job, req.user!.contractorId).catch(error => {
+      workflowEngine.triggerWorkflowsForEvent('job_updated', job as unknown as Record<string, unknown>, req.user!.contractorId).catch(error => {
         console.error('[Workflow] Error triggering workflows for job update:', error);
       });
+
+      // Also trigger status_changed workflows when status is being updated
+      if (updateData.status) {
+        workflowEngine.triggerWorkflowsForEvent('job_status_changed', job as unknown as Record<string, unknown>, req.user!.contractorId).catch(error => {
+          console.error('[Workflow] Error triggering workflows for job status change:', error);
+        });
+      }
       
       res.json(job);
     } catch (error) {
@@ -1854,7 +1866,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Trigger workflows for estimate creation
-      workflowEngine.triggerWorkflowsForEvent('estimate_created', estimate, req.user!.contractorId).catch(error => {
+      workflowEngine.triggerWorkflowsForEvent('estimate_created', estimate as unknown as Record<string, unknown>, req.user!.contractorId).catch(error => {
         console.error('[Workflow] Error triggering workflows for estimate creation:', error);
       });
       
@@ -1903,9 +1915,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Trigger workflows for estimate update
-      workflowEngine.triggerWorkflowsForEvent('estimate_updated', estimate, req.user!.contractorId).catch(error => {
+      workflowEngine.triggerWorkflowsForEvent('estimate_updated', estimate as unknown as Record<string, unknown>, req.user!.contractorId).catch(error => {
         console.error('[Workflow] Error triggering workflows for estimate update:', error);
       });
+
+      // Also trigger status_changed workflows when status is being updated
+      if (updateData.status) {
+        workflowEngine.triggerWorkflowsForEvent('estimate_status_changed', estimate as unknown as Record<string, unknown>, req.user!.contractorId).catch(error => {
+          console.error('[Workflow] Error triggering workflows for estimate status change:', error);
+        });
+      }
       
       res.json(estimate);
     } catch (error) {

@@ -62,6 +62,91 @@ function StatusOptions({ entityType }: { entityType?: string }) {
   return null;
 }
 
+// ─── Reusable field components ───────────────────────────────────────────────
+
+type VariableInputFieldProps = {
+  label: string;
+  fieldName: string;
+  inputRef: React.RefObject<HTMLInputElement>;
+  entityType: "lead" | "estimate" | "job" | "customer";
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onVariableSelect: (variable: string) => void;
+  placeholder?: string;
+  testId?: string;
+};
+
+function VariableInputField({ label, fieldName, inputRef, entityType, value, onChange, onVariableSelect, placeholder, testId }: VariableInputFieldProps) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <Label htmlFor={fieldName}>{label}</Label>
+        <VariablePicker entityType={entityType} onSelect={onVariableSelect} />
+      </div>
+      <Input ref={inputRef} id={fieldName} value={value} onChange={onChange} placeholder={placeholder} data-testid={testId} />
+    </div>
+  );
+}
+
+type VariableTextareaFieldProps = {
+  label: string;
+  fieldName: string;
+  textareaRef: React.RefObject<HTMLTextAreaElement>;
+  entityType: "lead" | "estimate" | "job" | "customer";
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
+  onVariableSelect: (variable: string) => void;
+  placeholder?: string;
+  testId?: string;
+  rows?: number;
+};
+
+function VariableTextareaField({ label, fieldName, textareaRef, entityType, value, onChange, onVariableSelect, placeholder, testId, rows = 3 }: VariableTextareaFieldProps) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <Label htmlFor={fieldName}>{label}</Label>
+        <VariablePicker entityType={entityType} onSelect={onVariableSelect} />
+      </div>
+      <Textarea ref={textareaRef} id={fieldName} value={value} onChange={onChange} placeholder={placeholder} rows={rows} data-testid={testId} />
+    </div>
+  );
+}
+
+type AfterSendingSectionProps = {
+  entityType: string | undefined;
+  updateStatus: string | undefined;
+  onStatusChange: (value: string) => void;
+  testId: string;
+};
+
+function AfterSendingSection({ entityType, updateStatus, onStatusChange, testId }: AfterSendingSectionProps) {
+  return (
+    <div className="space-y-3 pt-3 border-t">
+      <div className="text-sm font-medium">After Sending (Optional)</div>
+      {entityType ? (
+        <div className="space-y-2">
+          <Label htmlFor={`${testId}-status`}>Update Status</Label>
+          <Select value={updateStatus || undefined} onValueChange={onStatusChange}>
+            <SelectTrigger id={`${testId}-status`} data-testid={testId}>
+              <SelectValue placeholder="No change" />
+            </SelectTrigger>
+            <SelectContent>
+              <StatusOptions entityType={entityType} />
+            </SelectContent>
+          </Select>
+        </div>
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          Configure the trigger's entity type to enable status updates
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }: NodeEditDialogProps) {
   const [formData, setFormData] = useState<Record<string, unknown>>({});
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -203,6 +288,7 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
 
   const renderFields = () => {
     const nodeType = node.type;
+    const entityType = (formData.entityType as "lead" | "estimate" | "job" | "customer") || "lead";
 
     switch (nodeType) {
       case 'trigger':
@@ -406,59 +492,41 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
       case 'sendEmail':
         return (
           <>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="to">To (Email)</Label>
-                <VariablePicker
-                  entityType={(formData.entityType as "lead" | "estimate" | "job" | "customer") || "lead"}
-                  onSelect={(v) => handleVariableInsert('to', v, emailToRef)}
-                />
-              </div>
-              <Input
-                ref={emailToRef}
-                id="to"
-                value={String(formData.to || '')}
-                onChange={(e) => handleChange('to', e.target.value)}
-                placeholder="email@example.com or {{lead.emails}}"
-                data-testid="input-email-to"
-              />
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="subject">Subject</Label>
-                <VariablePicker
-                  entityType={(formData.entityType as "lead" | "estimate" | "job" | "customer") || "lead"}
-                  onSelect={(v) => handleVariableInsert('subject', v, subjectRef)}
-                />
-              </div>
-              <Input
-                ref={subjectRef}
-                id="subject"
-                value={String(formData.subject || '')}
-                onChange={(e) => handleChange('subject', e.target.value)}
-                placeholder="Email subject (use Insert Variable button)"
-                data-testid="input-email-subject"
-              />
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="body">Body</Label>
-                <VariablePicker
-                  entityType={(formData.entityType as "lead" | "estimate" | "job" | "customer") || "lead"}
-                  onSelect={(v) => handleVariableInsert('body', v, bodyRef)}
-                />
-              </div>
-              <Textarea
-                ref={bodyRef}
-                id="body"
-                value={String(formData.body || '')}
-                onChange={(e) => handleChange('body', e.target.value)}
-                placeholder="Email body content (use Insert Variable button)"
-                rows={4}
-                data-testid="input-email-body"
-              />
-            </div>
-            
+            <VariableInputField
+              label="To (Email)"
+              fieldName="to"
+              inputRef={emailToRef}
+              entityType={entityType}
+              value={String(formData.to || '')}
+              onChange={(e) => handleChange('to', e.target.value)}
+              onVariableSelect={(v) => handleVariableInsert('to', v, emailToRef)}
+              placeholder="email@example.com or {{lead.emails}}"
+              testId="input-email-to"
+            />
+            <VariableInputField
+              label="Subject"
+              fieldName="subject"
+              inputRef={subjectRef}
+              entityType={entityType}
+              value={String(formData.subject || '')}
+              onChange={(e) => handleChange('subject', e.target.value)}
+              onVariableSelect={(v) => handleVariableInsert('subject', v, subjectRef)}
+              placeholder="Email subject (use Insert Variable button)"
+              testId="input-email-subject"
+            />
+            <VariableTextareaField
+              label="Body"
+              fieldName="body"
+              textareaRef={bodyRef}
+              entityType={entityType}
+              value={String(formData.body || '')}
+              onChange={(e) => handleChange('body', e.target.value)}
+              onVariableSelect={(v) => handleVariableInsert('body', v, bodyRef)}
+              placeholder="Email body content (use Insert Variable button)"
+              rows={4}
+              testId="input-email-body"
+            />
+
             {/* Admin-only: Override sender email */}
             {isAdmin && (
               <div className="space-y-3 pt-3 border-t">
@@ -488,72 +556,42 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
               </div>
             )}
 
-            {/* Optional entity update after sending email */}
-            <div className="space-y-3 pt-3 border-t">
-              <div className="text-sm font-medium">After Sending (Optional)</div>
-              {formData.entityType ? (
-                <div className="space-y-2">
-                  <Label htmlFor="updateStatus">Update Status</Label>
-                  <Select
-                    value={(formData.updateStatus as string | undefined) || undefined}
-                    onValueChange={(value) => handleChange('updateStatus', value)}
-                  >
-                    <SelectTrigger id="updateStatus" data-testid="select-email-update-status">
-                      <SelectValue placeholder="No change" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <StatusOptions entityType={String(formData.entityType)} />
-                    </SelectContent>
-                  </Select>
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  Configure the trigger's entity type to enable status updates
-                </p>
-              )}
-            </div>
+            <AfterSendingSection
+              entityType={formData.entityType ? String(formData.entityType) : undefined}
+              updateStatus={formData.updateStatus as string | undefined}
+              onStatusChange={(value) => handleChange('updateStatus', value)}
+              testId="select-email-update-status"
+            />
           </>
         );
 
       case 'sendSMS':
         return (
           <>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="to">To (Phone Number)</Label>
-                <VariablePicker
-                  entityType={(formData.entityType as "lead" | "estimate" | "job" | "customer") || "lead"}
-                  onSelect={(v) => handleVariableInsert('to', v, smsToRef)}
-                />
-              </div>
-              <Input
-                ref={smsToRef}
-                id="to"
-                value={String(formData.to || '')}
-                onChange={(e) => handleChange('to', e.target.value)}
-                placeholder="(555) 123-4567 or {{lead.phones}}"
-                data-testid="input-sms-to"
-              />
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="message">Message</Label>
-                <VariablePicker
-                  entityType={(formData.entityType as "lead" | "estimate" | "job" | "customer") || "lead"}
-                  onSelect={(v) => handleVariableInsert('message', v, messageRef)}
-                />
-              </div>
-              <Textarea
-                ref={messageRef}
-                id="message"
-                value={String(formData.message || '')}
-                onChange={(e) => handleChange('message', e.target.value)}
-                placeholder="SMS message content (use Insert Variable button)"
-                rows={3}
-                data-testid="input-sms-message"
-              />
-            </div>
-            
+            <VariableInputField
+              label="To (Phone Number)"
+              fieldName="to"
+              inputRef={smsToRef}
+              entityType={entityType}
+              value={String(formData.to || '')}
+              onChange={(e) => handleChange('to', e.target.value)}
+              onVariableSelect={(v) => handleVariableInsert('to', v, smsToRef)}
+              placeholder="(555) 123-4567 or {{lead.phones}}"
+              testId="input-sms-to"
+            />
+            <VariableTextareaField
+              label="Message"
+              fieldName="message"
+              textareaRef={messageRef}
+              entityType={entityType}
+              value={String(formData.message || '')}
+              onChange={(e) => handleChange('message', e.target.value)}
+              onVariableSelect={(v) => handleVariableInsert('message', v, messageRef)}
+              placeholder="SMS message content (use Insert Variable button)"
+              rows={3}
+              testId="input-sms-message"
+            />
+
             {/* Admin-only: Override sender phone number */}
             {isAdmin && (
               <div className="space-y-3 pt-3 border-t">
@@ -583,72 +621,107 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
               </div>
             )}
 
-            {/* Optional entity update after sending SMS */}
-            <div className="space-y-3 pt-3 border-t">
-              <div className="text-sm font-medium">After Sending (Optional)</div>
-              {formData.entityType ? (
-                <div className="space-y-2">
-                  <Label htmlFor="updateStatus">Update Status</Label>
-                  <Select
-                    value={(formData.updateStatus as string | undefined) || undefined}
-                    onValueChange={(value) => handleChange('updateStatus', value)}
-                  >
-                    <SelectTrigger id="updateStatus" data-testid="select-sms-update-status">
-                      <SelectValue placeholder="No change" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <StatusOptions entityType={String(formData.entityType)} />
-                    </SelectContent>
-                  </Select>
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  Configure the trigger's entity type to enable status updates
-                </p>
-              )}
-            </div>
+            <AfterSendingSection
+              entityType={formData.entityType ? String(formData.entityType) : undefined}
+              updateStatus={formData.updateStatus as string | undefined}
+              onStatusChange={(value) => handleChange('updateStatus', value)}
+              testId="select-sms-update-status"
+            />
           </>
         );
 
       case 'notification':
         return (
           <>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="title">Notification Title</Label>
-                <VariablePicker
-                  entityType={(formData.entityType as "lead" | "estimate" | "job" | "customer") || "lead"}
-                  onSelect={(v) => handleVariableInsert('title', v, notificationTitleRef)}
-                />
-              </div>
-              <Input
-                ref={notificationTitleRef}
-                id="title"
-                value={String(formData.title || '')}
-                onChange={(e) => handleChange('title', e.target.value)}
-                placeholder="Important update"
-                data-testid="input-notification-title"
-              />
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="message">Message</Label>
-                <VariablePicker
-                  entityType={(formData.entityType as "lead" | "estimate" | "job" | "customer") || "lead"}
-                  onSelect={(v) => handleVariableInsert('message', v, notificationMessageRef)}
-                />
-              </div>
-              <Textarea
-                ref={notificationMessageRef}
-                id="message"
-                value={String(formData.message || '')}
-                onChange={(e) => handleChange('message', e.target.value)}
-                placeholder="Notification message"
-                rows={3}
-                data-testid="input-notification-message"
-              />
-            </div>
+            <VariableInputField
+              label="Notification Title"
+              fieldName="title"
+              inputRef={notificationTitleRef}
+              entityType={entityType}
+              value={String(formData.title || '')}
+              onChange={(e) => handleChange('title', e.target.value)}
+              onVariableSelect={(v) => handleVariableInsert('title', v, notificationTitleRef)}
+              placeholder="Important update"
+              testId="input-notification-title"
+            />
+            <VariableTextareaField
+              label="Message"
+              fieldName="message"
+              textareaRef={notificationMessageRef}
+              entityType={entityType}
+              value={String(formData.message || '')}
+              onChange={(e) => handleChange('message', e.target.value)}
+              onVariableSelect={(v) => handleVariableInsert('message', v, notificationMessageRef)}
+              placeholder="Notification message"
+              rows={3}
+              testId="input-notification-message"
+            />
           </>
+        );
+
+      case 'updateEntity':
+        return (
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="entityType">Entity Type</Label>
+              <Select
+                value={String(formData.entityType || 'lead')}
+                onValueChange={(value) => handleChange('entityType', value)}
+              >
+                <SelectTrigger id="entityType" data-testid="select-update-entity-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="lead">{terminology?.leadLabel || 'Lead'}</SelectItem>
+                  <SelectItem value="estimate">{terminology?.estimateLabel || 'Estimate'}</SelectItem>
+                  <SelectItem value="job">{terminology?.jobLabel || 'Job'}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="updateField">Field to Update</Label>
+              <Input
+                id="updateField"
+                value={String(formData.updateField || '')}
+                onChange={(e) => {
+                  const newField = e.target.value;
+                  setFormData(prev => ({
+                    ...prev,
+                    updateField: newField,
+                    updates: { [newField]: prev.updateValue || '' },
+                  }));
+                }}
+                placeholder="e.g. status, priority, notes"
+                data-testid="input-update-entity-field"
+              />
+              <p className="text-xs text-muted-foreground">The field name on the entity to change</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="updateValue">New Value</Label>
+              <Input
+                id="updateValue"
+                value={String(formData.updateValue || '')}
+                onChange={(e) => {
+                  const newValue = e.target.value;
+                  setFormData(prev => ({
+                    ...prev,
+                    updateValue: newValue,
+                    updates: { [String(prev.updateField || '')]: newValue },
+                  }));
+                }}
+                placeholder="e.g. contacted, high, Follow-up sent"
+                data-testid="input-update-entity-value"
+              />
+            </div>
+            {Boolean(formData.updateField) && Boolean(formData.updateValue) && (
+              <div className="p-3 bg-muted rounded-md">
+                <p className="text-sm font-medium mb-1">Preview:</p>
+                <code className="text-sm">
+                  Set {String(formData.entityType || 'lead')}.{String(formData.updateField)} = "{String(formData.updateValue)}"
+                </code>
+              </div>
+            )}
+          </div>
         );
 
 
@@ -685,21 +758,17 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
       case 'aiGenerate':
         return (
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="prompt">AI Prompt</Label>
-              <VariablePicker
-                entityType={(formData.entityType as "lead" | "estimate" | "job" | "customer") || "lead"}
-                onSelect={(v) => handleVariableInsert('prompt', v, aiPromptRef)}
-              />
-            </div>
-            <Textarea
-              ref={aiPromptRef}
-              id="prompt"
+            <VariableTextareaField
+              label="AI Prompt"
+              fieldName="prompt"
+              textareaRef={aiPromptRef}
+              entityType={entityType}
               value={String(formData.prompt || '')}
               onChange={(e) => handleChange('prompt', e.target.value)}
+              onVariableSelect={(v) => handleVariableInsert('prompt', v, aiPromptRef)}
               placeholder="Generate a personalized welcome email for {{lead.name}}"
               rows={4}
-              data-testid="input-ai-prompt"
+              testId="input-ai-prompt"
             />
             <p className="text-xs text-muted-foreground">
               Use variables to personalize AI-generated content

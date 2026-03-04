@@ -199,11 +199,19 @@ export function AIAnalyzeNode({ data }: NodeProps) {
 }
 
 export function ConditionalNode({ data }: NodeProps) {
+  const conditionSummary = data.conditionField && data.conditionOperator
+    ? `${data.conditionField} ${data.conditionOperator}${
+        data.conditionOperator !== 'is_empty' && data.conditionOperator !== 'is_not_empty'
+          ? ` ${data.conditionValue ?? '?'}`
+          : ''
+      }`
+    : 'Configure condition';
+
   return (
     <BaseNode
       icon={<GitBranch className="h-4 w-4" />}
       title="If/Else Condition"
-      preview={<>{data.condition || 'Configure condition'}</>}
+      preview={<>{conditionSummary}</>}
       style={nodeStyles.condition}
       handles="conditional"
     />

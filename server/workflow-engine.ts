@@ -1007,19 +1007,22 @@ export class WorkflowEngine {
    * Trigger workflows based on entity events (contact_created, contact_updated, etc.)
    */
   async triggerWorkflowsForEvent(
-    eventType: 'contact_created' | 'contact_updated' | 'estimate_created' | 'estimate_updated' | 'job_created' | 'job_updated',
-    entityData: any,
+    eventType: 'contact_created' | 'contact_updated' | 'contact_status_changed' | 'estimate_created' | 'estimate_updated' | 'estimate_status_changed' | 'job_created' | 'job_updated' | 'job_status_changed',
+    entityData: Record<string, unknown>,
     contractorId: string
   ): Promise<void> {
     try {
       // Map event types to entity types and events
       const eventMapping: Record<string, { entity: string; event: string }> = {
-        'contact_created': { entity: 'lead', event: 'created' },
-        'contact_updated': { entity: 'lead', event: 'updated' },
-        'estimate_created': { entity: 'estimate', event: 'created' },
-        'estimate_updated': { entity: 'estimate', event: 'updated' },
-        'job_created': { entity: 'job', event: 'created' },
-        'job_updated': { entity: 'job', event: 'updated' },
+        'contact_created':          { entity: 'lead',     event: 'created' },
+        'contact_updated':          { entity: 'lead',     event: 'updated' },
+        'contact_status_changed':   { entity: 'lead',     event: 'status_changed' },
+        'estimate_created':         { entity: 'estimate', event: 'created' },
+        'estimate_updated':         { entity: 'estimate', event: 'updated' },
+        'estimate_status_changed':  { entity: 'estimate', event: 'status_changed' },
+        'job_created':              { entity: 'job',      event: 'created' },
+        'job_updated':              { entity: 'job',      event: 'updated' },
+        'job_status_changed':       { entity: 'job',      event: 'status_changed' },
       };
 
       const mapping = eventMapping[eventType];
@@ -1047,16 +1050,25 @@ export class WorkflowEngine {
                                      triggerConfig.entity === mapping.entity && 
                                      triggerConfig.action === mapping.event;
         
-        const matchesTrigger = matchesNewSchema || matchesLegacySchema;
+        let matchesTrigger = matchesNewSchema || matchesLegacySchema;
         if (!matchesTrigger) {
           return false;
+        }
+
+        // For status_changed events, also enforce targetStatus if the workflow specifies one
+        if (triggerConfig.event === 'status_changed' && triggerConfig.targetStatus) {
+          const newStatus = entityData.status;
+          if (newStatus !== triggerConfig.targetStatus) {
+            return false;
+          }
         }
         
         // Check tag filtering if specified
         // triggerConfig.tags = ['Ductless', 'Emergency'] means workflow only runs for contacts with those tags
         if (triggerConfig.tags && Array.isArray(triggerConfig.tags) && triggerConfig.tags.length > 0) {
           // Get contact tags from entityData (for contacts) or entityData.contact (for estimates/jobs)
-          const contactTags = entityData.tags || entityData.contact?.tags || [];
+          const contactRecord = entityData.contact as Record<string, unknown> | undefined;
+          const contactTags = (entityData.tags as string[] | undefined) || (contactRecord?.tags as string[] | undefined) || [];
           
           // Check if contact has at least one of the required tags
           const hasRequiredTag = triggerConfig.tags.some((requiredTag: string) => 
@@ -1084,12 +1096,12 @@ export class WorkflowEngine {
             triggerData = entityData;
           } else if (eventType.startsWith('estimate_')) {
             // For estimates, fetch with contact data
-            const enrichedEstimate = await storage.getEstimateWithContact(entityData.id, contractorId);
-            triggerData = enrichedEstimate || entityData;
+            const enrichedEstimate = await storage.getEstimateWithContact(String(entityData.id), contractorId);
+            triggerData = (enrichedEstimate as Record<string, unknown> | null) || entityData;
           } else if (eventType.startsWith('job_')) {
             // For jobs, fetch with contact data
-            const enrichedJob = await storage.getJobWithContact(entityData.id, contractorId);
-            triggerData = enrichedJob || entityData;
+            const enrichedJob = await storage.getJobWithContact(String(entityData.id), contractorId);
+            triggerData = (enrichedJob as Record<string, unknown> | null) || entityData;
           }
 
           // Create execution record
