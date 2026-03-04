@@ -11,6 +11,7 @@ export interface CurrentUser {
   gmailConnected?: boolean;
   gmailEmail?: string;
   canManageIntegrations: boolean;
+  hasActiveCompanyIntegrations?: boolean;
 }
 
 export interface CurrentUserResponse {
@@ -23,6 +24,14 @@ export interface CurrentUserResponse {
  */
 export function isAdminUser(role?: string): boolean {
   return role === 'admin' || role === 'super_admin' || role === 'manager';
+}
+
+/**
+ * Returns true only for admin and super_admin roles (excludes manager).
+ * Use when a gate is strictly admin-only, not manager-accessible.
+ */
+export function isStrictAdmin(role?: string): boolean {
+  return role === 'admin' || role === 'super_admin';
 }
 
 /**

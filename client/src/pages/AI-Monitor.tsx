@@ -6,18 +6,13 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertTriangle, Brain, Timer, Target, TrendingUp, FileText, RefreshCw, XCircle, Shield } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header-v2";
 import { PageLayout } from "@/components/ui/page-layout";
+import { useCurrentUser, isAdminUser } from "@/hooks/useCurrentUser";
 
 export default function AIMonitor() {
-  // Get current user data to check role
-  const {
-    data: currentUser,
-    isLoading: userLoading
-  } = useQuery<{ user: { id: string; name: string; email: string; role: string; contractorId: string } }>({
-    queryKey: ['/api/auth/me'],
-  });
+  const { data: currentUser, isLoading: userLoading } = useCurrentUser();
 
   const userRole = currentUser?.user?.role;
-  const isAuthorized = userRole === 'admin' || userRole === 'manager' || userRole === 'super_admin';
+  const isAuthorized = isAdminUser(userRole);
   const isSuperAdmin = userRole === 'super_admin';
 
   // Data queries - only enabled for authorized users

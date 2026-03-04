@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { useCurrentUser, isStrictAdmin } from "@/hooks/useCurrentUser";
 import { PageHeader } from "@/components/ui/page-header-v2";
 import { PageLayout } from "@/components/ui/page-layout";
 import { Settings as SettingsIcon, XCircle } from "lucide-react";
@@ -44,11 +45,9 @@ export default function Settings() {
 
   const [bookingSlugInput, setBookingSlugInput] = useState('');
 
-  const { data: currentUser, isLoading: userLoading } = useQuery<{
-    user: { id: string; name: string; email: string; role: string; contractorId: string; canManageIntegrations: boolean; gmailConnected?: boolean; gmailEmail?: string };
-  }>({ queryKey: ['/api/auth/me'] });
+  const { data: currentUser, isLoading: userLoading } = useCurrentUser();
 
-  const isAdmin = currentUser?.user?.role === 'admin' || currentUser?.user?.role === 'super_admin';
+  const isAdmin = isStrictAdmin(currentUser?.user?.role);
   const canManageIntegrations = isAdmin
     || currentUser?.user?.role === 'manager'
     || currentUser?.user?.canManageIntegrations === true;

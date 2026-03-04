@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Shield, Target, TrendingUp, AlertTriangle } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { isStrictAdmin } from "@/hooks/useCurrentUser";
 
 interface TargetsTabProps {
   currentUser: { user: { role: string } } | undefined;
@@ -17,7 +18,7 @@ interface TargetsTabProps {
 
 export function TargetsTab({ currentUser, targetsLoading, businessTargets, setBusinessTargets }: TargetsTabProps) {
   const { toast } = useToast();
-  const isAdmin = currentUser?.user?.role === 'admin' || currentUser?.user?.role === 'super_admin';
+  const isAdmin = isStrictAdmin(currentUser?.user?.role);
 
   const saveTargetsMutation = useMutation({
     mutationFn: async (targets: typeof businessTargets) => {

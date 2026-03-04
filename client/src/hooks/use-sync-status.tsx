@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, ReactNode, useRef } fro
 import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { CheckCircle, AlertCircle, Loader2 } from "lucide-react";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 interface SyncStatus {
   isRunning: boolean;
@@ -34,16 +35,7 @@ export function SyncStatusProvider({ children }: { children: ReactNode }) {
   const toastId = useRef<string | null>(null);
 
   // Read user role from cache (no extra network request — auth/me is fetched on app load)
-  const { data: authData } = useQuery<{
-    user: {
-      role: string;
-      canManageIntegrations?: boolean;
-      gmailConnected?: boolean;
-      hasActiveCompanyIntegrations?: boolean;
-    }
-  }>({
-    queryKey: ['/api/auth/me'],
-  });
+  const { data: authData } = useCurrentUser();
   const user = authData?.user;
   const canReceiveSyncUpdates =
     user?.role === 'admin' ||

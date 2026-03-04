@@ -8,192 +8,174 @@ import { requireAuth, requireManagerOrAdmin, requireAdmin, type AuthenticatedReq
 import { CredentialService } from "../../credential-service";
 import { syncStatus } from "../../sync-status-store";
 import crypto from "crypto";
+import { asyncHandler } from "../../utils/async-handler";
 
 export function registerHousecallProRoutes(app: Express): void {
   // Housecall Pro integration routes
-  app.get("/api/housecall-pro/status", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const isIntegrationEnabled = await storage.isIntegrationEnabled(req.user!.contractorId, 'housecall-pro');
-      if (!isIntegrationEnabled) {
-        res.status(403).json({ 
-          message: "Housecall Pro integration is not enabled for this tenant. Please enable it first.",
-          integrationDisabled: true 
-        });
-        return;
-      }
-
-      const isConfigured = await housecallProService.isConfigured(req.user!.contractorId);
-      if (!isConfigured) {
-        res.json({ configured: false, connected: false });
-        return;
-      }
-      
-      const connection = await housecallProService.checkConnection(req.user!.contractorId);
-      res.json({ 
-        configured: true, 
-        connected: connection.connected,
-        error: connection.error 
+  app.get("/api/housecall-pro/status", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const isIntegrationEnabled = await storage.isIntegrationEnabled(req.user!.contractorId, 'housecall-pro');
+    if (!isIntegrationEnabled) {
+      res.status(403).json({ 
+        message: "Housecall Pro integration is not enabled for this tenant. Please enable it first.",
+        integrationDisabled: true 
       });
-    } catch (error) {
-      res.status(500).json({ message: "Failed to check Housecall Pro status" });
+      return;
     }
-  });
 
-  app.get("/api/housecall-pro/employees", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const isIntegrationEnabled = await storage.isIntegrationEnabled(req.user!.contractorId, 'housecall-pro');
-      if (!isIntegrationEnabled) {
-        res.status(403).json({ 
-          message: "Housecall Pro integration is not enabled for this tenant. Please enable it first.",
-          integrationDisabled: true 
-        });
-        return;
-      }
-
-      const result = await housecallProService.getEmployees(req.user!.contractorId);
-      if (!result.success) {
-        res.status(400).json({ message: result.error });
-        return;
-      }
-      res.json(result.data);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch Housecall Pro employees" });
+    const isConfigured = await housecallProService.isConfigured(req.user!.contractorId);
+    if (!isConfigured) {
+      res.json({ configured: false, connected: false });
+      return;
     }
-  });
+    
+    const connection = await housecallProService.checkConnection(req.user!.contractorId);
+    res.json({ 
+      configured: true, 
+      connected: connection.connected,
+      error: connection.error 
+    });
+  }));
 
-  app.get("/api/housecall-pro/availability", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const isIntegrationEnabled = await storage.isIntegrationEnabled(req.user!.contractorId, 'housecall-pro');
-      if (!isIntegrationEnabled) {
-        res.status(403).json({ 
-          message: "Housecall Pro integration is not enabled for this tenant. Please enable it first.",
-          integrationDisabled: true 
-        });
-        return;
-      }
-
-      const { date, estimatorIds } = req.query;
-      
-      if (!date || typeof date !== 'string') {
-        res.status(400).json({ message: "Date parameter is required (YYYY-MM-DD format)" });
-        return;
-      }
-
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-        res.status(400).json({ message: "Invalid date format. Use YYYY-MM-DD" });
-        return;
-      }
-
-      let estimatorIdArray: string[] | undefined;
-      if (estimatorIds) {
-        if (typeof estimatorIds === 'string') {
-          estimatorIdArray = estimatorIds.split(',').filter(id => id.trim());
-        } else if (Array.isArray(estimatorIds)) {
-          estimatorIdArray = (estimatorIds as string[]).filter(id => typeof id === 'string' && id.trim());
-        }
-      }
-
-      const result = await housecallProService.getEstimatorAvailability(
-        req.user!.contractorId, 
-        date, 
-        estimatorIdArray
-      );
-      
-      if (!result.success) {
-        res.status(400).json({ message: result.error });
-        return;
-      }
-      
-      res.json(result.data);
-    } catch (error) {
-      console.error('Error fetching estimator availability:', error);
-      res.status(500).json({ message: "Failed to fetch estimator availability" });
+  app.get("/api/housecall-pro/employees", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const isIntegrationEnabled = await storage.isIntegrationEnabled(req.user!.contractorId, 'housecall-pro');
+    if (!isIntegrationEnabled) {
+      res.status(403).json({ 
+        message: "Housecall Pro integration is not enabled for this tenant. Please enable it first.",
+        integrationDisabled: true 
+      });
+      return;
     }
-  });
+
+    const result = await housecallProService.getEmployees(req.user!.contractorId);
+    if (!result.success) {
+      res.status(400).json({ message: result.error });
+      return;
+    }
+    res.json(result.data);
+  }));
+
+  app.get("/api/housecall-pro/availability", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const isIntegrationEnabled = await storage.isIntegrationEnabled(req.user!.contractorId, 'housecall-pro');
+    if (!isIntegrationEnabled) {
+      res.status(403).json({ 
+        message: "Housecall Pro integration is not enabled for this tenant. Please enable it first.",
+        integrationDisabled: true 
+      });
+      return;
+    }
+
+    const { date, estimatorIds } = req.query;
+    
+    if (!date || typeof date !== 'string') {
+      res.status(400).json({ message: "Date parameter is required (YYYY-MM-DD format)" });
+      return;
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      res.status(400).json({ message: "Invalid date format. Use YYYY-MM-DD" });
+      return;
+    }
+
+    let estimatorIdArray: string[] | undefined;
+    if (estimatorIds) {
+      if (typeof estimatorIds === 'string') {
+        estimatorIdArray = estimatorIds.split(',').filter(id => id.trim());
+      } else if (Array.isArray(estimatorIds)) {
+        estimatorIdArray = (estimatorIds as string[]).filter(id => typeof id === 'string' && id.trim());
+      }
+    }
+
+    const result = await housecallProService.getEstimatorAvailability(
+      req.user!.contractorId, 
+      date, 
+      estimatorIdArray
+    );
+    
+    if (!result.success) {
+      res.status(400).json({ message: result.error });
+      return;
+    }
+    
+    res.json(result.data);
+  }));
 
   // Get HCP estimates for a specific employee on a specific date
-  app.get("/api/housecall/employee-estimates", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const { employeeId, date } = req.query;
-      
-      if (!employeeId || !date) {
-        res.status(400).json({ message: "employeeId and date are required" });
-        return;
+  app.get("/api/housecall/employee-estimates", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const { employeeId, date } = req.query;
+    
+    if (!employeeId || !date) {
+      res.status(400).json({ message: "employeeId and date are required" });
+      return;
+    }
+    
+    const startOfDay = new Date(`${date}T00:00:00`);
+    const endOfDay = new Date(`${date}T23:59:59`);
+    
+    const result = await housecallProService.getEmployeeScheduledEstimates(
+      req.user!.contractorId, 
+      employeeId as string, 
+      startOfDay, 
+      endOfDay
+    );
+    
+    if (!result.success) {
+      console.error('[HCP] Failed to fetch employee estimates:', result.error);
+      res.json([]);
+      return;
+    }
+    
+    const scheduledEstimates: Array<{id: string, scheduled_start: string, scheduled_end: string}> = [];
+    
+    for (const est of (result.data || [])) {
+      if (est.scheduled_start && est.scheduled_end) {
+        scheduledEstimates.push({
+          id: est.id,
+          scheduled_start: est.scheduled_start,
+          scheduled_end: est.scheduled_end,
+        });
       }
-      
-      const startOfDay = new Date(`${date}T00:00:00`);
-      const endOfDay = new Date(`${date}T23:59:59`);
-      
-      const result = await housecallProService.getEmployeeScheduledEstimates(
-        req.user!.contractorId, 
-        employeeId as string, 
-        startOfDay, 
-        endOfDay
-      );
-      
-      if (!result.success) {
-        console.error('[HCP] Failed to fetch employee estimates:', result.error);
-        res.json([]);
-        return;
+      if (est.schedule?.scheduled_start && est.schedule?.scheduled_end) {
+        scheduledEstimates.push({
+          id: est.id,
+          scheduled_start: est.schedule.scheduled_start,
+          scheduled_end: est.schedule.scheduled_end,
+        });
       }
-      
-      const scheduledEstimates: Array<{id: string, scheduled_start: string, scheduled_end: string}> = [];
-      
-      for (const est of (result.data || [])) {
-        if (est.scheduled_start && est.scheduled_end) {
-          scheduledEstimates.push({
-            id: est.id,
-            scheduled_start: est.scheduled_start,
-            scheduled_end: est.scheduled_end,
-          });
-        }
-        if (est.schedule?.scheduled_start && est.schedule?.scheduled_end) {
-          scheduledEstimates.push({
-            id: est.id,
-            scheduled_start: est.schedule.scheduled_start,
-            scheduled_end: est.schedule.scheduled_end,
-          });
-        }
-        if (est.options && Array.isArray(est.options)) {
-          for (const opt of est.options) {
-            if (opt.schedule?.start_time && opt.schedule?.end_time) {
-              scheduledEstimates.push({
-                id: est.id,
-                scheduled_start: opt.schedule.start_time,
-                scheduled_end: opt.schedule.end_time,
-              });
-            }
-            if (opt.scheduled_start && opt.scheduled_end) {
-              scheduledEstimates.push({
-                id: est.id,
-                scheduled_start: opt.scheduled_start,
-                scheduled_end: opt.scheduled_end,
-              });
-            }
+      if (est.options && Array.isArray(est.options)) {
+        for (const opt of est.options) {
+          if (opt.schedule?.start_time && opt.schedule?.end_time) {
+            scheduledEstimates.push({
+              id: est.id,
+              scheduled_start: opt.schedule.start_time,
+              scheduled_end: opt.schedule.end_time,
+            });
+          }
+          if (opt.scheduled_start && opt.scheduled_end) {
+            scheduledEstimates.push({
+              id: est.id,
+              scheduled_start: opt.scheduled_start,
+              scheduled_end: opt.scheduled_end,
+            });
           }
         }
       }
-      
-      res.json(scheduledEstimates);
-    } catch (error) {
-      console.error('[HCP] Error fetching employee estimates:', error);
-      res.json([]);
     }
-  });
+    
+    res.json(scheduledEstimates);
+  }));
 
-  app.post("/api/housecall-pro/sync", async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/housecall-pro/sync", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     const contractorId = req.user!.contractorId;
     const syncType = (req.query.type as string) || 'all';
     
-    try {
-      const isIntegrationEnabled = await storage.isIntegrationEnabled(contractorId, 'housecall-pro');
-      if (!isIntegrationEnabled) {
-        res.status(403).json({ 
-          message: "Housecall Pro integration is not enabled for this tenant. Please enable it first.",
-          integrationDisabled: true 
-        });
-        return;
-      }
+    const isIntegrationEnabled = await storage.isIntegrationEnabled(contractorId, 'housecall-pro');
+    if (!isIntegrationEnabled) {
+      res.status(403).json({ 
+        message: "Housecall Pro integration is not enabled for this tenant. Please enable it first.",
+        integrationDisabled: true 
+      });
+      return;
+    }
 
       syncStatus.set(contractorId, {
         isRunning: true,
@@ -437,249 +419,181 @@ export function registerHousecallProRoutes(app: Express): void {
         newJobs,
         syncedAt: new Date().toISOString(),
       });
-    } catch (error) {
-      console.error('[housecall-pro-sync] Sync failed:', error);
-      
-      syncStatus.set(contractorId, {
-        isRunning: false,
-        progress: null,
-        error: error instanceof Error ? error.message : 'Sync failed',
-        lastSync: null,
-        startTime: null
-      });
-      
-      res.status(500).json({ message: "Failed to sync with Housecall Pro" });
-    }
-  });
+  }));
 
   // Sync status API endpoint
-  app.get("/api/sync-status", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const contractorId = req.user!.contractorId;
-      const status = syncStatus.get(contractorId) || {
-        isRunning: false,
-        progress: null,
-        error: null,
-        lastSync: null,
-        startTime: null
-      };
-      
-      res.json({
-        isRunning: status.isRunning,
-        progress: status.progress,
-        error: status.error,
-        lastSync: status.lastSync
-      });
-    } catch (error) {
-      console.error('[api] Failed to get sync status:', error);
-      res.status(500).json({ message: "Failed to get sync status" });
-    }
-  });
+  app.get("/api/sync-status", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const contractorId = req.user!.contractorId;
+    const status = syncStatus.get(contractorId) || {
+      isRunning: false,
+      progress: null,
+      error: null,
+      lastSync: null,
+      startTime: null
+    };
+    
+    res.json({
+      isRunning: status.isRunning,
+      progress: status.progress,
+      error: status.error,
+      lastSync: status.lastSync
+    });
+  }));
 
   // Housecall Pro sync start date management
-  app.get("/api/housecall-pro/sync-start-date", requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const syncStartDate = await storage.getHousecallProSyncStartDate(req.user!.contractorId);
-      res.json({ syncStartDate: syncStartDate ? syncStartDate.toISOString() : null });
-    } catch (error) {
-      console.error('[housecall-pro-sync-settings] Failed to get sync start date:', error);
-      res.status(500).json({ message: "Failed to get sync start date" });
-    }
-  });
+  app.get("/api/housecall-pro/sync-start-date", requireAuth, requireAdmin, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const syncStartDate = await storage.getHousecallProSyncStartDate(req.user!.contractorId);
+    res.json({ syncStartDate: syncStartDate ? syncStartDate.toISOString() : null });
+  }));
 
-  app.post("/api/housecall-pro/sync-start-date", requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const { syncStartDate } = req.body;
-      const parsedDate = syncStartDate ? new Date(syncStartDate) : null;
+  app.post("/api/housecall-pro/sync-start-date", requireAuth, requireAdmin, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const { syncStartDate } = req.body;
+    const parsedDate = syncStartDate ? new Date(syncStartDate) : null;
 
-      await storage.setHousecallProSyncStartDate(req.user!.contractorId, parsedDate);
-      res.json({ 
-        message: "Sync start date updated successfully",
-        syncStartDate: parsedDate ? parsedDate.toISOString() : null
-      });
-    } catch (error) {
-      console.error('[housecall-pro-sync-settings] Failed to set sync start date:', error);
-      res.status(500).json({ message: "Failed to set sync start date" });
-    }
-  });
+    await storage.setHousecallProSyncStartDate(req.user!.contractorId, parsedDate);
+    res.json({ 
+      message: "Sync start date updated successfully",
+      syncStartDate: parsedDate ? parsedDate.toISOString() : null
+    });
+  }));
 
   // ========== Unified Scheduling API ==========
 
-  app.post("/api/scheduling/sync-users", requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const { housecallSchedulingService } = await import('../../housecall-scheduling-service');
-      const result = await housecallSchedulingService.syncHousecallUsers(req.user!.contractorId);
-      res.json(result);
-    } catch (error: any) {
-      console.error('[scheduling] Failed to sync users:', error);
-      res.status(500).json({ message: "Failed to sync Housecall Pro users", error: error.message });
-    }
-  });
+  app.post("/api/scheduling/sync-users", requireAuth, requireAdmin, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const { housecallSchedulingService } = await import('../../housecall-scheduling-service');
+    const result = await housecallSchedulingService.syncHousecallUsers(req.user!.contractorId);
+    res.json(result);
+  }));
 
-  app.get("/api/scheduling/salespeople", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const { housecallSchedulingService } = await import('../../housecall-scheduling-service');
-      const teamMembers = await housecallSchedulingService.getTeamMembers(req.user!.contractorId);
-      res.json(teamMembers);
-    } catch (error: any) {
-      console.error('[scheduling] Failed to get team members:', error);
-      res.status(500).json({ message: "Failed to get team members", error: error.message });
-    }
-  });
+  app.get("/api/scheduling/salespeople", requireAuth, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const { housecallSchedulingService } = await import('../../housecall-scheduling-service');
+    const teamMembers = await housecallSchedulingService.getTeamMembers(req.user!.contractorId);
+    res.json(teamMembers);
+  }));
 
-  app.get("/api/scheduling/availability", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const { startDate, endDate, days } = req.query;
-      
-      let start: Date;
-      let end: Date;
-      
-      if (startDate && endDate) {
-        start = new Date(startDate as string);
-        end = new Date(endDate as string);
-      } else {
-        start = new Date();
-        const daysToFetch = days ? parseInt(days as string) : 14;
-        end = new Date();
-        end.setDate(end.getDate() + daysToFetch);
-      }
-      
-      const { housecallSchedulingService } = await import('../../housecall-scheduling-service');
-      
-      const contractor = await storage.getContractor(req.user!.contractorId);
-      const timezone = (contractor as any)?.timezone || 'America/New_York';
-      
-      const slots = await housecallSchedulingService.getUnifiedAvailability(req.user!.contractorId, start, end, timezone);
-      
-      res.json({
-        startDate: start.toISOString(),
-        endDate: end.toISOString(),
-        slotDurationMinutes: 60,
-        bufferMinutes: 30,
-        slots: slots.map(slot => ({
-          start: slot.start.toISOString(),
-          end: slot.end.toISOString(),
-          availableCount: slot.availableSalespersonIds.length,
-        }))
-      });
-    } catch (error: any) {
-      console.error('[scheduling] Failed to get availability:', error);
-      res.status(500).json({ message: "Failed to get availability", error: error.message });
+  app.get("/api/scheduling/availability", requireAuth, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const { startDate, endDate, days } = req.query;
+    
+    let start: Date;
+    let end: Date;
+    
+    if (startDate && endDate) {
+      start = new Date(startDate as string);
+      end = new Date(endDate as string);
+    } else {
+      start = new Date();
+      const daysToFetch = days ? parseInt(days as string) : 14;
+      end = new Date();
+      end.setDate(end.getDate() + daysToFetch);
     }
-  });
+    
+    const { housecallSchedulingService } = await import('../../housecall-scheduling-service');
+    
+    const contractor = await storage.getContractor(req.user!.contractorId);
+    const timezone = (contractor as any)?.timezone || 'America/New_York';
+    
+    const slots = await housecallSchedulingService.getUnifiedAvailability(req.user!.contractorId, start, end, timezone);
+    
+    res.json({
+      startDate: start.toISOString(),
+      endDate: end.toISOString(),
+      slotDurationMinutes: 60,
+      bufferMinutes: 30,
+      slots: slots.map(slot => ({
+        start: slot.start.toISOString(),
+        end: slot.end.toISOString(),
+        availableCount: slot.availableSalespersonIds.length,
+      }))
+    });
+  }));
 
-  app.post("/api/scheduling/book", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const { startTime, title, customerName, customerEmail, customerPhone, customerAddress, customerAddressComponents, notes, contactId, salespersonId, housecallProEmployeeId } = req.body;
-      
-      if (!startTime || !title || !customerName) {
-        res.status(400).json({ message: "startTime, title, and customerName are required" });
-        return;
-      }
-      
-      const { housecallSchedulingService } = await import('../../housecall-scheduling-service');
-      const result = await housecallSchedulingService.bookAppointment(req.user!.contractorId, {
-        startTime: new Date(startTime),
-        title,
-        customerName,
-        customerEmail,
-        customerPhone,
-        customerAddress,
-        customerAddressComponents,
-        notes,
-        contactId,
-        salespersonId,
-        housecallProEmployeeId,
-      });
-      
-      if (result.success) {
-        res.status(201).json(result);
-      } else {
-        res.status(400).json({ message: result.error });
-      }
-    } catch (error: any) {
-      console.error('[scheduling] Failed to book appointment:', error);
-      res.status(500).json({ message: "Failed to book appointment", error: error.message });
+  app.post("/api/scheduling/book", requireAuth, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const { startTime, title, customerName, customerEmail, customerPhone, customerAddress, customerAddressComponents, notes, contactId, salespersonId, housecallProEmployeeId } = req.body;
+    
+    if (!startTime || !title || !customerName) {
+      res.status(400).json({ message: "startTime, title, and customerName are required" });
+      return;
     }
-  });
+    
+    const { housecallSchedulingService } = await import('../../housecall-scheduling-service');
+    const result = await housecallSchedulingService.bookAppointment(req.user!.contractorId, {
+      startTime: new Date(startTime),
+      title,
+      customerName,
+      customerEmail,
+      customerPhone,
+      customerAddress,
+      customerAddressComponents,
+      notes,
+      contactId,
+      salespersonId,
+      housecallProEmployeeId,
+    });
+    
+    if (result.success) {
+      res.status(201).json(result);
+    } else {
+      res.status(400).json({ message: result.error });
+    }
+  }));
 
-  app.get("/api/scheduling/bookings", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const { startDate, endDate } = req.query;
-      
-      const { housecallSchedulingService } = await import('../../housecall-scheduling-service');
-      const bookings = await housecallSchedulingService.getBookings(
-        req.user!.contractorId,
-        startDate ? new Date(startDate as string) : undefined,
-        endDate ? new Date(endDate as string) : undefined
-      );
-      
-      res.json(bookings);
-    } catch (error: any) {
-      console.error('[scheduling] Failed to get bookings:', error);
-      res.status(500).json({ message: "Failed to get bookings", error: error.message });
-    }
-  });
+  app.get("/api/scheduling/bookings", requireAuth, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const { startDate, endDate } = req.query;
+    
+    const { housecallSchedulingService } = await import('../../housecall-scheduling-service');
+    const bookings = await housecallSchedulingService.getBookings(
+      req.user!.contractorId,
+      startDate ? new Date(startDate as string) : undefined,
+      endDate ? new Date(endDate as string) : undefined
+    );
+    
+    res.json(bookings);
+  }));
 
-  app.patch("/api/scheduling/salespeople/:userId", requireAuth, requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const { userId } = req.params;
-      const { isSalesperson, calendarColor, workingDays, workingHoursStart, workingHoursEnd, hasCustomSchedule } = req.body;
-      
-      const updateData: any = {};
-      
-      if (isSalesperson !== undefined) updateData.isSalesperson = isSalesperson;
-      if (calendarColor !== undefined) updateData.calendarColor = calendarColor;
-      if (workingDays !== undefined) updateData.workingDays = workingDays;
-      if (workingHoursStart !== undefined) updateData.workingHoursStart = workingHoursStart;
-      if (workingHoursEnd !== undefined) updateData.workingHoursEnd = workingHoursEnd;
-      if (hasCustomSchedule !== undefined) updateData.hasCustomSchedule = hasCustomSchedule;
-      
-      await db.update(userContractors)
-        .set(updateData)
-        .where(and(
-          eq(userContractors.userId, userId),
-          eq(userContractors.contractorId, req.user!.contractorId)
-        ));
-      
-      res.json({ message: "Salesperson updated successfully" });
-    } catch (error: any) {
-      console.error('[scheduling] Failed to update salesperson:', error);
-      res.status(500).json({ message: "Failed to update salesperson", error: error.message });
-    }
-  });
+  app.patch("/api/scheduling/salespeople/:userId", requireAuth, requireAdmin, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const { userId } = req.params;
+    const { isSalesperson, calendarColor, workingDays, workingHoursStart, workingHoursEnd, hasCustomSchedule } = req.body;
+    
+    const updateData: any = {};
+    
+    if (isSalesperson !== undefined) updateData.isSalesperson = isSalesperson;
+    if (calendarColor !== undefined) updateData.calendarColor = calendarColor;
+    if (workingDays !== undefined) updateData.workingDays = workingDays;
+    if (workingHoursStart !== undefined) updateData.workingHoursStart = workingHoursStart;
+    if (workingHoursEnd !== undefined) updateData.workingHoursEnd = workingHoursEnd;
+    if (hasCustomSchedule !== undefined) updateData.hasCustomSchedule = hasCustomSchedule;
+    
+    await db.update(userContractors)
+      .set(updateData)
+      .where(and(
+        eq(userContractors.userId, userId),
+        eq(userContractors.contractorId, req.user!.contractorId)
+      ));
+    
+    res.json({ message: "Salesperson updated successfully" });
+  }));
 
   // HCP webhook config routes
-  app.get("/api/integrations/housecall-pro/webhook-config", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/integrations/housecall-pro/webhook-config", requireAuth, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const contractorId = req.user!.contractorId;
+    const protocol = (req.headers['x-forwarded-proto'] as string) || req.protocol;
+    const host = (req.headers['x-forwarded-host'] as string) || req.get('host');
+    const webhookUrl = `${protocol}://${host}/api/webhooks/${contractorId}/housecall-pro`;
+    let secretConfigured = false;
     try {
-      const contractorId = req.user!.contractorId;
-      const protocol = (req.headers['x-forwarded-proto'] as string) || req.protocol;
-      const host = (req.headers['x-forwarded-host'] as string) || req.get('host');
-      const webhookUrl = `${protocol}://${host}/api/webhooks/${contractorId}/housecall-pro`;
-      let secretConfigured = false;
-      try {
-        const secret = await CredentialService.getCredential(contractorId, 'housecallpro', 'webhook_secret');
-        secretConfigured = !!(secret && secret.trim());
-      } catch { /* no secret stored yet */ }
-      res.json({ webhookUrl, secretConfigured });
-    } catch (error) {
-      console.error('Error fetching HCP webhook config:', error);
-      res.status(500).json({ error: 'Failed to fetch webhook configuration' });
-    }
-  });
+      const secret = await CredentialService.getCredential(contractorId, 'housecallpro', 'webhook_secret');
+      secretConfigured = !!(secret && secret.trim());
+    } catch { /* no secret stored yet */ }
+    res.json({ webhookUrl, secretConfigured });
+  }));
 
-  app.post("/api/integrations/housecall-pro/webhook-secret", requireAuth, requireManagerOrAdmin, async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const { secret } = req.body;
-      if (!secret || typeof secret !== 'string' || !secret.trim()) {
-        res.status(400).json({ error: 'Secret is required' });
-        return;
-      }
-      await CredentialService.setCredential(req.user!.contractorId, 'housecallpro', 'webhook_secret', secret.trim());
-      res.json({ success: true });
-    } catch (error) {
-      console.error('Error saving HCP webhook secret:', error);
-      res.status(500).json({ error: 'Failed to save webhook secret' });
+  app.post("/api/integrations/housecall-pro/webhook-secret", requireAuth, requireManagerOrAdmin, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const { secret } = req.body;
+    if (!secret || typeof secret !== 'string' || !secret.trim()) {
+      res.status(400).json({ error: 'Secret is required' });
+      return;
     }
-  });
+    await CredentialService.setCredential(req.user!.contractorId, 'housecallpro', 'webhook_secret', secret.trim());
+    res.json({ success: true });
+  }));
 }

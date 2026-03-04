@@ -11,13 +11,14 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Plus, Search, Filter, Edit2, Trash2, MessageSquare, Mail, FileText, CheckCircle, XCircle, Clock, AlertTriangle } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header-v2";
 import { PageLayout } from "@/components/ui/page-layout";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Template } from "@shared/schema";
+import { useCurrentUser, isStrictAdmin } from "@/hooks/useCurrentUser";
 
 const templateFormSchema = z.object({
   title: z.string().min(1, "Title is required"),
@@ -156,12 +157,8 @@ export default function Templates() {
     },
   });
 
-  // Get current user to check role
-  const { data: currentUser } = useQuery<{ user: { id: string; role: string } }>({
-    queryKey: ['/api/auth/me'],
-  });
-
-  const isAdmin = currentUser?.user?.role === 'admin' || currentUser?.user?.role === 'super_admin';
+  const { data: currentUser } = useCurrentUser();
+  const isAdmin = isStrictAdmin(currentUser?.user?.role);
 
   const handleOpenModal = (mode: "create" | "edit", template?: Template) => {
     if (mode === "edit" && template) {
