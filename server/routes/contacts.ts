@@ -3,6 +3,7 @@ import { asyncHandler } from "../utils/async-handler";
 import { parseBody } from "../utils/validate-body";
 import { storage } from "../storage";
 import { insertContactSchema } from "@shared/schema";
+import type { UpdateContact } from "../storage-types";
 import { ilike } from "drizzle-orm";
 import { requireAuth, requireManagerOrAdmin, type AuthenticatedRequest } from "../auth-service";
 import { workflowEngine } from "../workflow-engine";
@@ -111,26 +112,61 @@ export function registerContactRoutes(app: Express): void {
     const contactData = parseBody(contactSchema, req, res);
     if (!contactData) return;
       
-      // Check for existing contact of the same type with overlapping phone numbers
-      if (contactData.phones && contactData.phones.length > 0) {
-        const existingContacts = await storage.getContacts(req.user!.contractorId);
-        const sameTypeContacts = contactData.type
-          ? existingContacts.filter(c => c.type === contactData.type)
-          : existingContacts;
-        const duplicate = sameTypeContacts.find(existingContact => 
-          existingContact.phones && existingContact.phones.some(existingPhone => 
-            contactData.phones!.includes(existingPhone)
-          )
+      // Check for existing contact matching by phone or email — merge if found
+      if (
+        (contactData.phones && contactData.phones.length > 0) ||
+        (contactData.emails && contactData.emails.length > 0)
+      ) {
+        const matchedId = await storage.findMatchingContact(
+          req.user!.contractorId,
+          contactData.emails ?? [],
+          contactData.phones ?? []
         );
-        if (duplicate) {
-          const duplicatePhone = duplicate.phones?.find(p => contactData.phones!.includes(p));
-          res.status(409).json({ 
-            message: `A contact with phone number ${duplicatePhone} already exists`,
-            duplicateContactId: duplicate.id,
-            duplicateContactName: duplicate.name,
-            isDuplicate: true
-          });
-          return;
+
+        if (matchedId) {
+          const existing = await storage.getContact(matchedId, req.user!.contractorId);
+          if (existing) {
+            // Merge phones: union of existing + incoming, deduplicated
+            const existingPhones = existing.phones ?? [];
+            const newPhones = (contactData.phones ?? []).filter(
+              p => !existingPhones.includes(p)
+            );
+            const mergedPhones = [...existingPhones, ...newPhones];
+
+            // Merge emails: union of existing + incoming, case-insensitive dedup
+            const existingEmailsLower = (existing.emails ?? []).map(e => e.toLowerCase());
+            const newEmails = (contactData.emails ?? []).filter(
+              e => !existingEmailsLower.includes(e.toLowerCase())
+            );
+            const mergedEmails = [...(existing.emails ?? []), ...newEmails];
+
+            // Build update payload — only include fields that changed
+            const updatePayload: Partial<UpdateContact> = {};
+            if (newPhones.length > 0) updatePayload.phones = mergedPhones;
+            if (newEmails.length > 0) updatePayload.emails = mergedEmails;
+            if (contactData.type && contactData.type !== existing.type) {
+              updatePayload.type = contactData.type;
+            }
+
+            if (Object.keys(updatePayload).length === 0) {
+              // Nothing new to merge — true duplicate
+              res.status(409).json({
+                message: `A contact with this phone or email already exists`,
+                duplicateContactId: existing.id,
+                duplicateContactName: existing.name,
+                isDuplicate: true,
+              });
+              return;
+            }
+
+            const updated = await storage.updateContact(
+              matchedId,
+              updatePayload,
+              req.user!.contractorId
+            );
+            res.status(200).json(updated);
+            return;
+          }
         }
       }
       
