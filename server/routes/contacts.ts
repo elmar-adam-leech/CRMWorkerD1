@@ -111,10 +111,13 @@ export function registerContactRoutes(app: Express): void {
     const contactData = parseBody(contactSchema, req, res);
     if (!contactData) return;
       
-      // Check for existing contact with overlapping phone numbers
+      // Check for existing contact of the same type with overlapping phone numbers
       if (contactData.phones && contactData.phones.length > 0) {
         const existingContacts = await storage.getContacts(req.user!.contractorId);
-        const duplicate = existingContacts.find(existingContact => 
+        const sameTypeContacts = contactData.type
+          ? existingContacts.filter(c => c.type === contactData.type)
+          : existingContacts;
+        const duplicate = sameTypeContacts.find(existingContact => 
           existingContact.phones && existingContact.phones.some(existingPhone => 
             contactData.phones!.includes(existingPhone)
           )
