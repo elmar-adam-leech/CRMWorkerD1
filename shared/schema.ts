@@ -1114,6 +1114,7 @@ export const workflowExecutions = pgTable("workflow_executions", {
   triggerData: text("trigger_data"), // JSON data about what triggered the workflow (entity ID, field values, etc.)
   executionLog: text("execution_log"), // JSON log of each step execution with results/errors
   errorMessage: text("error_message"),
+  currentStep: integer("current_step"), // Step order currently being executed (for progress tracking)
   startedAt: timestamp("started_at"),
   completedAt: timestamp("completed_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

@@ -7925,7 +7925,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
       const executions = await storage.getWorkflowExecutions(req.params.workflowId, req.user!.contractorId, limit);
-      res.json(executions);
+      const parsedExecutions = executions.map(e => ({
+        ...e,
+        stepLogs: e.executionLog ? JSON.parse(e.executionLog) : [],
+      }));
+      res.json(parsedExecutions);
     } catch (error) {
       console.error('Error fetching workflow executions:', error);
       res.status(500).json({ error: 'Failed to fetch workflow executions' });
@@ -7952,7 +7956,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return;
       }
       
-      res.json(execution);
+      res.json({
+        ...execution,
+        stepLogs: execution.executionLog ? JSON.parse(execution.executionLog) : [],
+      });
     } catch (error) {
       console.error('Error fetching workflow execution:', error);
       res.status(500).json({ error: 'Failed to fetch workflow execution' });

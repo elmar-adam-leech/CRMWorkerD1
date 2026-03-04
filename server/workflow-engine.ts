@@ -23,6 +23,18 @@ interface StepResult {
   data?: any;
 }
 
+interface StepLog {
+  stepId: string;
+  stepOrder: number;
+  actionType: string;
+  startedAt: string;
+  completedAt: string;
+  durationMs: number;
+  status: 'success' | 'failed';
+  result?: unknown;
+  error?: string;
+}
+
 export class WorkflowEngine {
   private static instance: WorkflowEngine;
 
@@ -128,13 +140,33 @@ export class WorkflowEngine {
 
       // Execute step groups in order, with parallel execution within each group
       const orderedGroups = Array.from(stepGroups.entries()).sort(([a], [b]) => a - b);
-      
+      const stepLogs: StepLog[] = [];
+
       for (const [stepOrder, stepsInGroup] of orderedGroups) {
         console.log(`[Workflow Engine] Executing ${stepsInGroup.length} step(s) at order ${stepOrder}`);
-        
-        // Execute all steps in this group in parallel
+
+        // Track current step for progress visibility
+        await this.updateExecutionProgress(executionId, contractorId, stepOrder);
+
+        // Execute all steps in this group in parallel, capturing timing per step
         const results = await Promise.all(
-          stepsInGroup.map(step => this.executeStep(step, context))
+          stepsInGroup.map(async step => {
+            const start = Date.now();
+            const startedAt = new Date().toISOString();
+            const result = await this.executeStep(step, context);
+            stepLogs.push({
+              stepId: step.id,
+              stepOrder: step.stepOrder,
+              actionType: step.actionType,
+              startedAt,
+              completedAt: new Date().toISOString(),
+              durationMs: Date.now() - start,
+              status: result.success ? 'success' : 'failed',
+              result: result.data,
+              error: result.error,
+            });
+            return result;
+          })
         );
         
         // Check if any step failed
@@ -142,6 +174,7 @@ export class WorkflowEngine {
         if (failures.length > 0) {
           const errorMessages = failures.map(f => f.error).join('; ');
           console.error(`[Workflow Engine] ${failures.length} step(s) failed at order ${stepOrder}:`, errorMessages);
+          await storage.updateWorkflowExecution(executionId, { executionLog: JSON.stringify(stepLogs) }, contractorId);
           await this.updateExecutionStatus(executionId, contractorId, 'failed', errorMessages);
           
           // Broadcast workflow failed event
@@ -165,7 +198,8 @@ export class WorkflowEngine {
         });
       }
 
-      // Mark execution as completed
+      // Write step logs and mark execution as completed
+      await storage.updateWorkflowExecution(executionId, { executionLog: JSON.stringify(stepLogs) }, contractorId);
       await this.updateExecutionStatus(executionId, contractorId, 'completed');
       
       // Broadcast workflow completed event
@@ -1024,6 +1058,17 @@ export class WorkflowEngine {
     }
 
     await storage.updateWorkflowExecution(executionId, updates, contractorId);
+  }
+
+  /**
+   * Update the current step number in the execution record (progress tracking)
+   */
+  private async updateExecutionProgress(
+    executionId: string,
+    contractorId: string,
+    currentStep: number
+  ): Promise<void> {
+    await storage.updateWorkflowExecution(executionId, { currentStep }, contractorId);
   }
 
   /**

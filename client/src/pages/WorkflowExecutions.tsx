@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useRoute } from 'wouter';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -11,11 +12,25 @@ import {
   ArrowLeft,
   Calendar,
   AlertCircle,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { Link } from 'wouter';
 import { PageLayout } from '@/components/ui/page-layout';
 import type { Workflow } from '@/types/workflow';
+
+type StepLog = {
+  stepId: string;
+  stepOrder: number;
+  actionType: string;
+  startedAt: string;
+  completedAt: string;
+  durationMs: number;
+  status: 'success' | 'failed';
+  result?: unknown;
+  error?: string;
+};
 
 type WorkflowExecution = {
   id: string;
@@ -23,15 +38,24 @@ type WorkflowExecution = {
   status: 'running' | 'completed' | 'failed';
   triggeredBy: 'manual' | 'entity_event' | 'time_based';
   triggerData: Record<string, unknown>;
-  error: string | null;
+  errorMessage: string | null;
   startedAt: string;
   completedAt: string | null;
   currentStep: number | null;
+  stepLogs: StepLog[];
 };
+
+function formatActionType(actionType: string): string {
+  return actionType
+    .split('_')
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
 
 export default function WorkflowExecutions() {
   const [, params] = useRoute('/workflows/:id/executions');
   const workflowId = params?.id || null;
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const { data: workflow, isLoading: workflowLoading } = useQuery<Workflow>({
     queryKey: ['/api/workflows', workflowId],
@@ -87,6 +111,13 @@ export default function WorkflowExecutions() {
     );
   };
 
+  const getStepIcon = (status: 'success' | 'failed') => {
+    if (status === 'success') {
+      return <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />;
+    }
+    return <XCircle className="h-3.5 w-3.5 text-destructive shrink-0" />;
+  };
+
   return (
     <PageLayout>
       <div className="space-y-6">
@@ -133,80 +164,116 @@ export default function WorkflowExecutions() {
               </CardContent>
             </Card>
           ) : (
-            executions.map((execution) => (
-              <Card
-                key={execution.id}
-                className="hover-elevate"
-                data-testid={`card-execution-${execution.id}`}
-              >
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex items-center gap-2">
-                      {getStatusIcon(execution.status)}
-                      <CardTitle className="text-lg">
-                        Execution #{execution.id}
-                      </CardTitle>
+            executions.map((execution) => {
+              const isExpanded = expandedId === execution.id;
+              const hasStepLogs = execution.stepLogs && execution.stepLogs.length > 0;
+              return (
+                <Card
+                  key={execution.id}
+                  data-testid={`card-execution-${execution.id}`}
+                >
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between gap-4 flex-wrap">
+                      <div className="flex items-center gap-2">
+                        {getStatusIcon(execution.status)}
+                        <CardTitle className="text-base">
+                          Execution #{execution.id.slice(0, 8)}
+                        </CardTitle>
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {getStatusBadge(execution.status)}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          data-testid={`button-steps-${execution.id}`}
+                          disabled={!hasStepLogs}
+                          onClick={() => setExpandedId(isExpanded ? null : execution.id)}
+                        >
+                          {isExpanded
+                            ? <ChevronDown className="h-3.5 w-3.5 mr-1" />
+                            : <ChevronRight className="h-3.5 w-3.5 mr-1" />
+                          }
+                          Steps ({execution.stepLogs?.length ?? 0})
+                        </Button>
+                      </div>
                     </div>
-                    {getStatusBadge(execution.status)}
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <p className="text-muted-foreground mb-1">Triggered By</p>
-                      <Badge variant="outline" className="text-xs">
-                        {execution.triggeredBy.replace('_', ' ')}
-                      </Badge>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <p className="text-muted-foreground mb-1">Triggered By</p>
+                        <Badge variant="outline" className="text-xs">
+                          {(execution.triggeredBy || 'manual').replace(/_/g, ' ')}
+                        </Badge>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground mb-1">Started</p>
+                        <p className="font-medium">
+                          {execution.startedAt
+                            ? formatDistanceToNow(new Date(execution.startedAt), { addSuffix: true })
+                            : '—'}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-muted-foreground mb-1">Started</p>
-                      <p className="font-medium">
-                        {formatDistanceToNow(new Date(execution.startedAt), { addSuffix: true })}
-                      </p>
-                    </div>
-                  </div>
 
-                  {execution.completedAt && (
-                    <div className="text-sm">
-                      <p className="text-muted-foreground mb-1">Completed</p>
-                      <p className="font-medium">
-                        {formatDistanceToNow(new Date(execution.completedAt), { addSuffix: true })}
-                      </p>
-                    </div>
-                  )}
+                    {execution.completedAt && (
+                      <div className="text-sm">
+                        <p className="text-muted-foreground mb-1">Completed</p>
+                        <p className="font-medium">
+                          {formatDistanceToNow(new Date(execution.completedAt), { addSuffix: true })}
+                        </p>
+                      </div>
+                    )}
 
-                  {execution.currentStep !== null && execution.status === 'running' && (
-                    <div className="text-sm">
-                      <p className="text-muted-foreground mb-1">Current Step</p>
-                      <p className="font-medium">Step {execution.currentStep}</p>
-                    </div>
-                  )}
+                    {execution.currentStep !== null && execution.status === 'running' && (
+                      <div className="text-sm">
+                        <p className="text-muted-foreground mb-1">Current Step</p>
+                        <p className="font-medium">Step {execution.currentStep}</p>
+                      </div>
+                    )}
 
-                  {execution.error && (
-                    <div className="mt-3 p-3 bg-destructive/10 rounded-md border border-destructive/20">
-                      <div className="flex items-start gap-2">
-                        <XCircle className="h-4 w-4 text-destructive mt-0.5" />
-                        <div className="flex-1">
-                          <p className="text-sm font-medium text-destructive mb-1">Error</p>
-                          <p className="text-sm text-destructive/90">{execution.error}</p>
+                    {execution.errorMessage && (
+                      <div className="mt-3 p-3 bg-destructive/10 rounded-md border border-destructive/20">
+                        <div className="flex items-start gap-2">
+                          <XCircle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-destructive mb-1">Error</p>
+                            <p className="text-sm text-destructive/90">{execution.errorMessage}</p>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  )}
+                    )}
 
-                  {execution.triggerData && Object.keys(execution.triggerData).length > 0 && (
-                    <div className="mt-3">
-                      <p className="text-sm text-muted-foreground mb-2">Trigger Data</p>
-                      <div className="p-3 bg-muted rounded-md">
-                        <pre className="text-xs overflow-auto">
-                          {JSON.stringify(execution.triggerData, null, 2)}
-                        </pre>
+                    {/* Step timeline — expandable */}
+                    {isExpanded && hasStepLogs && (
+                      <div className="mt-3 pt-3 border-t space-y-2" data-testid={`step-timeline-${execution.id}`}>
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">
+                          Step Timeline
+                        </p>
+                        {execution.stepLogs.map((log, idx) => (
+                          <div key={log.stepId || idx} className="flex items-start gap-3 py-1.5">
+                            {getStepIcon(log.status)}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-sm font-medium">
+                                  {formatActionType(log.actionType)}
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                  {log.durationMs}ms
+                                </span>
+                              </div>
+                              {log.error && (
+                                <p className="text-xs text-destructive mt-0.5">{log.error}</p>
+                              )}
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            ))
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })
           )}
         </div>
       </div>
