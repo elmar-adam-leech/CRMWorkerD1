@@ -12,6 +12,8 @@ import { registerJobEstimateRoutes } from './routes/jobs-estimates';
 import { registerEmployeeRoutes } from './routes/employees';
 import { registerMessagingRoutes } from './routes/messaging';
 import { registerWorkflowRoutes } from './routes/workflows';
+import { registerAiRoutes } from './routes/ai';
+import { registerSettingsRoutes } from './routes/settings';
 import { registerIntegrationRoutes } from './routes/integrations';
 import { registerWebhookRoutes } from './routes/webhooks';
 import { registerPublicRoutes } from './routes/public';
@@ -62,6 +64,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerEmployeeRoutes(app);
   registerMessagingRoutes(app);
   registerWorkflowRoutes(app);
+  registerAiRoutes(app);
+  registerSettingsRoutes(app);
   registerIntegrationRoutes(app);
   registerWebhookRoutes(app);
   registerPublicRoutes(app);
