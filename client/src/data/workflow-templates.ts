@@ -1,10 +1,12 @@
+import type { Node, Edge } from 'reactflow';
+
 export type WorkflowTemplate = {
   id: string;
   name: string;
   description: string;
   category: 'sales' | 'service' | 'follow-up';
-  nodes: any[];
-  edges: any[];
+  nodes: Node[];
+  edges: Edge[];
 };
 
 export const workflowTemplates: WorkflowTemplate[] = [

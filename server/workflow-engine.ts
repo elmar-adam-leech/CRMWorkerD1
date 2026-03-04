@@ -235,7 +235,7 @@ export class WorkflowEngine {
    */
   private async executeAction(
     step: WorkflowStep,
-    config: any,
+    config: unknown,
     context: ExecutionContext
   ): Promise<StepResult> {
     // Use step.actionType instead of config.actionType
@@ -274,10 +274,9 @@ export class WorkflowEngine {
   /**
    * Send email action
    */
-  private async sendEmail(config: any, context: ExecutionContext): Promise<StepResult> {
+  private async sendEmail(config: unknown, context: ExecutionContext): Promise<StepResult> {
     try {
-      // Extract params from config.data if it exists, otherwise from config directly (backwards compatibility)
-      const params = config.data || config;
+      const params = this.extractConfig(config);
       const { to, subject, body, fromEmail, updateStatus } = params;
       
       // Replace variables in fields
@@ -376,7 +375,7 @@ export class WorkflowEngine {
         await this.updateEntityStatus(
           context.triggerData.entityType,
           context.triggerData.entityId,
-          updateStatus,
+          String(updateStatus),
           context.contractorId
         );
       }
@@ -396,10 +395,9 @@ export class WorkflowEngine {
   /**
    * Send SMS action
    */
-  private async sendSMS(config: any, context: ExecutionContext): Promise<StepResult> {
+  private async sendSMS(config: unknown, context: ExecutionContext): Promise<StepResult> {
     try {
-      // Extract params from config.data if it exists, otherwise from config directly (backwards compatibility)
-      const params = config.data || config;
+      const params = this.extractConfig(config);
       const { to, message, fromNumber, updateStatus } = params;
       
       // Replace variables in fields
@@ -509,7 +507,7 @@ export class WorkflowEngine {
         await this.updateEntityStatus(
           context.triggerData.entityType,
           context.triggerData.entityId,
-          updateStatus,
+          String(updateStatus),
           context.contractorId
         );
       }
@@ -529,10 +527,9 @@ export class WorkflowEngine {
   /**
    * Create notification action
    */
-  private async createNotification(config: any, context: ExecutionContext): Promise<StepResult> {
+  private async createNotification(config: unknown, context: ExecutionContext): Promise<StepResult> {
     try {
-      // Extract params from config.data if it exists, otherwise from config directly (backwards compatibility)
-      const params = config.data || config;
+      const params = this.extractConfig(config);
       const { userId, title, message } = params;
       
       // Replace variables in title and message
@@ -544,7 +541,7 @@ export class WorkflowEngine {
       // Create notification in database
       await storage.createNotification(
         {
-          userId,
+          userId: String(userId ?? ''),
           title: processedTitle,
           message: processedMessage,
           type: 'system',
@@ -568,24 +565,26 @@ export class WorkflowEngine {
   /**
    * Update entity action
    */
-  private async updateEntity(config: any, context: ExecutionContext): Promise<StepResult> {
+  private async updateEntity(config: unknown, context: ExecutionContext): Promise<StepResult> {
     try {
-      // Extract params from config.data if it exists, otherwise from config directly (backwards compatibility)
-      const params = config.data || config;
+      const params = this.extractConfig(config);
       const { entityType, entityId, updates } = params;
+      const entityIdStr = String(entityId ?? '');
 
-      console.log(`[Workflow Engine] Updating ${entityType} ${entityId}`);
+      console.log(`[Workflow Engine] Updating ${entityType} ${entityIdStr}`);
 
-      // Update entity based on type
+      // Update entity based on type (updates is typed as unknown from params — cast here)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const typedUpdates = updates as any;
       switch (entityType) {
         case 'lead':
-          await storage.updateContact(entityId, updates, context.contractorId);
+          await storage.updateContact(entityIdStr, typedUpdates, context.contractorId);
           break;
         case 'estimate':
-          await storage.updateEstimate(entityId, updates, context.contractorId);
+          await storage.updateEstimate(entityIdStr, typedUpdates, context.contractorId);
           break;
         case 'job':
-          await storage.updateJob(entityId, updates, context.contractorId);
+          await storage.updateJob(entityIdStr, typedUpdates, context.contractorId);
           break;
         default:
           return { success: false, error: `Unknown entity type: ${entityType}` };
@@ -606,19 +605,20 @@ export class WorkflowEngine {
   /**
    * Assign user action
    */
-  private async assignUser(config: any, context: ExecutionContext): Promise<StepResult> {
+  private async assignUser(config: unknown, context: ExecutionContext): Promise<StepResult> {
     try {
-      // Extract params from config.data if it exists, otherwise from config directly (backwards compatibility)
-      const params = config.data || config;
+      const params = this.extractConfig(config);
       const { entityType, entityId, userId } = params;
+      const entityIdStr = String(entityId ?? '');
+      const userIdStr   = String(userId   ?? '');
 
-      console.log(`[Workflow Engine] Assigning user ${userId} to ${entityType} ${entityId}`);
+      console.log(`[Workflow Engine] Assigning user ${userIdStr} to ${entityType} ${entityIdStr}`);
 
       // Update entity assignment
       switch (entityType) {
         case 'lead':
           // For leads, update contactedByUserId field
-          await storage.updateContact(entityId, { contactedByUserId: userId }, context.contractorId);
+          await storage.updateContact(entityIdStr, { contactedByUserId: userIdStr }, context.contractorId);
           break;
         case 'estimate':
           // Estimates don't have a direct assignment field - assignment is through linked lead
@@ -647,7 +647,7 @@ export class WorkflowEngine {
   /**
    * AI generate content action
    */
-  private async aiGenerateContent(config: any, context: ExecutionContext): Promise<StepResult> {
+  private async aiGenerateContent(config: unknown, context: ExecutionContext): Promise<StepResult> {
     try {
       // Check if AI service is available
       if (!aiService.isAvailable()) {
@@ -657,8 +657,7 @@ export class WorkflowEngine {
         };
       }
 
-      // Extract params from config.data if it exists, otherwise from config directly (backwards compatibility)
-      const params = config.data || config;
+      const params = this.extractConfig(config);
       const { prompt, outputVariable } = params;
       
       // Replace variables in prompt
@@ -671,7 +670,7 @@ export class WorkflowEngine {
 
       // Store result in context variable if specified
       if (outputVariable) {
-        context.variables[outputVariable] = content;
+        context.variables[String(outputVariable)] = content;
       }
 
       return {
@@ -689,7 +688,7 @@ export class WorkflowEngine {
   /**
    * AI analyze data action
    */
-  private async aiAnalyze(config: any, context: ExecutionContext): Promise<StepResult> {
+  private async aiAnalyze(config: unknown, context: ExecutionContext): Promise<StepResult> {
     try {
       // Check if AI service is available
       if (!aiService.isAvailable()) {
@@ -699,29 +698,29 @@ export class WorkflowEngine {
         };
       }
 
-      // Extract params from config.data if it exists, otherwise from config directly (backwards compatibility)
-      const params = config.data || config;
+      const params = this.extractConfig(config);
       const { dataSource, analysisType, outputVariable } = params;
       
       // Get data to analyze
-      let data: any;
-      if (dataSource === 'trigger') {
+      let data: unknown;
+      const dataSourceStr = String(dataSource ?? '');
+      if (dataSourceStr === 'trigger') {
         data = context.triggerData;
-      } else if (dataSource.startsWith('variable.')) {
-        const varName = dataSource.replace('variable.', '');
+      } else if (dataSourceStr.startsWith('variable.')) {
+        const varName = dataSourceStr.replace('variable.', '');
         data = context.variables[varName];
       } else {
-        data = dataSource;
+        data = dataSourceStr;
       }
 
       console.log(`[Workflow Engine] Analyzing data with AI (type: ${analysisType})`);
 
       // Analyze data using AI service
-      const analysis = await aiService.analyzeData(data, analysisType);
+      const analysis = await aiService.analyzeData(data as Record<string, unknown>, String(analysisType ?? 'general'));
 
       // Store result in context variable if specified
       if (outputVariable) {
-        context.variables[outputVariable] = analysis;
+        context.variables[String(outputVariable)] = analysis;
       }
 
       return {
@@ -741,11 +740,16 @@ export class WorkflowEngine {
    */
   private async evaluateCondition(
     step: WorkflowStep,
-    config: any,
+    config: unknown,
     context: ExecutionContext
   ): Promise<StepResult> {
     try {
-      const { field, operator, value } = config;
+      const params = this.extractConfig(config);
+      // NodeEditDialog saves as conditionField/conditionOperator/conditionValue;
+      // fall back to legacy field/operator/value keys for backwards compatibility.
+      const field    = String(params.conditionField    ?? params.field    ?? '');
+      const operator = String(params.conditionOperator ?? params.operator ?? '');
+      const value    =        params.conditionValue    ?? params.value;
       
       // Get field value from context
       const fieldValue = this.getFieldValue(field, context);
@@ -754,13 +758,16 @@ export class WorkflowEngine {
       let result = false;
       switch (operator) {
         case 'equals':
-          result = fieldValue === value;
+          result = String(fieldValue) === String(value);
           break;
         case 'not_equals':
-          result = fieldValue !== value;
+          result = String(fieldValue) !== String(value);
           break;
         case 'contains':
           result = String(fieldValue).includes(String(value));
+          break;
+        case 'not_contains':
+          result = !String(fieldValue).includes(String(value));
           break;
         case 'greater_than':
           result = Number(fieldValue) > Number(value);
@@ -768,11 +775,29 @@ export class WorkflowEngine {
         case 'less_than':
           result = Number(fieldValue) < Number(value);
           break;
+        case 'greater_or_equal':
+          result = Number(fieldValue) >= Number(value);
+          break;
+        case 'less_or_equal':
+          result = Number(fieldValue) <= Number(value);
+          break;
+        case 'starts_with':
+          result = String(fieldValue).startsWith(String(value));
+          break;
+        case 'ends_with':
+          result = String(fieldValue).endsWith(String(value));
+          break;
+        case 'is_empty':
+          result = !fieldValue || String(fieldValue).trim() === '';
+          break;
+        case 'is_not_empty':
+          result = Boolean(fieldValue) && String(fieldValue).trim() !== '';
+          break;
         default:
           return { success: false, error: `Unknown operator: ${operator}` };
       }
 
-      console.log(`[Workflow Engine] Condition evaluated to: ${result}`);
+      console.log(`[Workflow Engine] Condition "${field} ${operator} ${value}" → ${result}`);
 
       return {
         success: true,
@@ -791,19 +816,18 @@ export class WorkflowEngine {
    */
   private async executeDelay(
     step: WorkflowStep,
-    config: any,
+    config: unknown,
     context: ExecutionContext
   ): Promise<StepResult> {
     try {
-      // Extract params from config.data if it exists, otherwise from config directly (backwards compatibility)
-      const params = config.data || config;
+      const params = this.extractConfig(config);
       const { delayType, delayValue, duration } = params;
       
       // Support both duration field (new) and delayValue field (old)
-      const delayValueToUse = duration || delayValue;
+      const delayValueToUse = (duration || delayValue) as string | undefined;
 
       // If no delayType specified, assume 'duration' (new pattern with just duration field)
-      const typeToUse = delayType || 'duration';
+      const typeToUse = String(delayType ?? 'duration');
 
       if (typeToUse === 'duration' && delayValueToUse) {
         // Parse delay duration (e.g., "1h", "30m", "2d", "15 seconds")
@@ -833,32 +857,57 @@ export class WorkflowEngine {
   }
 
   /**
-   * Replace variables in a string template using the comprehensive variable replacer utility
+   * Replace variables in a string template using the comprehensive variable replacer utility.
+   * Accepts unknown so callers don't need to cast destructured params.
    */
-  private replaceVariables(template: string, context: ExecutionContext): string {
+  private replaceVariables(template: unknown, context: ExecutionContext): string {
     if (!template) return '';
-    
-    // Use the variable replacer utility which supports nested paths like {{lead.name}}, {{estimate.amount}}, etc.
-    return replaceVariablesInObject(template, context.variables) as string;
+    const str = typeof template === 'string' ? template : String(template);
+    return replaceVariablesInObject(str, context.variables) as string;
   }
 
   /**
-   * Get field value from context
+   * Get field value from context.
+   * Supports:
+   *   trigger.<field>    — field directly on the trigger entity
+   *   variable.<name>    — named context variable
+   *   <entity>.<field>   — dot-path walk through context.variables (e.g. "lead.status")
    */
-  private getFieldValue(field: string, context: ExecutionContext): any {
-    // Support trigger data fields
+  private getFieldValue(field: string, context: ExecutionContext): unknown {
+    if (!field) return undefined;
+
+    // Trigger data shorthand
     if (field.startsWith('trigger.')) {
       const fieldName = field.substring(8);
-      return context.triggerData[fieldName];
+      return (context.triggerData as Record<string, unknown>)[fieldName];
     }
 
-    // Support context variables
+    // Named variable shorthand
     if (field.startsWith('variable.')) {
       const varName = field.substring(9);
       return context.variables[varName];
     }
 
-    return undefined;
+    // General dot-path navigation through context.variables (e.g. "lead.status")
+    const parts = field.split('.');
+    let cursor: unknown = context.variables;
+    for (const part of parts) {
+      if (cursor && typeof cursor === 'object' && part in (cursor as object)) {
+        cursor = (cursor as Record<string, unknown>)[part];
+      } else {
+        return undefined;
+      }
+    }
+    return cursor;
+  }
+
+  /**
+   * Extract the action config payload, handling both the legacy top-level shape
+   * and the current nested shape { nodeId, position, data: { … }, edges }.
+   */
+  private extractConfig(config: unknown): Record<string, unknown> {
+    const c = config as Record<string, unknown>;
+    return (c?.data as Record<string, unknown>) ?? c ?? {};
   }
 
   /**
@@ -913,12 +962,15 @@ export class WorkflowEngine {
     try {
       switch (entityType) {
         case 'lead':
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           await storage.updateContact(entityId, { status: status as any }, contractorId);
           break;
         case 'estimate':
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           await storage.updateEstimate(entityId, { status: status as any }, contractorId);
           break;
         case 'job':
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           await storage.updateJob(entityId, { status: status as any }, contractorId);
           break;
         default:
@@ -939,7 +991,7 @@ export class WorkflowEngine {
     status: 'pending' | 'running' | 'completed' | 'failed',
     errorMessage?: string
   ): Promise<void> {
-    const updates: any = {
+    const updates: Record<string, unknown> = {
       status,
       completedAt: status === 'completed' || status === 'failed' ? new Date() : undefined
     };

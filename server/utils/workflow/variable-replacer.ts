@@ -9,7 +9,7 @@
  * @param variables - Object with variable values
  * @returns String with all variables replaced
  */
-export function replaceVariables(template: string, variables: Record<string, any>): string {
+export function replaceVariables(template: string, variables: Record<string, unknown>): string {
   if (!template || typeof template !== 'string') {
     return template;
   }
@@ -19,16 +19,16 @@ export function replaceVariables(template: string, variables: Record<string, any
 
   return template.replace(variablePattern, (match, variablePath) => {
     // Trim whitespace from variable path
-    const cleanPath = variablePath.trim();
+    const cleanPath = (variablePath as string).trim();
     
     // Split the path (e.g., "lead.name" => ["lead", "name"])
     const pathParts = cleanPath.split('.');
     
     // Navigate through the variables object
-    let value: any = variables;
+    let value: unknown = variables;
     for (const part of pathParts) {
-      if (value && typeof value === 'object' && part in value) {
-        value = value[part];
+      if (value && typeof value === 'object' && part in (value as object)) {
+        value = (value as Record<string, unknown>)[part];
       } else {
         // Variable not found, return empty string
         return '';
@@ -54,7 +54,7 @@ export function replaceVariables(template: string, variables: Record<string, any
  * @param variables - Object with variable values
  * @returns New object with all variables replaced
  */
-export function replaceVariablesInObject(obj: any, variables: Record<string, any>): any {
+export function replaceVariablesInObject(obj: unknown, variables: Record<string, unknown>): unknown {
   if (typeof obj === 'string') {
     return replaceVariables(obj, variables);
   }
@@ -64,10 +64,10 @@ export function replaceVariablesInObject(obj: any, variables: Record<string, any
   }
 
   if (obj && typeof obj === 'object') {
-    const result: any = {};
+    const result: Record<string, unknown> = {};
     for (const key in obj) {
       if (Object.prototype.hasOwnProperty.call(obj, key)) {
-        result[key] = replaceVariablesInObject(obj[key], variables);
+        result[key] = replaceVariablesInObject((obj as Record<string, unknown>)[key], variables);
       }
     }
     return result;
@@ -106,18 +106,18 @@ export function extractPlaceholders(template: string): string[] {
  * @param variables - Object with variable values
  * @returns Array of missing variable paths
  */
-export function findMissingVariables(template: string, variables: Record<string, any>): string[] {
+export function findMissingVariables(template: string, variables: Record<string, unknown>): string[] {
   const placeholders = extractPlaceholders(template);
   const missing: string[] = [];
 
   for (const placeholder of placeholders) {
     const pathParts = placeholder.split('.');
-    let value: any = variables;
+    let value: unknown = variables;
     let found = true;
 
     for (const part of pathParts) {
-      if (value && typeof value === 'object' && part in value) {
-        value = value[part];
+      if (value && typeof value === 'object' && part in (value as object)) {
+        value = (value as Record<string, unknown>)[part];
       } else {
         found = false;
         break;
