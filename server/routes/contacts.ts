@@ -1,5 +1,6 @@
 import type { Express, Response } from "express";
 import { asyncHandler } from "../utils/async-handler";
+import { parseBody } from "../utils/validate-body";
 import { storage } from "../storage";
 import { insertContactSchema } from "@shared/schema";
 import { ilike } from "drizzle-orm";
@@ -103,9 +104,9 @@ export function registerContactRoutes(app: Express): void {
     res.json(leads);
   }));
 
-  app.post("/api/contacts", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const contactData = insertContactSchema.omit({ contractorId: true }).parse(req.body);
+  app.post("/api/contacts", asyncHandler(async (req, res) => {
+    const contactData = parseBody(insertContactSchema.omit({ contractorId: true }), req, res);
+    if (!contactData) return;
       
       // Check for existing contact with overlapping phone numbers
       if (contactData.phones && contactData.phones.length > 0) {
@@ -181,28 +182,15 @@ export function registerContactRoutes(app: Express): void {
         });
       }
       
-      res.status(201).json(contact);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        const errorMessages = error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join('; ');
-        res.status(400).json({ 
-          message: `Invalid contact data: ${errorMessages}`, 
-          errors: error.errors 
-        });
-        return;
-      }
-      
-      console.error("Failed to create contact:", error);
-      res.status(500).json({ message: "Failed to create contact" });
-    }
-  });
+    res.status(201).json(contact);
+  }));
 
-  app.put("/api/contacts/:id", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const contactUpdateSchema = insertContactSchema.omit({ contractorId: true }).partial().extend({
-        followUpDate: z.coerce.date().nullable().optional(),
-      });
-      const updateData = contactUpdateSchema.parse(req.body);
+  app.put("/api/contacts/:id", asyncHandler(async (req, res) => {
+    const contactUpdateSchema = insertContactSchema.omit({ contractorId: true }).partial().extend({
+      followUpDate: z.coerce.date().nullable().optional(),
+    });
+    const updateData = parseBody(contactUpdateSchema, req, res);
+    if (!updateData) return;
       
       // Track who scheduled the contact
       if (updateData.status === 'scheduled') {
@@ -239,24 +227,13 @@ export function registerContactRoutes(app: Express): void {
         });
       }
       
-      res.json(contact);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        const errorMessages = error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join('; ');
-        res.status(400).json({ 
-          message: `Invalid contact data: ${errorMessages}`, 
-          errors: error.errors 
-        });
-        return;
-      }
-      res.status(500).json({ message: "Failed to update contact" });
-    }
-  });
+    res.json(contact);
+  }));
 
   // PATCH endpoint for partial contact updates (including tags)
-  app.patch("/api/contacts/:id", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const updateData = insertContactSchema.omit({ contractorId: true }).partial().parse(req.body);
+  app.patch("/api/contacts/:id", asyncHandler(async (req, res) => {
+    const updateData = parseBody(insertContactSchema.omit({ contractorId: true }).partial(), req, res);
+    if (!updateData) return;
       
       // Track who scheduled the contact
       if (updateData.status === 'scheduled') {
@@ -283,26 +260,16 @@ export function registerContactRoutes(app: Express): void {
         });
       }
       
-      res.json(contact);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        const errorMessages = error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join('; ');
-        res.status(400).json({ 
-          message: `Invalid contact data: ${errorMessages}`, 
-          errors: error.errors 
-        });
-        return;
-      }
-      res.status(500).json({ message: "Failed to update contact" });
-    }
-  });
+    res.json(contact);
+  }));
 
-  app.patch("/api/contacts/:id/status", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const statusSchema = z.object({
-        status: z.enum(['new', 'contacted', 'scheduled', 'active', 'disqualified', 'inactive'])
-      });
-      const { status } = statusSchema.parse(req.body);
+  app.patch("/api/contacts/:id/status", asyncHandler(async (req, res) => {
+    const statusSchema = z.object({
+      status: z.enum(['new', 'contacted', 'scheduled', 'active', 'disqualified', 'inactive'])
+    });
+    const parsed = parseBody(statusSchema, req, res);
+    if (!parsed) return;
+    const { status } = parsed;
       
       // Track who scheduled the contact
       const updateData: any = { status };
@@ -366,20 +333,12 @@ export function registerContactRoutes(app: Express): void {
         console.error('[Workflow] Error triggering workflows for contact status change:', error);
       });
       
-      res.json(contact);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        res.status(400).json({ message: "Invalid status", errors: error.errors });
-        return;
-      }
-      res.status(500).json({ message: "Failed to update contact status" });
-    }
-  });
+    res.json(contact);
+  }));
 
-  app.patch("/api/contacts/:id/follow-up", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const followUpSchema = z.object({
-        followUpDate: z.string().nullable().optional().transform((val, ctx) => {
+  app.patch("/api/contacts/:id/follow-up", asyncHandler(async (req, res) => {
+    const followUpSchema = z.object({
+      followUpDate: z.string().nullable().optional().transform((val, ctx) => {
           if (!val) return null;
           const date = new Date(val);
           if (isNaN(date.getTime())) {
@@ -392,8 +351,10 @@ export function registerContactRoutes(app: Express): void {
           return date;
         })
       });
-      const { followUpDate } = followUpSchema.parse(req.body);
-      const contact = await storage.updateContact(req.params.id, { followUpDate }, req.user!.contractorId);
+    const parsed = parseBody(followUpSchema, req, res);
+    if (!parsed) return;
+    const { followUpDate } = parsed;
+    const contact = await storage.updateContact(req.params.id, { followUpDate }, req.user!.contractorId);
       if (!contact) {
         res.status(404).json({ message: "Contact not found" });
         return;
@@ -436,15 +397,8 @@ export function registerContactRoutes(app: Express): void {
         contactType: contact.type
       });
       
-      res.json(contact);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        res.status(400).json({ message: "Invalid follow-up date", errors: error.errors });
-        return;
-      }
-      res.status(500).json({ message: "Failed to update follow-up date" });
-    }
-  });
+    res.json(contact);
+  }));
 
   app.delete("/api/contacts/:id", requireManagerOrAdmin, asyncHandler(async (req, res) => {
     const deleted = await storage.deleteContact(req.params.id, req.user!.contractorId);

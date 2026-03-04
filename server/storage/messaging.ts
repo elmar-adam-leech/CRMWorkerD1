@@ -48,6 +48,37 @@ async function getAllMessages(contractorId: string, options: {
     .offset(options.offset || 0);
 }
 
+// Private helper: maps a joined Activity row (with userName from users join) to a Message shape
+function emailActivityToMessage(activity: {
+  id: string;
+  content: string | null;
+  contactId: string | null;
+  estimateId: string | null;
+  userId: string | null;
+  contractorId: string;
+  createdAt: Date;
+  metadata: string | null;
+  userName: string | null;
+}): Message {
+  const metadata = activity.metadata ? JSON.parse(activity.metadata) : {};
+  return {
+    id: activity.id,
+    type: 'email' as const,
+    status: 'sent' as const,
+    direction: metadata.direction || 'outbound',
+    content: activity.content || '',
+    toNumber: metadata.to?.[0] || '',
+    fromNumber: metadata.from || '',
+    contactId: activity.contactId,
+    estimateId: activity.estimateId,
+    userId: activity.userId,
+    externalMessageId: metadata.messageId || null,
+    contractorId: activity.contractorId,
+    createdAt: activity.createdAt,
+    userName: activity.userName,
+  } as Message;
+}
+
 async function getConversations(contractorId: string, options: {
   search?: string;
   type?: 'text' | 'email';
@@ -88,25 +119,7 @@ async function getConversations(contractorId: string, options: {
     }).from(activities).leftJoin(users, eq(activities.userId, users.id)).where(and(...emailConditions)).orderBy(desc(activities.createdAt))
   ]);
 
-  const emailMessages = emailActivities.map(activity => {
-    const metadata = activity.metadata ? JSON.parse(activity.metadata) : {};
-    return {
-      id: activity.id,
-      type: 'email' as const,
-      status: 'sent' as const,
-      direction: metadata.direction || 'outbound',
-      content: activity.content || '',
-      toNumber: metadata.to?.[0] || '',
-      fromNumber: metadata.from || '',
-      contactId: activity.contactId,
-      estimateId: activity.estimateId,
-      userId: activity.userId,
-      externalMessageId: metadata.messageId || null,
-      contractorId: activity.contractorId,
-      createdAt: activity.createdAt,
-      userName: activity.userName,
-    };
-  });
+  const emailMessages = emailActivities.map(emailActivityToMessage);
 
   const filteredMessages = [...smsMessages, ...emailMessages as Message[]];
   filteredMessages.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -131,17 +144,7 @@ async function getConversations(contractorId: string, options: {
           .orderBy(desc(activities.createdAt))
       ]);
 
-      const contactEmailMessages = contactEmails.map(activity => {
-        const metadata = activity.metadata ? JSON.parse(activity.metadata) : {};
-        return {
-          id: activity.id, type: 'email' as const, status: 'sent' as const,
-          direction: metadata.direction || 'outbound', content: activity.content || '',
-          toNumber: metadata.to?.[0] || '', fromNumber: metadata.from || '',
-          contactId: activity.contactId, estimateId: activity.estimateId, userId: activity.userId,
-          externalMessageId: metadata.messageId || null, contractorId: activity.contractorId,
-          createdAt: activity.createdAt, userName: activity.userName,
-        };
-      });
+      const contactEmailMessages = contactEmails.map(emailActivityToMessage);
 
       return [...contactSms, ...contactEmailMessages as Message[]];
     }));
@@ -159,17 +162,7 @@ async function getConversations(contractorId: string, options: {
         .orderBy(desc(activities.createdAt))
     ]);
 
-    const allEmailMessages = allEmailActivities.map(activity => {
-      const metadata = activity.metadata ? JSON.parse(activity.metadata) : {};
-      return {
-        id: activity.id, type: 'email' as const, status: 'sent' as const,
-        direction: metadata.direction || 'outbound', content: activity.content || '',
-        toNumber: metadata.to?.[0] || '', fromNumber: metadata.from || '',
-        contactId: activity.contactId, estimateId: activity.estimateId, userId: activity.userId,
-        externalMessageId: metadata.messageId || null, contractorId: activity.contractorId,
-        createdAt: activity.createdAt, userName: activity.userName,
-      };
-    });
+    const allEmailMessages = allEmailActivities.map(emailActivityToMessage);
 
     allMessages = [...allSms, ...allEmailMessages as Message[]];
   }
@@ -241,17 +234,7 @@ async function getConversationMessages(contractorId: string, contactId: string):
   }).from(activities).leftJoin(users, eq(activities.userId, users.id))
     .where(and(eq(activities.contractorId, contractorId), eq(activities.type, 'email'), eq(activities.contactId, contactId)));
 
-  const emailMessages = emailActivities.map(activity => {
-    const metadata = activity.metadata ? JSON.parse(activity.metadata) : {};
-    return {
-      id: activity.id, type: 'email' as const, status: 'sent' as const,
-      direction: metadata.direction || 'outbound', content: activity.content || '',
-      toNumber: metadata.to?.[0] || '', fromNumber: metadata.from || '',
-      contactId: activity.contactId, estimateId: activity.estimateId, userId: activity.userId,
-      externalMessageId: metadata.messageId || null, contractorId: activity.contractorId,
-      createdAt: activity.createdAt, userName: activity.userName,
-    };
-  });
+  const emailMessages = emailActivities.map(emailActivityToMessage);
 
   const allMessages = [...smsMessages, ...emailMessages as Message[]];
   allMessages.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());

@@ -1,5 +1,6 @@
 import type { Express, Response } from "express";
 import { asyncHandler } from "../utils/async-handler";
+import { parseBody } from "../utils/validate-body";
 import { storage } from "../storage";
 import { insertJobSchema, insertEstimateSchema, insertActivitySchema, paginatedEstimatesSchema, paginatedJobsSchema, jobsPaginationQuerySchema } from "@shared/schema";
 import { requireAuth, requireManagerOrAdmin, type AuthenticatedRequest } from "../auth-service";
@@ -49,10 +50,19 @@ export function registerJobEstimateRoutes(app: Express): void {
     res.json(job);
   }));
 
-  app.post("/api/jobs", async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/jobs", asyncHandler(async (req, res) => {
+    const jobData = parseBody(insertJobSchema.omit({ contractorId: true }), req, res);
+    if (!jobData) return;
+    let job: Awaited<ReturnType<typeof storage.createJob>>;
     try {
-      const jobData = insertJobSchema.omit({ contractorId: true }).parse(req.body);
-      const job = await storage.createJob(jobData, req.user!.contractorId);
+      job = await storage.createJob(jobData, req.user!.contractorId);
+    } catch (err) {
+      if (err instanceof Error && err.message.includes('Customer not found')) {
+        res.status(400).json({ message: err.message });
+        return;
+      }
+      throw err;
+    }
       
       // Automatically add "Customer" tag to the contact
       try {
@@ -84,38 +94,23 @@ export function registerJobEstimateRoutes(app: Express): void {
         console.error('[Workflow] Error triggering workflows for job creation:', error);
       });
       
-      res.status(201).json(job);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        res.status(400).json({ message: "Invalid job data", errors: error.errors });
-        return;
-      }
-      if (error instanceof Error && error.message.includes('Customer not found')) {
-        res.status(400).json({ message: error.message });
-        return;
-      }
-      res.status(500).json({ message: "Failed to create job" });
+    res.status(201).json(job);
+  }));
+
+  app.put("/api/jobs/:id", asyncHandler(async (req, res) => {
+    const existingJob = await storage.getJob(req.params.id, req.user!.contractorId);
+    if (!existingJob) {
+      res.status(404).json({ message: "Job not found" });
+      return;
     }
-  });
-
-  app.put("/api/jobs/:id", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      // First, check if this is a Housecall Pro job (read-only for tracking purposes)
-      const existingJob = await storage.getJob(req.params.id, req.user!.contractorId);
-      if (!existingJob) {
-        res.status(404).json({ message: "Job not found" });
-        return;
-      }
-      
-      // Prevent editing of Housecall Pro jobs - they're read-only for tracking only
-      if (existingJob.externalSource === 'housecall-pro') {
-        res.status(403).json({ 
-          message: "Cannot edit Housecall Pro jobs - they are read-only for tracking lead value. Status updates are managed in Housecall Pro." 
-        });
-        return;
-      }
-
-      const updateData = insertJobSchema.omit({ contractorId: true, contactId: true }).partial().parse(req.body);
+    if (existingJob.externalSource === 'housecall-pro') {
+      res.status(403).json({ 
+        message: "Cannot edit Housecall Pro jobs - they are read-only for tracking lead value. Status updates are managed in Housecall Pro." 
+      });
+      return;
+    }
+    const updateData = parseBody(insertJobSchema.omit({ contractorId: true, contactId: true }).partial(), req, res);
+    if (!updateData) return;
       const job = await storage.updateJob(req.params.id, updateData, req.user!.contractorId);
       if (!job) {
         res.status(404).json({ message: "Job not found" });
@@ -140,15 +135,8 @@ export function registerJobEstimateRoutes(app: Express): void {
         });
       }
       
-      res.json(job);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        res.status(400).json({ message: "Invalid job data", errors: error.errors });
-        return;
-      }
-      res.status(500).json({ message: "Failed to update job" });
-    }
-  });
+    res.json(job);
+  }));
 
   app.delete("/api/jobs/:id", requireManagerOrAdmin, asyncHandler(async (req, res) => {
     const job = await storage.getJob(req.params.id, req.user!.contractorId);
@@ -211,54 +199,43 @@ export function registerJobEstimateRoutes(app: Express): void {
     res.json(estimate);
   }));
 
-  app.post("/api/estimates", async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/estimates", asyncHandler(async (req, res) => {
+    const estimateData = parseBody(insertEstimateSchema.omit({ contractorId: true }), req, res);
+    if (!estimateData) return;
+    let estimate: Awaited<ReturnType<typeof storage.createEstimate>>;
     try {
-      const estimateData = insertEstimateSchema.omit({ contractorId: true }).parse(req.body);
-      const estimate = await storage.createEstimate(estimateData, req.user!.contractorId);
-      
-      // Broadcast estimate creation to all connected clients
-      broadcastToContractor(req.user!.contractorId, {
-        type: 'estimate_created',
-        estimateId: estimate.id
-      });
-
-      // Trigger workflows for estimate creation
-      workflowEngine.triggerWorkflowsForEvent('estimate_created', estimate as unknown as Record<string, unknown>, req.user!.contractorId).catch(error => {
-        console.error('[Workflow] Error triggering workflows for estimate creation:', error);
-      });
-      
-      res.status(201).json(estimate);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        res.status(400).json({ message: "Invalid estimate data", errors: error.errors });
+      estimate = await storage.createEstimate(estimateData, req.user!.contractorId);
+    } catch (err) {
+      if (err instanceof Error && err.message.includes('Customer not found')) {
+        res.status(400).json({ message: err.message });
         return;
       }
-      if (error instanceof Error && error.message.includes('Customer not found')) {
-        res.status(400).json({ message: error.message });
-        return;
-      }
-      res.status(500).json({ message: "Failed to create estimate" });
+      throw err;
     }
-  });
+    broadcastToContractor(req.user!.contractorId, {
+      type: 'estimate_created',
+      estimateId: estimate.id
+    });
+    workflowEngine.triggerWorkflowsForEvent('estimate_created', estimate as unknown as Record<string, unknown>, req.user!.contractorId).catch(error => {
+      console.error('[Workflow] Error triggering workflows for estimate creation:', error);
+    });
+    res.status(201).json(estimate);
+  }));
 
-  app.put("/api/estimates/:id", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      // First, check if this is a Housecall Pro estimate (read-only for tracking purposes)
-      const existingEstimate = await storage.getEstimate(req.params.id, req.user!.contractorId);
-      if (!existingEstimate) {
-        res.status(404).json({ message: "Estimate not found" });
-        return;
-      }
-      
-      // Prevent editing of Housecall Pro estimates - they're read-only for tracking only
-      if (existingEstimate.externalSource === 'housecall-pro') {
-        res.status(403).json({ 
-          message: "Cannot edit Housecall Pro estimates - they are read-only for tracking lead value. Status updates are managed in Housecall Pro." 
-        });
-        return;
-      }
-
-      const updateData = insertEstimateSchema.omit({ contractorId: true, contactId: true }).partial().parse(req.body);
+  app.put("/api/estimates/:id", asyncHandler(async (req, res) => {
+    const existingEstimate = await storage.getEstimate(req.params.id, req.user!.contractorId);
+    if (!existingEstimate) {
+      res.status(404).json({ message: "Estimate not found" });
+      return;
+    }
+    if (existingEstimate.externalSource === 'housecall-pro') {
+      res.status(403).json({ 
+        message: "Cannot edit Housecall Pro estimates - they are read-only for tracking lead value. Status updates are managed in Housecall Pro." 
+      });
+      return;
+    }
+    const updateData = parseBody(insertEstimateSchema.omit({ contractorId: true, contactId: true }).partial(), req, res);
+    if (!updateData) return;
       const estimate = await storage.updateEstimate(req.params.id, updateData, req.user!.contractorId);
       if (!estimate) {
         res.status(404).json({ message: "Estimate not found" });
@@ -283,48 +260,38 @@ export function registerJobEstimateRoutes(app: Express): void {
         });
       }
       
-      res.json(estimate);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        res.status(400).json({ message: "Invalid estimate data", errors: error.errors });
-        return;
-      }
-      res.status(500).json({ message: "Failed to update estimate" });
+    res.json(estimate);
+  }));
+
+  app.patch("/api/estimates/:id/follow-up", asyncHandler(async (req, res) => {
+    const existingEstimate = await storage.getEstimate(req.params.id, req.user!.contractorId);
+    if (!existingEstimate) {
+      res.status(404).json({ message: "Estimate not found" });
+      return;
     }
-  });
-
-  app.patch("/api/estimates/:id/follow-up", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      // First, check if this is a Housecall Pro estimate (read-only for tracking purposes)
-      const existingEstimate = await storage.getEstimate(req.params.id, req.user!.contractorId);
-      if (!existingEstimate) {
-        res.status(404).json({ message: "Estimate not found" });
-        return;
-      }
-      
-      // Prevent editing of Housecall Pro estimates - they're read-only for tracking only
-      if (existingEstimate.externalSource === 'housecall-pro') {
-        res.status(403).json({ 
-          message: "Cannot edit Housecall Pro estimates - they are read-only for tracking lead value." 
-        });
-        return;
-      }
-
-      const followUpSchema = z.object({
-        followUpDate: z.string().nullable().optional().transform((val, ctx) => {
-          if (!val) return null;
-          const date = new Date(val);
-          if (isNaN(date.getTime())) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: "Invalid date format",
-            });
-            return z.NEVER;
-          }
-          return date;
-        })
+    if (existingEstimate.externalSource === 'housecall-pro') {
+      res.status(403).json({ 
+        message: "Cannot edit Housecall Pro estimates - they are read-only for tracking lead value." 
       });
-      const { followUpDate } = followUpSchema.parse(req.body);
+      return;
+    }
+    const followUpSchema = z.object({
+      followUpDate: z.string().nullable().optional().transform((val, ctx) => {
+        if (!val) return null;
+        const date = new Date(val);
+        if (isNaN(date.getTime())) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Invalid date format",
+          });
+          return z.NEVER;
+        }
+        return date;
+      })
+    });
+    const parsed = parseBody(followUpSchema, req, res);
+    if (!parsed) return;
+    const { followUpDate } = parsed;
       const estimate = await storage.updateEstimate(req.params.id, { followUpDate }, req.user!.contractorId);
       if (!estimate) {
         res.status(404).json({ message: "Estimate not found" });
@@ -367,15 +334,8 @@ export function registerJobEstimateRoutes(app: Express): void {
         estimateId: estimate.id
       });
       
-      res.json(estimate);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        res.status(400).json({ message: "Invalid follow-up date", errors: error.errors });
-        return;
-      }
-      res.status(500).json({ message: "Failed to update follow-up date" });
-    }
-  });
+    res.json(estimate);
+  }));
 
   app.delete("/api/estimates/:id", asyncHandler(async (req, res) => {
     // Check if estimate exists and belongs to this contractor
@@ -425,47 +385,30 @@ export function registerJobEstimateRoutes(app: Express): void {
     res.json(activity);
   }));
 
-  app.post("/api/activities", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const activityData = insertActivitySchema.omit({ contractorId: true }).parse({
-        ...req.body,
-        userId: req.user!.userId // Automatically set the current user as the creator
-      });
-      const activity = await storage.createActivity(activityData, req.user!.contractorId);
-      
-      // Automatically mark contact as contacted for communication activities
-      const contactId = activity.contactId;
-      if (contactId && ['call', 'email', 'sms'].includes(activity.type)) {
-        await storage.markContactContacted(contactId, req.user!.contractorId, req.user!.userId);
-      }
-      
-      res.status(201).json(activity);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        res.status(400).json({ message: "Invalid activity data", errors: error.errors });
-        return;
-      }
-      res.status(500).json({ message: "Failed to create activity" });
+  app.post("/api/activities", asyncHandler(async (req, res) => {
+    const activityData = parseBody(insertActivitySchema.omit({ contractorId: true }), req, res);
+    if (!activityData) return;
+    const activity = await storage.createActivity(
+      { ...activityData, userId: req.user!.userId },
+      req.user!.contractorId
+    );
+    const contactId = activity.contactId;
+    if (contactId && ['call', 'email', 'sms'].includes(activity.type)) {
+      await storage.markContactContacted(contactId, req.user!.contractorId, req.user!.userId);
     }
-  });
+    res.status(201).json(activity);
+  }));
 
-  app.put("/api/activities/:id", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const updateData = insertActivitySchema.omit({ contractorId: true, userId: true }).partial().parse(req.body);
-      const activity = await storage.updateActivity(req.params.id, updateData, req.user!.contractorId);
-      if (!activity) {
-        res.status(404).json({ message: "Activity not found" });
-        return;
-      }
-      res.json(activity);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        res.status(400).json({ message: "Invalid activity data", errors: error.errors });
-        return;
-      }
-      res.status(500).json({ message: "Failed to update activity" });
+  app.put("/api/activities/:id", asyncHandler(async (req, res) => {
+    const updateData = parseBody(insertActivitySchema.omit({ contractorId: true, userId: true }).partial(), req, res);
+    if (!updateData) return;
+    const activity = await storage.updateActivity(req.params.id, updateData, req.user!.contractorId);
+    if (!activity) {
+      res.status(404).json({ message: "Activity not found" });
+      return;
     }
-  });
+    res.json(activity);
+  }));
 
   app.delete("/api/activities/:id", asyncHandler(async (req, res) => {
     const deleted = await storage.deleteActivity(req.params.id, req.user!.contractorId);

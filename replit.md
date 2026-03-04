@@ -83,12 +83,18 @@ All external `import { storage } from "./storage"` imports are unchanged. The `I
 
 ### Settings Component Architecture
 
-`client/src/pages/Settings.tsx` (~2,146 lines) imports two self-contained sub-components that were extracted to keep the file manageable:
+`client/src/pages/Settings.tsx` (218 lines) is a thin orchestrator: it owns all shared queries and side-effect state (businessTargets, terminologySettings, bookingSlugInput), then renders one of 6 tab components that each own their own mutations and local state.
 
 ```
 client/src/components/settings/
-  SalespeopleManagement.tsx  — Salespeople/scheduling tab (own queries, mutations, local state)
-  GmailConnectionCard.tsx    — Gmail OAuth connect/disconnect/sync card (own mutations, URL-param handling)
+  IntegrationsTab.tsx        — Integration list, credentials, enable/disable, HCP webhook dialog, provider selection, Dialpad sync. Owns its own mutations. Uses useCurrentUser() and useSyncStatus() hooks directly.
+  AccountTab.tsx             — Profile info, Gmail card, public booking slug (URL + embed), team user management (add/list), navigation terminology editor. Owns addUser, saveBookingSlug, saveTerminology mutations.
+  SecurityTab.tsx            — Placeholder for future security settings.
+  TargetsTab.tsx             — Business performance targets (speed-to-lead, follow-up rate, set rate, close rate). Owns saveTargets mutation.
+  WebhooksTab.tsx            — Inbound webhook URLs (leads/estimates), API key viewer, full documentation panel. Local-only state (selectedWebhook, showApiKey).
+  SalespeopleTab.tsx         — Thin wrapper around SalespeopleManagement component.
+  SalespeopleManagement.tsx  — Salespeople/scheduling tab (own queries, mutations, local state).
+  GmailConnectionCard.tsx    — Gmail OAuth connect/disconnect/sync card (own mutations, URL-param handling).
 ```
 
 ## External Dependencies
@@ -122,6 +128,27 @@ client/src/components/settings/
 - `GOOGLE_MAPS_API_KEY` (secret): Google Maps API key with Places API + Maps JavaScript API enabled. Must have your domain added to "Allowed HTTP referrers" in Google Cloud Console (API Keys → Restrictions).
 - `DATABASE_URL`, `JWT_SECRET`, `CREDENTIAL_ENCRYPTION_KEY`, `NODE_ENV`, `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL`, `APP_URL`, `XAI_API_KEY`
 
+### Workflow Node Form Architecture
+
+`client/src/components/workflow/NodeEditDialog.tsx` (183 lines) is a thin dispatcher: it owns formData state + 4 TanStack Query calls, then renders the correct form component via a switch on node type.
+
+```
+client/src/components/workflow/node-forms/
+  shared-fields.tsx          — VariableInputField, VariableTextareaField, AfterSendingSection, StatusOptions, insertVariableAtCursor utility
+  TriggerNodeForm.tsx        — Entity event / time-based / manual trigger config with tag filter
+  SendEmailNodeForm.tsx      — To/Subject/Body variable fields + admin fromEmail override + AfterSending
+  SendSmsNodeForm.tsx        — To/Message variable fields + admin fromNumber override + AfterSending
+  NotificationNodeForm.tsx   — Title/Message variable fields
+  UpdateEntityNodeForm.tsx   — Entity type + field + value with live preview (needs setFormData for atomic multi-field update)
+  AssignUserNodeForm.tsx     — Team member select (admin) or text input (non-admin)
+  AiNodeForm.tsx             — Covers both aiGenerate (prompt textarea) and aiAnalyze (analysisType select)
+  ConditionalNodeForm.tsx    — 3-column condition builder (field/operator/value) with preview + help text
+  DelayNodeForm.tsx          — Duration value + unit (s/m/h/d) with multi-format parser
+  WaitUntilNodeForm.tsx      — datetime-local input
+```
+
+Each form receives `(formData, handleChange)` props. Forms needing variable insertion (`SendEmail`, `SendSMS`, `Notification`, `AiGenerate`) create their own refs internally and call `insertVariableAtCursor` from `shared-fields.tsx`. `UpdateEntityNodeForm` additionally receives `setFormData` for atomic multi-field updates.
+
 ### Shared Component Library
 Reusable components extracted to avoid duplication across Jobs, Estimates, and Leads pages:
 - `DeleteConfirmDialog` — standardised AlertDialog for destructive confirmations
@@ -129,6 +156,7 @@ Reusable components extracted to avoid duplication across Jobs, Estimates, and L
 - `StatusFilterBar` — Quick-filter badge row with counts; used by Jobs, Estimates, Leads
 - `LoadMoreButton` — Cursor-pagination load trigger; used by Jobs, Estimates, Leads
 - `ViewToggle` — Card/Kanban view switch; used by Jobs and Leads
+- `FollowUpCard` (`client/src/components/FollowUpCard.tsx`) — Per-item card for the Follow-ups page. Shows contact name, follow-up date, overdue badge, and 4 action buttons (call, text, schedule, edit). Props: `{ item, onSetFollowUp, onCallContact, onTextContact, onSchedule, onEdit }`. Extracted from `Follow-ups.tsx` to reduce that file by ~150 lines.
 
 ### Shared UI Primitives (`client/src/components/ui/`)
 - `DatePicker` (`date-picker.tsx`) — `<DatePicker value onChange placeholder? disabled? className? data-testid? />`. Wraps `Popover + Button(CalendarIcon) + Calendar`. Replaces the identical 8-line pattern previously hand-written in `CreateJobForm`, `CreateEstimateForm`, and `FilterPanel`.
@@ -136,6 +164,7 @@ Reusable components extracted to avoid duplication across Jobs, Estimates, and L
 
 ### Server Utilities (`server/utils/`)
 - `asyncHandler` (`async-handler.ts`) — HOF wrapping `async (req, res, next)` route handlers: catches any thrown error and forwards it to `next(error)`. Eliminates per-handler `try { ... } catch { res.status(500) }` boilerplate. Applied to all simple-500-catch handlers in `contacts.ts`, `jobs-estimates.ts`, `messaging.ts`, and `users.ts` (49 handlers total). A global 4-argument error handler in `server/routes.ts` receives these forwarded errors and returns a structured `{ message }` JSON response with the correct HTTP status.
+- `parseBody` (`validate-body.ts`) — `parseBody<T>(schema: z.ZodType<T, any, any>, req, res): T | null`. Validates `req.body` via `schema.safeParse`. Returns parsed data on success or sends `res.status(400).json({ message, errors })` and returns `null` on failure. Eliminates the `schema.parse(req.body)` + `catch (z.ZodError)` block that appeared 15+ times across `contacts.ts` and `jobs-estimates.ts`. Usage: `const data = parseBody(mySchema, req, res); if (!data) return;`.
 
 ### Page Preferences Hook
 `usePagePreferences({ pageKey })` persists `viewMode`, `filterStatus`, `advancedFilters` to localStorage per page. Currently wired into Jobs and Leads.
