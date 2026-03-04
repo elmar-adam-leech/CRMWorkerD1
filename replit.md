@@ -128,6 +128,17 @@ client/src/components/settings/
 - `GOOGLE_MAPS_API_KEY` (secret): Google Maps API key with Places API + Maps JavaScript API enabled. Must have your domain added to "Allowed HTTP referrers" in Google Cloud Console (API Keys → Restrictions).
 - `DATABASE_URL`, `JWT_SECRET`, `CREDENTIAL_ENCRYPTION_KEY`, `NODE_ENV`, `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL`, `APP_URL`, `XAI_API_KEY`
 
+### Workflow Builder Architecture
+
+`client/src/pages/WorkflowBuilder.tsx` (~472 lines) keeps: state, 4 query hooks, 4 `useEffect` hooks, 3 mutations + `saveWorkflowSteps`, event handlers (node click, drag, delete, reset, template), and the thin layout render.
+
+```
+client/src/lib/workflow-utils.ts        — extractTriggerConfig(), NODE_ACTION_MAP, NODE_TO_ACTION, ACTION_TO_NODE (pure, no React dependency)
+client/src/components/workflow/
+  WorkflowHeader.tsx                    — ~165 lines: back button, workflow name input, templates trigger, test button, delete+confirm dialog, unsaved badge, save button, creator+approval+active toggle row. Props: workflowId, workflowName, workflow, creator, isDirty, isSaving, isDeleting + callbacks.
+  WorkflowStatusAlert.tsx               — ~40 lines: pending/rejected alert with "View Approvals" link. Renders null when approved. Props: { workflow }.
+```
+
 ### Workflow Node Form Architecture
 
 `client/src/components/workflow/NodeEditDialog.tsx` (183 lines) is a thin dispatcher: it owns formData state + 4 TanStack Query calls, then renders the correct form component via a switch on node type.
@@ -158,13 +169,17 @@ Reusable components extracted to avoid duplication across Jobs, Estimates, and L
 - `ViewToggle` — Card/Kanban view switch; used by Jobs and Leads
 - `FollowUpCard` (`client/src/components/FollowUpCard.tsx`) — Per-item card for the Follow-ups page. Shows contact name, follow-up date, overdue badge, and 4 action buttons (call, text, schedule, edit). Props: `{ item, onSetFollowUp, onCallContact, onTextContact, onSchedule, onEdit }`. Extracted from `Follow-ups.tsx` to reduce that file by ~150 lines.
 
+### Card Utilities (`client/src/lib/card-utils.ts`)
+- `getPriorityColor(priority: string): string` — Returns the Tailwind `border-l-4 border-l-*` class for a given priority level (high/medium/low). Previously duplicated verbatim in both `JobCard.tsx` and `EstimateCard.tsx`.
+- `updateContactTags(contactId, newTags): Promise<void>` — PATCHes `/api/contacts/:id` with new tags, then invalidates `["/api/contacts/:id"]` and `["/api/contacts/paginated"]` query keys. Previously duplicated verbatim in both `JobCard.tsx` and `EstimateCard.tsx`.
+
 ### Shared UI Primitives (`client/src/components/ui/`)
 - `DatePicker` (`date-picker.tsx`) — `<DatePicker value onChange placeholder? disabled? className? data-testid? />`. Wraps `Popover + Button(CalendarIcon) + Calendar`. Replaces the identical 8-line pattern previously hand-written in `CreateJobForm`, `CreateEstimateForm`, and `FilterPanel`.
 - `ContactCombobox` (`contact-combobox.tsx`) — `<ContactCombobox value onChange error? />`. Self-contained component that owns the contacts query (`/api/contacts/paginated?limit=100`), filtering logic, inline customer creation dialog (name/email/phone), and the full Popover+Command UI. Replaces ~70 lines duplicated verbatim in `CreateJobForm` and `CreateEstimateForm`.
 
 ### Server Utilities (`server/utils/`)
-- `asyncHandler` (`async-handler.ts`) — HOF wrapping `async (req, res, next)` route handlers: catches any thrown error and forwards it to `next(error)`. Eliminates per-handler `try { ... } catch { res.status(500) }` boilerplate. Applied to all simple-500-catch handlers in `contacts.ts`, `jobs-estimates.ts`, `messaging.ts`, and `users.ts` (49 handlers total). A global 4-argument error handler in `server/routes.ts` receives these forwarded errors and returns a structured `{ message }` JSON response with the correct HTTP status.
-- `parseBody` (`validate-body.ts`) — `parseBody<T>(schema: z.ZodType<T, any, any>, req, res): T | null`. Validates `req.body` via `schema.safeParse`. Returns parsed data on success or sends `res.status(400).json({ message, errors })` and returns `null` on failure. Eliminates the `schema.parse(req.body)` + `catch (z.ZodError)` block that appeared 15+ times across `contacts.ts` and `jobs-estimates.ts`. Usage: `const data = parseBody(mySchema, req, res); if (!data) return;`.
+- `asyncHandler` (`async-handler.ts`) — HOF wrapping `async (req, res, next)` route handlers: catches any thrown error and forwards it to `next(error)`. Eliminates per-handler `try { ... } catch { res.status(500) }` boilerplate. Applied to all simple-500-catch handlers in `contacts.ts`, `jobs-estimates.ts`, `messaging.ts`, and `users.ts`. A global 4-argument error handler in `server/routes.ts` receives these forwarded errors and returns a structured `{ message }` JSON response with the correct HTTP status.
+- `parseBody` (`validate-body.ts`) — `parseBody<T>(schema: z.ZodType<T, any, any>, req, res): T | null`. Validates `req.body` via `schema.safeParse`. Returns parsed data on success or sends `res.status(400).json({ message, errors })` and returns `null` on failure. Applied to all Zod parse sites in `contacts.ts`, `jobs-estimates.ts`, and `messaging.ts`. Usage: `const data = parseBody(mySchema, req, res); if (!data) return;`.
 
 ### Page Preferences Hook
 `usePagePreferences({ pageKey })` persists `viewMode`, `filterStatus`, `advancedFilters` to localStorage per page. Currently wired into Jobs and Leads.

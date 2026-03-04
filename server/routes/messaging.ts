@@ -1,5 +1,6 @@
 import type { Express, Response } from "express";
 import { asyncHandler } from "../utils/async-handler";
+import { parseBody } from "../utils/validate-body";
 import { storage } from "../storage";
 import { insertMessageSchema, insertTemplateSchema, insertCallSchema, templates, messages, activities, users, contractors } from "@shared/schema";
 import { db } from "../db";
@@ -22,169 +23,154 @@ export function registerMessagingRoutes(app: Express): void {
     res.json(messages);
   }));
 
-  app.post("/api/messages/send-text", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const messageData = insertMessageSchema.omit({ contractorId: true, status: true }).parse(req.body);
-      
-      if (messageData.type !== 'text') {
-        res.status(400).json({ message: "This endpoint is only for text messages" });
-        return;
-      }
+  app.post("/api/messages/send-text", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const messageData = parseBody(insertMessageSchema.omit({ contractorId: true, status: true }), req, res);
+    if (!messageData) return;
 
-      if (!messageData.toNumber) {
-        res.status(400).json({ message: "Phone number is required" });
-        return;
-      }
-
-      // Send text via Dialpad service directly (with fixed phone formatting)
-      const { DialpadService } = await import('../dialpad-service');
-      const dialpadService = new DialpadService();
-      const smsResponse = await dialpadService.sendText(
-        messageData.toNumber,
-        messageData.content,
-        messageData.fromNumber || undefined,
-        req.user!.contractorId
-      );
-
-      // Save message to database with external message ID from Dialpad
-      // Use contactId directly (schema no longer has leadId/customerId)
-      const contactId = messageData.contactId || null;
-      const message = await storage.createMessage({
-        ...messageData,
-        contactId: contactId,
-        userId: req.user!.userId,
-        status: smsResponse.success ? 'sent' : 'failed',
-        externalMessageId: smsResponse.messageId || null,
-      }, req.user!.contractorId);
-
-      // Automatically mark contact as contacted if this is a text to a contact
-      if (contactId && smsResponse.success) {
-        await storage.markContactContacted(contactId, req.user!.contractorId, req.user!.userId);
-      }
-
-      // Log activity for the SMS
-      if (smsResponse.success) {
-        await storage.createActivity({
-          type: 'sms',
-          title: 'Text message sent',
-          content: messageData.content,
-          contactId: message.contactId || null,
-          estimateId: message.estimateId || null,
-          userId: req.user!.userId
-        }, req.user!.contractorId);
-        
-        // Broadcast new message to WebSocket clients
-        const { broadcastToContractor } = await import('../websocket');
-        broadcastToContractor(req.user!.contractorId, {
-          type: 'new_message',
-          message: message,
-          contactId: message.contactId || message.estimateId,
-          contactType: message.estimateId ? 'estimate' : 'contact'
-        });
-      }
-
-      if (smsResponse.success) {
-        res.json({ message, success: true });
-      } else {
-        res.status(500).json({ 
-          message, 
-          success: false, 
-          error: smsResponse.error 
-        });
-      }
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        res.status(400).json({ message: "Invalid message data", errors: error.errors });
-        return;
-      }
-      res.status(500).json({ message: "Failed to send text message" });
+    if (messageData.type !== 'text') {
+      res.status(400).json({ message: "This endpoint is only for text messages" });
+      return;
     }
-  });
 
-  app.post("/api/messages/send-email", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const { subject, toEmail, ...messageData } = req.body;
-      const parsedData = insertMessageSchema.omit({ contractorId: true, status: true }).parse({
+    if (!messageData.toNumber) {
+      res.status(400).json({ message: "Phone number is required" });
+      return;
+    }
+
+    // Send text via Dialpad service directly (with fixed phone formatting)
+    const { DialpadService } = await import('../dialpad-service');
+    const dialpadService = new DialpadService();
+    const smsResponse = await dialpadService.sendText(
+      messageData.toNumber,
+      messageData.content,
+      messageData.fromNumber || undefined,
+      req.user!.contractorId
+    );
+
+    // Save message to database with external message ID from Dialpad
+    // Use contactId directly (schema no longer has leadId/customerId)
+    const contactId = messageData.contactId || null;
+    const message = await storage.createMessage({
+      ...messageData,
+      contactId: contactId,
+      userId: req.user!.userId,
+      status: smsResponse.success ? 'sent' : 'failed',
+      externalMessageId: smsResponse.messageId || null,
+    }, req.user!.contractorId);
+
+    // Automatically mark contact as contacted if this is a text to a contact
+    if (contactId && smsResponse.success) {
+      await storage.markContactContacted(contactId, req.user!.contractorId, req.user!.userId);
+    }
+
+    // Log activity for the SMS
+    if (smsResponse.success) {
+      await storage.createActivity({
+        type: 'sms',
+        title: 'Text message sent',
+        content: messageData.content,
+        contactId: message.contactId || null,
+        estimateId: message.estimateId || null,
+        userId: req.user!.userId
+      }, req.user!.contractorId);
+      
+      broadcastToContractor(req.user!.contractorId, {
+        type: 'new_message',
+        message: message,
+        contactId: message.contactId || message.estimateId,
+        contactType: message.estimateId ? 'estimate' : 'contact'
+      });
+    }
+
+    if (smsResponse.success) {
+      res.json({ message, success: true });
+    } else {
+      res.status(500).json({ 
+        message, 
+        success: false, 
+        error: smsResponse.error 
+      });
+    }
+  }));
+
+  app.post("/api/messages/send-email", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const { subject, toEmail, ...messageData } = req.body;
+    const parsedData = parseBody(insertMessageSchema.omit({ contractorId: true, status: true }), {
+      ...req,
+      body: {
         ...messageData,
         type: 'email',
-        toNumber: toEmail, // Store email in toNumber field for consistency
-      });
-      
-      if (!toEmail) {
-        res.status(400).json({ message: "Email address is required" });
-        return;
+        toNumber: toEmail,
       }
+    } as AuthenticatedRequest, res);
+    if (!parsedData) return;
 
-      if (!subject) {
-        res.status(400).json({ message: "Email subject is required" });
-        return;
-      }
-
-      // Send email via tenant's preferred email provider
-      const emailResponse = await providerService.sendEmail({
-        to: toEmail,
-        subject: subject,
-        content: parsedData.content,
-        contractorId: req.user!.contractorId
-      });
-
-      // Save message to database
-      // Use contactId directly (schema no longer has leadId/customerId)
-      const contactIdForEmail = parsedData.contactId || null;
-      const message = await storage.createMessage({
-        ...parsedData,
-        contactId: contactIdForEmail,
-        status: emailResponse.success ? 'sent' : 'failed',
-      }, req.user!.contractorId);
-
-      // Automatically mark contact as contacted if this is an email to a contact
-      if (contactIdForEmail && emailResponse.success) {
-        await storage.markContactContacted(contactIdForEmail, req.user!.contractorId, req.user!.userId);
-      }
-
-      // Log activity for the email
-      if (emailResponse.success) {
-        await storage.createActivity({
-          type: 'email',
-          title: `Email: ${subject}`,
-          content: parsedData.content,
-          contactId: message.contactId || null,
-          estimateId: message.estimateId || null,
-          userId: req.user!.userId
-        }, req.user!.contractorId);
-        
-        // Broadcast new message to WebSocket clients
-        const { broadcastToContractor } = await import('../websocket');
-        broadcastToContractor(req.user!.contractorId, {
-          type: 'new_message',
-          message: message,
-          contactId: message.contactId || message.estimateId,
-          contactType: message.estimateId ? 'estimate' : 'contact'
-        });
-      }
-
-      if (emailResponse.success) {
-        res.json({ 
-          message, 
-          success: true, 
-          statusMessage: `Email sent successfully`,
-          messageId: emailResponse.messageId 
-        });
-      } else {
-        res.status(500).json({ 
-          message, 
-          success: false, 
-          error: emailResponse.error 
-        });
-      }
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        res.status(400).json({ message: "Invalid email data", errors: error.errors });
-        return;
-      }
-      res.status(500).json({ message: "Failed to send email" });
+    if (!toEmail) {
+      res.status(400).json({ message: "Email address is required" });
+      return;
     }
-  });
+
+    if (!subject) {
+      res.status(400).json({ message: "Email subject is required" });
+      return;
+    }
+
+    // Send email via tenant's preferred email provider
+    const emailResponse = await providerService.sendEmail({
+      to: toEmail,
+      subject: subject,
+      content: parsedData.content,
+      contractorId: req.user!.contractorId
+    });
+
+    // Save message to database
+    // Use contactId directly (schema no longer has leadId/customerId)
+    const contactIdForEmail = parsedData.contactId || null;
+    const message = await storage.createMessage({
+      ...parsedData,
+      contactId: contactIdForEmail,
+      status: emailResponse.success ? 'sent' : 'failed',
+    }, req.user!.contractorId);
+
+    // Automatically mark contact as contacted if this is an email to a contact
+    if (contactIdForEmail && emailResponse.success) {
+      await storage.markContactContacted(contactIdForEmail, req.user!.contractorId, req.user!.userId);
+    }
+
+    // Log activity for the email
+    if (emailResponse.success) {
+      await storage.createActivity({
+        type: 'email',
+        title: `Email: ${subject}`,
+        content: parsedData.content,
+        contactId: message.contactId || null,
+        estimateId: message.estimateId || null,
+        userId: req.user!.userId
+      }, req.user!.contractorId);
+      
+      broadcastToContractor(req.user!.contractorId, {
+        type: 'new_message',
+        message: message,
+        contactId: message.contactId || message.estimateId,
+        contactType: message.estimateId ? 'estimate' : 'contact'
+      });
+    }
+
+    if (emailResponse.success) {
+      res.json({ 
+        message, 
+        success: true, 
+        statusMessage: `Email sent successfully`,
+        messageId: emailResponse.messageId 
+      });
+    } else {
+      res.status(500).json({ 
+        message, 
+        success: false, 
+        error: emailResponse.error 
+      });
+    }
+  }));
 
   // Validation schema for sending Gmail
   const sendGmailSchema = z.object({
@@ -198,149 +184,140 @@ export function registerMessagingRoutes(app: Express): void {
   });
 
   // Send email via user's connected Gmail account (per-user OAuth)
-  app.post("/api/emails/send-gmail", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      // Validate request body
-      const validatedData = sendGmailSchema.parse(req.body);
-      const { to, subject, content, contactId, leadId, estimateId, customerId } = validatedData;
-      // Support both new (contactId) and legacy (leadId, customerId) parameters
-      const resolvedContactId = contactId || leadId || customerId;
+  app.post("/api/emails/send-gmail", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const validatedData = parseBody(sendGmailSchema, req, res);
+    if (!validatedData) return;
 
-      // Get user's Gmail credentials
-      const userResult = await db.select().from(users).where(and(
-        eq(users.id, req.user!.userId),
-        eq(users.contractorId, req.user!.contractorId)
-      ));
-      const user = userResult[0];
-      if (!user || !user.gmailConnected || !user.gmailRefreshToken) {
-        res.status(400).json({ message: "Gmail not connected. Please connect your Gmail account in settings." });
-        return;
+    const { to, subject, content, contactId, leadId, estimateId, customerId } = validatedData;
+    // Support both new (contactId) and legacy (leadId, customerId) parameters
+    const resolvedContactId = contactId || leadId || customerId;
+
+    // Get user's Gmail credentials
+    const userResult = await db.select().from(users).where(and(
+      eq(users.id, req.user!.userId),
+      eq(users.contractorId, req.user!.contractorId)
+    ));
+    const user = userResult[0];
+    if (!user || !user.gmailConnected || !user.gmailRefreshToken) {
+      res.status(400).json({ message: "Gmail not connected. Please connect your Gmail account in settings." });
+      return;
+    }
+
+    // Get contractor information for company name
+    const contractorResult = await db.select().from(contractors).where(
+      eq(contractors.id, req.user!.contractorId)
+    );
+    const contractor = contractorResult[0];
+
+    // Format sender name as "User Name @ Company Name"
+    const fromName = contractor?.name 
+      ? `${user.name} @ ${contractor.name}`
+      : user.name;
+
+    // Send email via Gmail API
+    const emailResponse = await gmailService.sendEmail({
+      to,
+      subject,
+      content,
+      fromEmail: user.gmailEmail || undefined,
+      fromName: fromName,
+      refreshToken: user.gmailRefreshToken,
+    });
+
+    if (emailResponse.success) {
+      // Create activity record with email metadata including direction
+      const emailMetadata = {
+        subject,
+        to: [to],
+        from: user.gmailEmail || '',
+        messageId: emailResponse.messageId,
+        direction: 'outbound',
+      };
+
+      const activity = await storage.createActivity({
+        type: 'email',
+        title: `Email: ${subject}`,
+        content,
+        metadata: JSON.stringify(emailMetadata),
+        contactId: resolvedContactId || null,
+        estimateId: estimateId || null,
+        userId: req.user!.userId,
+        externalId: emailResponse.messageId || null,
+        externalSource: 'gmail',
+      }, req.user!.contractorId);
+
+      // Mark contact as contacted if this is an email to a contact
+      const contactIdToMark = resolvedContactId || estimateId;
+      if (contactIdToMark) {
+        await storage.markContactContacted(contactIdToMark, req.user!.contractorId, req.user!.userId);
       }
 
-      // Get contractor information for company name
-      const contractorResult = await db.select().from(contractors).where(
-        eq(contractors.id, req.user!.contractorId)
-      );
-      const contractor = contractorResult[0];
-
-      // Format sender name as "User Name @ Company Name"
-      const fromName = contractor?.name 
-        ? `${user.name} @ ${contractor.name}`
-        : user.name;
-
-      // Send email via Gmail API
-      const emailResponse = await gmailService.sendEmail({
-        to,
-        subject,
-        content,
-        fromEmail: user.gmailEmail || undefined,
-        fromName: fromName,
-        refreshToken: user.gmailRefreshToken,
+      // Broadcast new message to WebSocket clients
+      // Transform activity to Message format matching getConversationMessages
+      // Preserve legacy field semantics: determine leadId/customerId based on contact type
+      
+      // Determine legacy fields based on contact type for backward compatibility
+      let broadcastLeadId: string | null = leadId || null;
+      let broadcastCustomerId: string | null = customerId || null;
+      let broadcastContactType: 'estimate' | 'customer' | 'lead' = 'lead';
+      
+      if (estimateId) {
+        broadcastContactType = 'estimate';
+      } else if (customerId) {
+        broadcastCustomerId = customerId;
+        broadcastContactType = 'customer';
+      } else if (leadId) {
+        broadcastLeadId = leadId;
+        broadcastContactType = 'lead';
+      } else if (contactId && resolvedContactId) {
+        // When only new contactId is provided, look up contact type
+        const resolvedContact = await storage.getContact(resolvedContactId, req.user!.contractorId);
+        if (resolvedContact?.type === 'customer') {
+          broadcastCustomerId = resolvedContactId;
+          broadcastContactType = 'customer';
+        } else {
+          broadcastLeadId = resolvedContactId;
+          broadcastContactType = 'lead';
+        }
+      }
+      
+      broadcastToContractor(req.user!.contractorId, {
+        type: 'new_message',
+        message: {
+          id: activity.id,
+          type: 'email' as const,
+          status: 'sent' as const,
+          direction: emailMetadata.direction as 'outbound',
+          content: activity.content || content,
+          toNumber: emailMetadata.to[0],
+          fromNumber: emailMetadata.from,
+          contactId: activity.contactId || null,
+          leadId: broadcastLeadId,
+          customerId: broadcastCustomerId,
+          estimateId: activity.estimateId || null,
+          userId: activity.userId || null,
+          externalMessageId: emailMetadata.messageId || null,
+          contractorId: activity.contractorId,
+          createdAt: activity.createdAt,
+          userName: user.name,
+        },
+        contactId: resolvedContactId || estimateId || null,
+        contactType: broadcastContactType
       });
 
-      if (emailResponse.success) {
-        // Create activity record with email metadata including direction
-        const emailMetadata = {
-          subject,
-          to: [to],
-          from: user.gmailEmail || '',
-          messageId: emailResponse.messageId,
-          direction: 'outbound',
-        };
-
-        const activity = await storage.createActivity({
-          type: 'email',
-          title: `Email: ${subject}`,
-          content,
-          metadata: JSON.stringify(emailMetadata),
-          contactId: resolvedContactId || null,
-          estimateId: estimateId || null,
-          userId: req.user!.userId,
-          externalId: emailResponse.messageId || null,
-          externalSource: 'gmail',
-        }, req.user!.contractorId);
-
-        // Mark contact as contacted if this is an email to a contact
-        const contactIdToMark = resolvedContactId || estimateId;
-        if (contactIdToMark) {
-          await storage.markContactContacted(contactIdToMark, req.user!.contractorId, req.user!.userId);
-        }
-
-        // Broadcast new message to WebSocket clients
-        // Transform activity to Message format matching getConversationMessages
-        // Preserve legacy field semantics: determine leadId/customerId based on contact type
-        const { broadcastToContractor } = await import('../websocket');
-        
-        // Determine legacy fields based on contact type for backward compatibility
-        let broadcastLeadId: string | null = leadId || null;
-        let broadcastCustomerId: string | null = customerId || null;
-        let broadcastContactType: 'estimate' | 'customer' | 'lead' = 'lead';
-        
-        if (estimateId) {
-          broadcastContactType = 'estimate';
-        } else if (customerId) {
-          broadcastCustomerId = customerId;
-          broadcastContactType = 'customer';
-        } else if (leadId) {
-          broadcastLeadId = leadId;
-          broadcastContactType = 'lead';
-        } else if (contactId && resolvedContactId) {
-          // When only new contactId is provided, look up contact type
-          const resolvedContact = await storage.getContact(resolvedContactId, req.user!.contractorId);
-          if (resolvedContact?.type === 'customer') {
-            broadcastCustomerId = resolvedContactId;
-            broadcastContactType = 'customer';
-          } else {
-            broadcastLeadId = resolvedContactId;
-            broadcastContactType = 'lead';
-          }
-        }
-        
-        broadcastToContractor(req.user!.contractorId, {
-          type: 'new_message',
-          message: {
-            id: activity.id,
-            type: 'email' as const,
-            status: 'sent' as const,
-            direction: emailMetadata.direction as 'outbound',
-            content: activity.content || content,
-            toNumber: emailMetadata.to[0],
-            fromNumber: emailMetadata.from,
-            contactId: activity.contactId || null,
-            leadId: broadcastLeadId,
-            customerId: broadcastCustomerId,
-            estimateId: activity.estimateId || null,
-            userId: activity.userId || null,
-            externalMessageId: emailMetadata.messageId || null,
-            contractorId: activity.contractorId,
-            createdAt: activity.createdAt,
-            userName: user.name,
-          },
-          contactId: resolvedContactId || estimateId || null,
-          contactType: broadcastContactType
-        });
-
-        res.json({
-          success: true,
-          messageId: emailResponse.messageId,
-          message: "Email sent successfully"
-        });
-      } else {
-        res.status(500).json({
-          success: false,
-          error: emailResponse.error,
-          message: "Failed to send email"
-        });
-      }
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        res.status(400).json({ message: "Invalid email data", errors: error.errors });
-        return;
-      }
-      console.error('[Email] Error sending Gmail:', error);
-      res.status(500).json({ message: "Failed to send email via Gmail" });
+      res.json({
+        success: true,
+        messageId: emailResponse.messageId,
+        message: "Email sent successfully"
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        error: emailResponse.error,
+        message: "Failed to send email"
+      });
     }
-  });
+  }));
 
   // Validation schema for fetching Gmail
   const fetchGmailSchema = z.object({
@@ -348,234 +325,218 @@ export function registerMessagingRoutes(app: Express): void {
   });
 
   // Fetch new emails from user's connected Gmail account
-  app.post("/api/emails/fetch-gmail", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      // Validate request body
-      const validatedData = fetchGmailSchema.parse(req.body);
-      const { sinceDate } = validatedData;
+  app.post("/api/emails/fetch-gmail", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const validatedData = parseBody(fetchGmailSchema, req, res);
+    if (!validatedData) return;
 
-      // Get user's Gmail credentials
-      const userResult = await db.select().from(users).where(and(
+    const { sinceDate } = validatedData;
+
+    // Get user's Gmail credentials
+    const userResult = await db.select().from(users).where(and(
+      eq(users.id, req.user!.userId),
+      eq(users.contractorId, req.user!.contractorId)
+    ));
+    const user = userResult[0];
+    if (!user || !user.gmailConnected || !user.gmailRefreshToken) {
+      res.status(400).json({ message: "Gmail not connected. Please connect your Gmail account in settings." });
+      return;
+    }
+
+    // Fetch emails from Gmail
+    const since = sinceDate ? new Date(sinceDate) : (user.gmailLastSyncAt || undefined);
+    const result = await gmailService.fetchNewEmails(user.gmailRefreshToken, since);
+    
+    // Handle potential errors or expired tokens
+    if (result.error) {
+      console.error('[Email] Gmail fetch error:', result.error);
+      res.status(500).json({ message: result.error });
+      return;
+    }
+    
+    if (result.tokenExpired) {
+      res.status(401).json({ message: "Gmail token expired. Please reconnect your Gmail account." });
+      return;
+    }
+    
+    const emails = result.emails || [];
+
+    // Process each email and create activities
+    let processedCount = 0;
+    for (const email of emails) {
+      // Check if we already have an activity for this email to avoid duplicates
+      const existingActivity = await db.select().from(activities).where(and(
+        eq(activities.externalId, email.id),
+        eq(activities.externalSource, 'gmail'),
+        eq(activities.contractorId, req.user!.contractorId)
+      )).limit(1);
+
+      if (existingActivity.length > 0) {
+        console.log('[Email Sync] Skipping duplicate email:', email.id);
+        continue;
+      }
+
+      // Try to match email to existing lead/customer/estimate by email address
+      const fromEmail = email.from;
+      const toEmail = email.to;
+      
+      // Determine if email is inbound (from customer/lead) or outbound (sent by us)
+      // If the "from" email matches user's Gmail, it's outbound; otherwise it's inbound
+      const isOutbound = fromEmail?.toLowerCase() === user.gmailEmail?.toLowerCase();
+      const direction = isOutbound ? 'outbound' : 'inbound';
+      
+      // For outbound emails, match on 'to', for inbound emails, match on 'from'
+      const emailToMatch = isOutbound ? toEmail : fromEmail;
+      
+      let matchingLead = null;
+      let matchingCustomer = null;
+      
+      // Only search for matches if we have a valid email to match
+      if (emailToMatch && typeof emailToMatch === 'string') {
+        const emailToMatchLower = emailToMatch.toLowerCase();
+        
+        // Search for leads (contacts with type='lead') with this email
+        const leadsData = await storage.getContacts(req.user!.contractorId, 'lead');
+        matchingLead = leadsData.find((lead: any) => 
+          lead.emails && Array.isArray(lead.emails) && lead.emails.some((e: any) => 
+            typeof e === 'string' && e.toLowerCase() === emailToMatchLower
+          )
+        );
+
+        // Search for customers (contacts with type='customer') with this email
+        const customers = await storage.getContacts(req.user!.contractorId, 'customer');
+        matchingCustomer = customers.find((customer: any) => 
+          customer.emails && Array.isArray(customer.emails) && customer.emails.some((e: any) => 
+            typeof e === 'string' && e.toLowerCase() === emailToMatchLower
+          )
+        );
+      }
+
+      // Create activity record with email metadata including direction
+      const emailMetadata = {
+        subject: email.subject,
+        to: email.to,
+        from: email.from,
+        messageId: email.id,
+        direction: direction,
+      };
+
+      const activity = await storage.createActivity({
+        type: 'email',
+        title: direction === 'inbound' ? `Email received: ${email.subject}` : `Email sent: ${email.subject}`,
+        content: email.body || email.snippet,
+        metadata: JSON.stringify(emailMetadata),
+        contactId: matchingLead?.id || matchingCustomer?.id || null,
+        userId: req.user!.userId,
+        externalId: email.id,
+        externalSource: 'gmail',
+      }, req.user!.contractorId);
+
+      // Broadcast activity update via WebSocket
+      if (matchingLead) {
+        broadcastToContractor(req.user!.contractorId, {
+          type: 'activity',
+          contactId: matchingLead.id,
+          leadId: matchingLead.id,
+          activity: activity,
+        });
+      } else if (matchingCustomer) {
+        broadcastToContractor(req.user!.contractorId, {
+          type: 'activity',
+          contactId: matchingCustomer.id,
+          customerId: matchingCustomer.id,
+          activity: activity,
+        });
+      }
+
+      processedCount++;
+    }
+
+    // Update user's last sync timestamp
+    await db.update(users)
+      .set({ gmailLastSyncAt: new Date() })
+      .where(and(
         eq(users.id, req.user!.userId),
         eq(users.contractorId, req.user!.contractorId)
       ));
-      const user = userResult[0];
-      if (!user || !user.gmailConnected || !user.gmailRefreshToken) {
-        res.status(400).json({ message: "Gmail not connected. Please connect your Gmail account in settings." });
-        return;
-      }
 
-      // Fetch emails from Gmail
-      const since = sinceDate ? new Date(sinceDate) : (user.gmailLastSyncAt || undefined);
-      const result = await gmailService.fetchNewEmails(user.gmailRefreshToken, since);
-      
-      // Handle potential errors or expired tokens
-      if (result.error) {
-        console.error('[Email] Gmail fetch error:', result.error);
-        res.status(500).json({ message: result.error });
-        return;
-      }
-      
-      if (result.tokenExpired) {
-        res.status(401).json({ message: "Gmail token expired. Please reconnect your Gmail account." });
-        return;
-      }
-      
-      const emails = result.emails || [];
-
-      // Process each email and create activities
-      let processedCount = 0;
-      for (const email of emails) {
-        // Check if we already have an activity for this email to avoid duplicates
-        const existingActivity = await db.select().from(activities).where(and(
-          eq(activities.externalId, email.id),
-          eq(activities.externalSource, 'gmail'),
-          eq(activities.contractorId, req.user!.contractorId)
-        )).limit(1);
-
-        if (existingActivity.length > 0) {
-          console.log('[Email Sync] Skipping duplicate email:', email.id);
-          continue;
-        }
-
-        // Try to match email to existing lead/customer/estimate by email address
-        const fromEmail = email.from;
-        const toEmail = email.to;
-        
-        // Determine if email is inbound (from customer/lead) or outbound (sent by us)
-        // If the "from" email matches user's Gmail, it's outbound; otherwise it's inbound
-        const isOutbound = fromEmail?.toLowerCase() === user.gmailEmail?.toLowerCase();
-        const direction = isOutbound ? 'outbound' : 'inbound';
-        
-        // For outbound emails, match on 'to', for inbound emails, match on 'from'
-        const emailToMatch = isOutbound ? toEmail : fromEmail;
-        
-        let matchingLead = null;
-        let matchingCustomer = null;
-        
-        // Only search for matches if we have a valid email to match
-        if (emailToMatch && typeof emailToMatch === 'string') {
-          const emailToMatchLower = emailToMatch.toLowerCase();
-          
-          // Search for leads (contacts with type='lead') with this email
-          const leadsData = await storage.getContacts(req.user!.contractorId, 'lead');
-          matchingLead = leadsData.find((lead: any) => 
-            lead.emails && Array.isArray(lead.emails) && lead.emails.some((e: any) => 
-              typeof e === 'string' && e.toLowerCase() === emailToMatchLower
-            )
-          );
-
-          // Search for customers (contacts with type='customer') with this email
-          const customers = await storage.getContacts(req.user!.contractorId, 'customer');
-          matchingCustomer = customers.find((customer: any) => 
-            customer.emails && Array.isArray(customer.emails) && customer.emails.some((e: any) => 
-              typeof e === 'string' && e.toLowerCase() === emailToMatchLower
-            )
-          );
-        }
-
-        // Create activity record with email metadata including direction
-        const emailMetadata = {
-          subject: email.subject,
-          to: email.to,
-          from: email.from,
-          messageId: email.id,
-          direction: direction,
-        };
-
-        const activity = await storage.createActivity({
-          type: 'email',
-          title: direction === 'inbound' ? `Email received: ${email.subject}` : `Email sent: ${email.subject}`,
-          content: email.body || email.snippet,
-          metadata: JSON.stringify(emailMetadata),
-          contactId: matchingLead?.id || matchingCustomer?.id || null,
-          userId: req.user!.userId,
-          externalId: email.id,
-          externalSource: 'gmail',
-        }, req.user!.contractorId);
-
-        // Broadcast activity update via WebSocket
-        if (matchingLead) {
-          broadcastToContractor(req.user!.contractorId, {
-            type: 'activity',
-            contactId: matchingLead.id,
-            leadId: matchingLead.id,
-            activity: activity,
-          });
-        } else if (matchingCustomer) {
-          broadcastToContractor(req.user!.contractorId, {
-            type: 'activity',
-            contactId: matchingCustomer.id,
-            customerId: matchingCustomer.id,
-            activity: activity,
-          });
-        }
-
-        processedCount++;
-      }
-
-      // Update user's last sync timestamp
-      await db.update(users)
-        .set({ gmailLastSyncAt: new Date() })
-        .where(and(
-          eq(users.id, req.user!.userId),
-          eq(users.contractorId, req.user!.contractorId)
-        ));
-
-      res.json({
-        success: true,
-        count: processedCount,
-        message: `Fetched ${processedCount} new emails`
-      });
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        res.status(400).json({ message: "Invalid fetch data", errors: error.errors });
-        return;
-      }
-      console.error('[Email] Error fetching Gmail:', error);
-      res.status(500).json({ message: "Failed to fetch emails from Gmail" });
-    }
-  });
+    res.json({
+      success: true,
+      count: processedCount,
+      message: `Fetched ${processedCount} new emails`
+    });
+  }));
 
   // Call initiation route
-  app.post("/api/calls/initiate", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const { toNumber, fromNumber, autoRecord, contactId, customerId, leadId } = req.body;
-      // Support both new (contactId) and legacy (leadId, customerId) parameters
-      const resolvedContactId = contactId || leadId || customerId;
-      
-      if (!toNumber) {
-        res.status(400).json({ message: "Phone number is required" });
-        return;
+  app.post("/api/calls/initiate", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const { toNumber, fromNumber, autoRecord, contactId, customerId, leadId } = req.body;
+    // Support both new (contactId) and legacy (leadId, customerId) parameters
+    const resolvedContactId = contactId || leadId || customerId;
+    
+    if (!toNumber) {
+      res.status(400).json({ message: "Phone number is required" });
+      return;
+    }
+
+    // Initiate call via tenant's preferred calling provider
+    const callResponse = await providerService.initiateCall({
+      to: toNumber,
+      fromNumber: fromNumber || undefined,
+      autoRecord: autoRecord || false,
+      contractorId: req.user!.contractorId,
+      userId: req.user!.userId
+    });
+
+    console.log('Call response:', callResponse);
+    
+    if (callResponse.success && callResponse.callId) {
+      // Store call metadata for tenant isolation
+      const callData = {
+        externalCallId: callResponse.callId,
+        toNumber,
+        fromNumber: fromNumber || null,
+        status: 'initiated' as const,
+        customerId: customerId || null,
+        leadId: leadId || null,
+        userId: req.user!.userId,
+        callUrl: callResponse.callUrl || null,
+        metadata: JSON.stringify({
+          autoRecord,
+          callResponse: {
+            success: callResponse.success,
+            timestamp: new Date().toISOString()
+          }
+        })
+      };
+
+      await storage.createCall(callData, req.user!.contractorId);
+
+      // Automatically mark contact as contacted if this is a call to a contact
+      if (resolvedContactId) {
+        await storage.markContactContacted(resolvedContactId, req.user!.contractorId, req.user!.userId);
       }
 
-      // Initiate call via tenant's preferred calling provider
-      const callResponse = await providerService.initiateCall({
-        to: toNumber,
-        fromNumber: fromNumber || undefined,
-        autoRecord: autoRecord || false,
-        contractorId: req.user!.contractorId,
+      // Log activity for the call
+      await storage.createActivity({
+        type: 'call',
+        title: 'Phone call initiated',
+        content: `Call initiated to ${toNumber}${fromNumber ? ` from ${fromNumber}` : ''}`,
+        contactId: resolvedContactId || null,
         userId: req.user!.userId
+      }, req.user!.contractorId);
+
+      res.json({ 
+        success: true, 
+        callId: callResponse.callId,
+        callUrl: callResponse.callUrl
       });
-
-      console.log('Call response:', callResponse);
-      
-      if (callResponse.success && callResponse.callId) {
-        // Store call metadata for tenant isolation
-        const callData = {
-          externalCallId: callResponse.callId,
-          toNumber,
-          fromNumber: fromNumber || null,
-          status: 'initiated' as const,
-          customerId: customerId || null,
-          leadId: leadId || null,
-          userId: req.user!.userId,
-          callUrl: callResponse.callUrl || null,
-          metadata: JSON.stringify({
-            autoRecord,
-            callResponse: {
-              success: callResponse.success,
-              timestamp: new Date().toISOString()
-            }
-          })
-        };
-
-        await storage.createCall(callData, req.user!.contractorId);
-
-        // Automatically mark contact as contacted if this is a call to a contact
-        if (resolvedContactId) {
-          await storage.markContactContacted(resolvedContactId, req.user!.contractorId, req.user!.userId);
-        }
-
-        // Log activity for the call
-        await storage.createActivity({
-          type: 'call',
-          title: 'Phone call initiated',
-          content: `Call initiated to ${toNumber}${fromNumber ? ` from ${fromNumber}` : ''}`,
-          contactId: resolvedContactId || null,
-          userId: req.user!.userId
-        }, req.user!.contractorId);
-
-        res.json({ 
-          success: true, 
-          callId: callResponse.callId,
-          callUrl: callResponse.callUrl
-        });
-      } else {
-        console.error('Call initiation failed:', callResponse.error);
-        res.status(500).json({ 
-          success: false, 
-          error: callResponse.error 
-        });
-      }
-    } catch (error) {
-      console.error('Call initiation error:', error);
+    } else {
+      console.error('Call initiation failed:', callResponse.error);
       res.status(500).json({ 
-        success: false,
-        error: error instanceof Error ? error.message : "Failed to initiate call" 
+        success: false, 
+        error: callResponse.error 
       });
     }
-  });
+  }));
 
   // Get call details route with tenant isolation
   app.get("/api/calls/:callId", asyncHandler(async (req, res) => {
@@ -746,45 +707,32 @@ export function registerMessagingRoutes(app: Express): void {
     res.json(template);
   }));
 
-  app.post("/api/templates", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const templateData = insertTemplateSchema.omit({ contractorId: true }).parse(req.body);
-      
-      // Automatically set createdBy to current user
-      const dataWithUser = {
-        ...templateData,
-        createdBy: req.user!.userId,
-      };
-      
-      // Admins can create approved templates directly, others need approval
-      const template = await storage.createTemplate(dataWithUser, req.user!.contractorId);
-      res.status(201).json(template);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        res.status(400).json({ message: "Invalid template data", errors: error.errors });
-        return;
-      }
-      res.status(500).json({ message: "Failed to create template" });
-    }
-  });
+  app.post("/api/templates", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const templateData = parseBody(insertTemplateSchema.omit({ contractorId: true }), req, res);
+    if (!templateData) return;
+    
+    // Automatically set createdBy to current user
+    const dataWithUser = {
+      ...templateData,
+      createdBy: req.user!.userId,
+    };
+    
+    // Admins can create approved templates directly, others need approval
+    const template = await storage.createTemplate(dataWithUser, req.user!.contractorId);
+    res.status(201).json(template);
+  }));
 
-  app.put("/api/templates/:id", requireManagerOrAdmin, async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const updateData = insertTemplateSchema.omit({ contractorId: true }).partial().parse(req.body);
-      const template = await storage.updateTemplate(req.params.id, updateData, req.user!.contractorId);
-      if (!template) {
-        res.status(404).json({ message: "Template not found" });
-        return;
-      }
-      res.json(template);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        res.status(400).json({ message: "Invalid template data", errors: error.errors });
-        return;
-      }
-      res.status(500).json({ message: "Failed to update template" });
+  app.put("/api/templates/:id", requireManagerOrAdmin, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const updateData = parseBody(insertTemplateSchema.omit({ contractorId: true }).partial(), req, res);
+    if (!updateData) return;
+
+    const template = await storage.updateTemplate(req.params.id, updateData, req.user!.contractorId);
+    if (!template) {
+      res.status(404).json({ message: "Template not found" });
+      return;
     }
-  });
+    res.json(template);
+  }));
 
   app.delete("/api/templates/:id", requireManagerOrAdmin, asyncHandler(async (req, res) => {
     const success = await storage.deleteTemplate(req.params.id, req.user!.contractorId);

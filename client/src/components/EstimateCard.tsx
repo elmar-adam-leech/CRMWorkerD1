@@ -20,10 +20,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useQuery } from "@tanstack/react-query";
 import type { Contact } from "@shared/schema";
-import { apiRequest } from "@/lib/queryClient";
-import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { getInitials, formatCurrency } from "@/lib/utils";
+import { getPriorityColor, updateContactTags } from "@/lib/card-utils";
 
 export type EstimateCardItem = {
   id: string;
@@ -59,27 +58,18 @@ export function EstimateCard({ estimate, onSend, onViewDetails, onConvertToJob, 
   const { toast } = useToast();
   const [tagsDialogOpen, setTagsDialogOpen] = useState(false);
   
-  // Fetch contact data using contactId
   const { data: contact, isLoading: contactLoading } = useQuery<Contact>({
     queryKey: [`/api/contacts/${estimate.contactId}`],
     enabled: !!estimate.contactId,
   });
 
-  // Check if this is a Housecall Pro estimate (read-only for tracking purposes)
   const isHousecallProEstimate = estimate.externalSource === 'housecall-pro';
 
-  // Handle contact tags update
   const handleUpdateContactTags = async (newTags: string[]) => {
     if (!contact) return;
-    
     try {
-      await apiRequest('PATCH', `/api/contacts/${contact.id}`, { tags: newTags });
-      queryClient.invalidateQueries({ queryKey: [`/api/contacts/${contact.id}`] });
-      queryClient.invalidateQueries({ queryKey: ['/api/contacts/paginated'] });
-      toast({
-        title: "Tags updated",
-        description: "Contact tags have been updated successfully.",
-      });
+      await updateContactTags(contact.id, newTags);
+      toast({ title: "Tags updated", description: "Contact tags have been updated successfully." });
     } catch (error) {
       toast({
         title: "Error updating tags",
@@ -89,41 +79,6 @@ export function EstimateCard({ estimate, onSend, onViewDetails, onConvertToJob, 
     }
   };
 
-  const handleContact = (method: "phone" | "email") => {
-    onContact?.(estimate.id, method);
-  };
-  const handleSend = () => {
-    onSend?.(estimate.id);
-  };
-
-  const handleViewDetails = () => {
-    onViewDetails?.(estimate.id);
-  };
-
-  const handleConvert = () => {
-    onConvertToJob?.(estimate.id);
-  };
-
-  const handleEdit = () => {
-    onEdit?.(estimate.id);
-  };
-
-  const handleDelete = () => {
-    onDelete?.(estimate.id);
-  };
-
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case "high":
-        return "border-l-4 border-l-destructive";
-      case "medium":
-        return "border-l-4 border-l-chart-3";
-      default:
-        return "border-l-4 border-l-chart-2";
-    }
-  };
-
-  // Determine border color: green if contact has jobs, otherwise priority-based
   const getBorderClass = () => {
     if (contact?.hasJobs) {
       return "border-l-4 border-l-green-600";
@@ -167,11 +122,11 @@ export function EstimateCard({ estimate, onSend, onViewDetails, onConvertToJob, 
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <ViewDetailsButton 
-              onViewDetails={handleViewDetails} 
+              onViewDetails={() => onViewDetails?.(estimate.id)} 
               testId={`menu-view-estimate-${estimate.id}`}
             />
             {!isHousecallProEstimate && (
-              <DropdownMenuItem onClick={handleEdit} data-testid={`menu-edit-estimate-${estimate.id}`}>
+              <DropdownMenuItem onClick={() => onEdit?.(estimate.id)} data-testid={`menu-edit-estimate-${estimate.id}`}>
                 <Edit className="h-4 w-4 mr-2" />
                 Edit Estimate
               </DropdownMenuItem>
@@ -192,7 +147,7 @@ export function EstimateCard({ estimate, onSend, onViewDetails, onConvertToJob, 
             </DropdownMenuItem>
             {!isHousecallProEstimate && (
               <DropdownMenuItem 
-                onClick={handleDelete} 
+                onClick={() => onDelete?.(estimate.id)} 
                 className="text-destructive focus:text-destructive"
                 data-testid={`menu-delete-estimate-${estimate.id}`}
               >
@@ -275,14 +230,13 @@ export function EstimateCard({ estimate, onSend, onViewDetails, onConvertToJob, 
                 variant="outline"
                 size="sm"
                 className="flex-1"
-                onClick={handleViewDetails}
+                onClick={() => onViewDetails?.(estimate.id)}
                 data-testid={`button-view-estimate-${estimate.id}`}
               >
                 View Details
               </Button>
             </div>
             
-            {/* Tags Display */}
             {contact?.tags && contact.tags.length > 0 && (
               <div className="pt-2 border-t">
                 <div className="flex flex-wrap gap-2">
@@ -303,7 +257,6 @@ export function EstimateCard({ estimate, onSend, onViewDetails, onConvertToJob, 
         )}
       </CardContent>
       
-      {/* Tags Dialog */}
       {contact && (
         <TagsDialog
           open={tagsDialogOpen}

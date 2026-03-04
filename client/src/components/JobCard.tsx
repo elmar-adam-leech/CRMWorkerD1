@@ -13,8 +13,8 @@ import { InlineEdit } from "./InlineEdit";
 import { TagsDialog } from "./TagsDialog";
 import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
 import { getInitials, formatCurrency } from "@/lib/utils";
+import { getPriorityColor, updateContactTags } from "@/lib/card-utils";
 import type { Contact } from "@shared/schema";
 
 type JobCardProps = {
@@ -28,8 +28,8 @@ type JobCardProps = {
     type: string;
     priority: "low" | "medium" | "high";
     estimatedHours: number | null;
-    externalSource?: string; // 'housecall-pro' for tracking-only jobs
-    estimateId?: string; // Link back to original estimate
+    externalSource?: string;
+    estimateId?: string;
   };
   onStatusChange?: (jobId: string, newStatus: string) => void;
   onViewDetails?: (jobId: string) => void;
@@ -45,7 +45,6 @@ export function JobCard({ job, onStatusChange, onViewDetails, onEdit, onEditStat
   const { toast } = useToast();
   const [tagsDialogOpen, setTagsDialogOpen] = useState(false);
   
-  // Fetch contact data using contactId
   const { data: contact, isLoading: contactLoading } = useQuery<Contact>({
     queryKey: [`/api/contacts/${job.contactId}`],
     enabled: !!job.contactId,
@@ -53,40 +52,17 @@ export function JobCard({ job, onStatusChange, onViewDetails, onEdit, onEditStat
 
   const isHousecallProJob = job.externalSource === 'housecall-pro';
   
-  // Handle contact tags update
   const handleUpdateContactTags = async (newTags: string[]) => {
     if (!contact) return;
-    
     try {
-      await apiRequest('PATCH', `/api/contacts/${contact.id}`, { tags: newTags });
-      queryClient.invalidateQueries({ queryKey: [`/api/contacts/${contact.id}`] });
-      queryClient.invalidateQueries({ queryKey: ['/api/contacts/paginated'] });
-      toast({
-        title: "Tags updated",
-        description: "Contact tags have been updated successfully.",
-      });
+      await updateContactTags(contact.id, newTags);
+      toast({ title: "Tags updated", description: "Contact tags have been updated successfully." });
     } catch (error) {
       toast({
         title: "Error updating tags",
         description: error instanceof Error ? error.message : "Failed to update tags",
         variant: "destructive",
       });
-    }
-  };
-  
-
-  const handleViewDetails = () => {
-    onViewDetails?.(job.id);
-  };
-
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case "high":
-        return "border-l-4 border-l-destructive";
-      case "medium":
-        return "border-l-4 border-l-chart-3";
-      default:
-        return "border-l-4 border-l-chart-2";
     }
   };
 
@@ -224,14 +200,13 @@ export function JobCard({ job, onStatusChange, onViewDetails, onEdit, onEditStat
                 variant="outline"
                 size="sm"
                 className="flex-1"
-                onClick={handleViewDetails}
+                onClick={() => onViewDetails?.(job.id)}
                 data-testid={`button-view-job-${job.id}`}
               >
                 View Details
               </Button>
             </div>
             
-            {/* Tags Display */}
             {contact?.tags && contact.tags.length > 0 && (
               <div className="pt-2 border-t">
                 <div className="flex flex-wrap gap-2">
@@ -252,7 +227,6 @@ export function JobCard({ job, onStatusChange, onViewDetails, onEdit, onEditStat
         )}
       </CardContent>
       
-      {/* Tags Dialog */}
       {contact && (
         <TagsDialog
           open={tagsDialogOpen}
