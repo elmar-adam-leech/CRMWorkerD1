@@ -27,6 +27,25 @@ export interface AddressComponents {
   country?: string;
 }
 
+function parseAddressString(address: string): AddressComponents {
+  const parts = address.split(',').map(s => s.trim());
+  if (parts.length >= 3) {
+    const street = parts[0];
+    const city = parts[1];
+    const stateZipMatch = parts[2].match(/^([A-Z]{2})\s+(\d{5}(?:-\d{4})?)$/);
+    if (stateZipMatch) {
+      return {
+        street,
+        city,
+        state: stateZipMatch[1],
+        zip: stateZipMatch[2],
+        country: parts[3]?.trim() || 'US',
+      };
+    }
+  }
+  return { street: address, city: '', state: '', zip: '', country: 'US' };
+}
+
 export interface BookingRequest {
   startTime: Date;
   title: string;
@@ -787,13 +806,7 @@ export class HousecallSchedulingService {
           } else {
             const resolvedAddress = request.customerAddress || contact.address;
             if (resolvedAddress) {
-              addressData = {
-                street: resolvedAddress,
-                city: '',
-                state: '',
-                zip: '',
-                country: 'US',
-              };
+              addressData = parseAddressString(resolvedAddress);
             }
           }
           
@@ -833,7 +846,7 @@ export class HousecallSchedulingService {
         } else {
           const fallbackAddr = request.customerAddress || contact?.address;
           if (fallbackAddr) {
-            estimateAddress = { street: fallbackAddr, city: '', state: '', zip: '', country: 'US' };
+            estimateAddress = parseAddressString(fallbackAddr);
           }
         }
 

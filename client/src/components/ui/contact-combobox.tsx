@@ -84,18 +84,39 @@ export function ContactCombobox({ value, onChange, error }: ContactComboboxProps
       return response.json();
     },
     onSuccess: (newCustomer) => {
-      toast({ title: "Customer created", description: "New customer has been created successfully" });
-      queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
+      queryClient.setQueryData<{ data: Contact[] }>(
+        ['/api/contacts/paginated', { limit: 100 }],
+        (old) => old ? { ...old, data: [newCustomer, ...old.data] } : old
+      );
+      queryClient.invalidateQueries({ queryKey: ['/api/contacts/paginated'] });
       onChange(newCustomer.id);
       setShowCreateDialog(false);
       reset();
       setSearchQuery("");
+      toast({ title: "Customer created", description: "New customer has been created successfully" });
     },
     onError: (error: any) => {
+      const msg: string = error.message || '';
+      const jsonMatch = msg.match(/^\d+: (.+)$/);
+      if (jsonMatch) {
+        try {
+          const body = JSON.parse(jsonMatch[1]);
+          if (body.duplicateContactId) {
+            onChange(body.duplicateContactId);
+            setShowCreateDialog(false);
+            reset();
+            toast({
+              title: "Customer already exists",
+              description: `${body.duplicateContactName || 'This customer'} has been selected for you.`,
+            });
+            return;
+          }
+        } catch {}
+      }
       toast({
         variant: "destructive",
         title: "Failed to create customer",
-        description: error.message || "Please try again",
+        description: msg || "Please try again",
       });
     },
   });
