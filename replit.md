@@ -130,6 +130,13 @@ Reusable components extracted to avoid duplication across Jobs, Estimates, and L
 - `LoadMoreButton` — Cursor-pagination load trigger; used by Jobs, Estimates, Leads
 - `ViewToggle` — Card/Kanban view switch; used by Jobs and Leads
 
+### Shared UI Primitives (`client/src/components/ui/`)
+- `DatePicker` (`date-picker.tsx`) — `<DatePicker value onChange placeholder? disabled? className? data-testid? />`. Wraps `Popover + Button(CalendarIcon) + Calendar`. Replaces the identical 8-line pattern previously hand-written in `CreateJobForm`, `CreateEstimateForm`, and `FilterPanel`.
+- `ContactCombobox` (`contact-combobox.tsx`) — `<ContactCombobox value onChange error? />`. Self-contained component that owns the contacts query (`/api/contacts/paginated?limit=100`), filtering logic, inline customer creation dialog (name/email/phone), and the full Popover+Command UI. Replaces ~70 lines duplicated verbatim in `CreateJobForm` and `CreateEstimateForm`.
+
+### Server Utilities (`server/utils/`)
+- `asyncHandler` (`async-handler.ts`) — HOF wrapping `async (req, res, next)` route handlers: catches any thrown error and forwards it to `next(error)`. Eliminates per-handler `try { ... } catch { res.status(500) }` boilerplate. Applied to all simple-500-catch handlers in `contacts.ts`, `jobs-estimates.ts`, `messaging.ts`, and `users.ts` (49 handlers total). A global 4-argument error handler in `server/routes.ts` receives these forwarded errors and returns a structured `{ message }` JSON response with the correct HTTP status.
+
 ### Page Preferences Hook
 `usePagePreferences({ pageKey })` persists `viewMode`, `filterStatus`, `advancedFilters` to localStorage per page. Currently wired into Jobs and Leads.
 

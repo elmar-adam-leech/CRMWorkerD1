@@ -1,4 +1,5 @@
 import type { Express, Response } from "express";
+import { asyncHandler } from "../utils/async-handler";
 import { storage } from "../storage";
 import { insertJobSchema, insertEstimateSchema, insertActivitySchema, paginatedEstimatesSchema, paginatedJobsSchema, jobsPaginationQuerySchema } from "@shared/schema";
 import { requireAuth, requireManagerOrAdmin, type AuthenticatedRequest } from "../auth-service";
@@ -8,15 +9,10 @@ import { broadcastToContractor } from "../websocket";
 import { housecallProService } from "../housecall-pro-service";
 
 export function registerJobEstimateRoutes(app: Express): void {
-  app.get("/api/jobs", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const jobs = await storage.getJobs(req.user!.contractorId);
-      res.json(jobs);
-    } catch (error) {
-      console.error('Jobs fetch error:', error);
-      res.status(500).json({ message: "Failed to fetch jobs" });
-    }
-  });
+  app.get("/api/jobs", asyncHandler(async (req, res) => {
+    const jobs = await storage.getJobs(req.user!.contractorId);
+    res.json(jobs);
+  }));
 
   // Paginated jobs endpoint
   app.get("/api/jobs/paginated", async (req: AuthenticatedRequest, res: Response) => {
@@ -38,29 +34,20 @@ export function registerJobEstimateRoutes(app: Express): void {
   });
 
   // Jobs status counts endpoint
-  app.get("/api/jobs/status-counts", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const search = req.query.search as string;
-      const counts = await storage.getJobsStatusCounts(req.user!.contractorId, { search });
-      res.json(counts);
-    } catch (error) {
-      console.error("Error fetching job status counts:", error);
-      res.status(500).json({ message: "Failed to fetch job status counts" });
-    }
-  });
+  app.get("/api/jobs/status-counts", asyncHandler(async (req, res) => {
+    const search = req.query.search as string;
+    const counts = await storage.getJobsStatusCounts(req.user!.contractorId, { search });
+    res.json(counts);
+  }));
 
-  app.get("/api/jobs/:id", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const job = await storage.getJob(req.params.id, req.user!.contractorId);
-      if (!job) {
-        res.status(404).json({ message: "Job not found" });
-        return;
-      }
-      res.json(job);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch job" });
+  app.get("/api/jobs/:id", asyncHandler(async (req, res) => {
+    const job = await storage.getJob(req.params.id, req.user!.contractorId);
+    if (!job) {
+      res.status(404).json({ message: "Job not found" });
+      return;
     }
-  });
+    res.json(job);
+  }));
 
   app.post("/api/jobs", async (req: AuthenticatedRequest, res: Response) => {
     try {
@@ -163,89 +150,66 @@ export function registerJobEstimateRoutes(app: Express): void {
     }
   });
 
-  app.delete("/api/jobs/:id", requireManagerOrAdmin, async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const job = await storage.getJob(req.params.id, req.user!.contractorId);
-      if (!job) {
-        res.status(404).json({ message: "Job not found" });
-        return;
-      }
-      
-      const deleted = await storage.deleteJob(req.params.id, req.user!.contractorId);
-      if (!deleted) {
-        res.status(404).json({ message: "Job not found or already deleted" });
-        return;
-      }
-      
-      // Broadcast job deletion to all connected clients for real-time updates
-      broadcastToContractor(req.user!.contractorId, {
-        type: 'job_deleted',
-        jobId: req.params.id
-      });
-      
-      res.status(200).json({ message: "Job deleted successfully" });
-    } catch (error) {
-      console.error('Error deleting job:', error);
-      res.status(500).json({ message: "Failed to delete job" });
+  app.delete("/api/jobs/:id", requireManagerOrAdmin, asyncHandler(async (req, res) => {
+    const job = await storage.getJob(req.params.id, req.user!.contractorId);
+    if (!job) {
+      res.status(404).json({ message: "Job not found" });
+      return;
     }
-  });
+    
+    const deleted = await storage.deleteJob(req.params.id, req.user!.contractorId);
+    if (!deleted) {
+      res.status(404).json({ message: "Job not found or already deleted" });
+      return;
+    }
+    
+    // Broadcast job deletion to all connected clients for real-time updates
+    broadcastToContractor(req.user!.contractorId, {
+      type: 'job_deleted',
+      jobId: req.params.id
+    });
+    
+    res.status(200).json({ message: "Job deleted successfully" });
+  }));
 
   // Estimate routes
-  app.get("/api/estimates", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const estimates = await storage.getEstimates(req.user!.contractorId);
-      res.json(estimates);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch estimates" });
-    }
-  });
+  app.get("/api/estimates", asyncHandler(async (req, res) => {
+    const estimates = await storage.getEstimates(req.user!.contractorId);
+    res.json(estimates);
+  }));
 
   // Paginated estimates endpoint
-  app.get("/api/estimates/paginated", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const cursor = req.query.cursor as string;
-      const limit = parseInt(req.query.limit as string) || 50;
-      const status = req.query.status as string;
-      const search = req.query.search as string;
+  app.get("/api/estimates/paginated", asyncHandler(async (req, res) => {
+    const cursor = req.query.cursor as string;
+    const limit = parseInt(req.query.limit as string) || 50;
+    const status = req.query.status as string;
+    const search = req.query.search as string;
 
-      const result = await storage.getEstimatesPaginated(req.user!.contractorId, {
-        cursor,
-        limit,
-        status,
-        search,
-      });
+    const result = await storage.getEstimatesPaginated(req.user!.contractorId, {
+      cursor,
+      limit,
+      status,
+      search,
+    });
 
-      res.json(result);
-    } catch (error) {
-      console.error('Error fetching paginated estimates:', error);
-      res.status(500).json({ message: "Failed to fetch estimates" });
-    }
-  });
+    res.json(result);
+  }));
 
   // Estimates status counts endpoint
-  app.get("/api/estimates/status-counts", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const search = req.query.search as string;
-      const counts = await storage.getEstimatesStatusCounts(req.user!.contractorId, { search });
-      res.json(counts);
-    } catch (error) {
-      console.error("Error fetching estimate status counts:", error);
-      res.status(500).json({ message: "Failed to fetch estimate status counts" });
-    }
-  });
+  app.get("/api/estimates/status-counts", asyncHandler(async (req, res) => {
+    const search = req.query.search as string;
+    const counts = await storage.getEstimatesStatusCounts(req.user!.contractorId, { search });
+    res.json(counts);
+  }));
 
-  app.get("/api/estimates/:id", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const estimate = await storage.getEstimate(req.params.id, req.user!.contractorId);
-      if (!estimate) {
-        res.status(404).json({ message: "Estimate not found" });
-        return;
-      }
-      res.json(estimate);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch estimate" });
+  app.get("/api/estimates/:id", asyncHandler(async (req, res) => {
+    const estimate = await storage.getEstimate(req.params.id, req.user!.contractorId);
+    if (!estimate) {
+      res.status(404).json({ message: "Estimate not found" });
+      return;
     }
-  });
+    res.json(estimate);
+  }));
 
   app.post("/api/estimates", async (req: AuthenticatedRequest, res: Response) => {
     try {
@@ -413,66 +377,53 @@ export function registerJobEstimateRoutes(app: Express): void {
     }
   });
 
-  app.delete("/api/estimates/:id", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      // Check if estimate exists and belongs to this contractor
-      const existingEstimate = await storage.getEstimate(req.params.id, req.user!.contractorId);
-      if (!existingEstimate) {
-        res.status(404).json({ message: "Estimate not found" });
-        return;
-      }
-      
-      const deleted = await storage.deleteEstimate(req.params.id, req.user!.contractorId);
-      if (!deleted) {
-        res.status(404).json({ message: "Estimate not found" });
-        return;
-      }
-      
-      // Broadcast estimate deletion to all connected clients
-      broadcastToContractor(req.user!.contractorId, {
-        type: 'estimate_deleted',
-        estimateId: req.params.id
-      });
-      
-      res.json({ message: "Estimate deleted successfully" });
-    } catch (error) {
-      console.error('Failed to delete estimate:', error);
-      res.status(500).json({ message: "Failed to delete estimate" });
+  app.delete("/api/estimates/:id", asyncHandler(async (req, res) => {
+    // Check if estimate exists and belongs to this contractor
+    const existingEstimate = await storage.getEstimate(req.params.id, req.user!.contractorId);
+    if (!existingEstimate) {
+      res.status(404).json({ message: "Estimate not found" });
+      return;
     }
-  });
+    
+    const deleted = await storage.deleteEstimate(req.params.id, req.user!.contractorId);
+    if (!deleted) {
+      res.status(404).json({ message: "Estimate not found" });
+      return;
+    }
+    
+    // Broadcast estimate deletion to all connected clients
+    broadcastToContractor(req.user!.contractorId, {
+      type: 'estimate_deleted',
+      estimateId: req.params.id
+    });
+    
+    res.json({ message: "Estimate deleted successfully" });
+  }));
 
   // Activity routes for tracking timestamped notes and interactions
-  app.get("/api/activities", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const { contactId, leadId, customerId, estimateId, jobId, type, limit, offset } = req.query;
-      // Support both old (leadId, customerId) and new (contactId) parameter names for backward compatibility
-      const resolvedContactId = contactId || leadId || customerId;
-      const activities = await storage.getActivities(req.user!.contractorId, {
-        contactId: resolvedContactId as string,
-        estimateId: estimateId as string,
-        jobId: jobId as string,
-        type: type as any,
-        limit: limit ? parseInt(limit as string) : undefined,
-        offset: offset ? parseInt(offset as string) : undefined,
-      });
-      res.json(activities);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch activities" });
-    }
-  });
+  app.get("/api/activities", asyncHandler(async (req, res) => {
+    const { contactId, leadId, customerId, estimateId, jobId, type, limit, offset } = req.query;
+    // Support both old (leadId, customerId) and new (contactId) parameter names for backward compatibility
+    const resolvedContactId = contactId || leadId || customerId;
+    const activities = await storage.getActivities(req.user!.contractorId, {
+      contactId: resolvedContactId as string,
+      estimateId: estimateId as string,
+      jobId: jobId as string,
+      type: type as any,
+      limit: limit ? parseInt(limit as string) : undefined,
+      offset: offset ? parseInt(offset as string) : undefined,
+    });
+    res.json(activities);
+  }));
 
-  app.get("/api/activities/:id", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const activity = await storage.getActivity(req.params.id, req.user!.contractorId);
-      if (!activity) {
-        res.status(404).json({ message: "Activity not found" });
-        return;
-      }
-      res.json(activity);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch activity" });
+  app.get("/api/activities/:id", asyncHandler(async (req, res) => {
+    const activity = await storage.getActivity(req.params.id, req.user!.contractorId);
+    if (!activity) {
+      res.status(404).json({ message: "Activity not found" });
+      return;
     }
-  });
+    res.json(activity);
+  }));
 
   app.post("/api/activities", async (req: AuthenticatedRequest, res: Response) => {
     try {
@@ -516,18 +467,14 @@ export function registerJobEstimateRoutes(app: Express): void {
     }
   });
 
-  app.delete("/api/activities/:id", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const deleted = await storage.deleteActivity(req.params.id, req.user!.contractorId);
-      if (!deleted) {
-        res.status(404).json({ message: "Activity not found" });
-        return;
-      }
-      res.json({ message: "Activity deleted successfully" });
-    } catch (error) {
-      res.status(500).json({ message: "Failed to delete activity" });
+  app.delete("/api/activities/:id", asyncHandler(async (req, res) => {
+    const deleted = await storage.deleteActivity(req.params.id, req.user!.contractorId);
+    if (!deleted) {
+      res.status(404).json({ message: "Activity not found" });
+      return;
     }
-  });
+    res.json({ message: "Activity deleted successfully" });
+  }));
 
 
   // Message routes for texting functionality

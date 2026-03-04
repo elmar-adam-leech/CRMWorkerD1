@@ -1,4 +1,5 @@
 import type { Express, Response } from "express";
+import { asyncHandler } from "../utils/async-handler";
 import { storage } from "../storage";
 import { insertMessageSchema, insertTemplateSchema, insertCallSchema, templates, messages, activities, users, contractors } from "@shared/schema";
 import { db } from "../db";
@@ -13,17 +14,13 @@ import { providerService } from "../providers/provider-service";
 import { z } from "zod";
 
 export function registerMessagingRoutes(app: Express): void {
-  app.get("/api/messages", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      // Support both legacy leadId/customerId params and new contactId for backward compatibility
-      const contactId = (req.query.contactId || req.query.leadId || req.query.customerId) as string | undefined;
-      const estimateId = req.query.estimateId as string | undefined;
-      const messages = await storage.getMessages(req.user!.contractorId, contactId, estimateId);
-      res.json(messages);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch messages" });
-    }
-  });
+  app.get("/api/messages", asyncHandler(async (req, res) => {
+    // Support both legacy leadId/customerId params and new contactId for backward compatibility
+    const contactId = (req.query.contactId || req.query.leadId || req.query.customerId) as string | undefined;
+    const estimateId = req.query.estimateId as string | undefined;
+    const messages = await storage.getMessages(req.user!.contractorId, contactId, estimateId);
+    res.json(messages);
+  }));
 
   app.post("/api/messages/send-text", async (req: AuthenticatedRequest, res: Response) => {
     try {
@@ -581,207 +578,173 @@ export function registerMessagingRoutes(app: Express): void {
   });
 
   // Get call details route with tenant isolation
-  app.get("/api/calls/:callId", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const { callId } = req.params;
-      
-      // SECURITY: First verify this call belongs to the user's tenant
-      const callRecord = await storage.getCallByExternalId(callId, req.user!.contractorId);
-      if (!callRecord) {
-        res.status(404).json({ 
-          success: false, 
-          error: "Call not found or access denied" 
-        });
-        return;
-      }
-
-      // Now safely fetch details from Dialpad since we've verified tenant ownership
-      const dialpadResponse = await dialpadService.getCallDetails(callId);
-
-      if (dialpadResponse.success) {
-        // Look up contact type for legacy field population
-        let legacyLeadId: string | null = null;
-        let legacyCustomerId: string | null = null;
-        if (callRecord.contactId) {
-          const callContact = await storage.getContact(callRecord.contactId, req.user!.contractorId);
-          if (callContact?.type === 'customer') {
-            legacyCustomerId = callRecord.contactId;
-          } else {
-            legacyLeadId = callRecord.contactId;
-          }
-        }
-        
-        res.json({
-          success: true,
-          callDetails: dialpadResponse.callDetails,
-          localCallInfo: {
-            id: callRecord.id,
-            toNumber: callRecord.toNumber,
-            fromNumber: callRecord.fromNumber,
-            status: callRecord.status,
-            contactId: callRecord.contactId,
-            customerId: legacyCustomerId,
-            leadId: legacyLeadId,
-            createdAt: callRecord.createdAt
-          }
-        });
-      } else {
-        res.status(500).json({
-          success: false,
-          error: dialpadResponse.error
-        });
-      }
-    } catch (error) {
-      console.error('Get call details error:', error);
-      res.status(500).json({ message: "Failed to get call details" });
+  app.get("/api/calls/:callId", asyncHandler(async (req, res) => {
+    const { callId } = req.params;
+    
+    // SECURITY: First verify this call belongs to the user's tenant
+    const callRecord = await storage.getCallByExternalId(callId, req.user!.contractorId);
+    if (!callRecord) {
+      res.status(404).json({ 
+        success: false, 
+        error: "Call not found or access denied" 
+      });
+      return;
     }
-  });
+
+    // Now safely fetch details from Dialpad since we've verified tenant ownership
+    const dialpadResponse = await dialpadService.getCallDetails(callId);
+
+    if (dialpadResponse.success) {
+      // Look up contact type for legacy field population
+      let legacyLeadId: string | null = null;
+      let legacyCustomerId: string | null = null;
+      if (callRecord.contactId) {
+        const callContact = await storage.getContact(callRecord.contactId, req.user!.contractorId);
+        if (callContact?.type === 'customer') {
+          legacyCustomerId = callRecord.contactId;
+        } else {
+          legacyLeadId = callRecord.contactId;
+        }
+      }
+      
+      res.json({
+        success: true,
+        callDetails: dialpadResponse.callDetails,
+        localCallInfo: {
+          id: callRecord.id,
+          toNumber: callRecord.toNumber,
+          fromNumber: callRecord.fromNumber,
+          status: callRecord.status,
+          contactId: callRecord.contactId,
+          customerId: legacyCustomerId,
+          leadId: legacyLeadId,
+          createdAt: callRecord.createdAt
+        }
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        error: dialpadResponse.error
+      });
+    }
+  }));
 
   // Enhanced message routes for unified communications
-  app.get("/api/messages/all", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const { type, status, search, limit, offset } = req.query;
-      const options = {
-        type: type as 'text' | 'email' | undefined,
-        status: status as 'sent' | 'delivered' | 'failed' | undefined,
-        search: search as string | undefined,
-        limit: limit ? parseInt(limit as string) : undefined,
-        offset: offset ? parseInt(offset as string) : undefined,
-      };
-      
-      const messages = await storage.getAllMessages(req.user!.contractorId, options);
-      res.json(messages);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch messages" });
-    }
-  });
+  app.get("/api/messages/all", asyncHandler(async (req, res) => {
+    const { type, status, search, limit, offset } = req.query;
+    const options = {
+      type: type as 'text' | 'email' | undefined,
+      status: status as 'sent' | 'delivered' | 'failed' | undefined,
+      search: search as string | undefined,
+      limit: limit ? parseInt(limit as string) : undefined,
+      offset: offset ? parseInt(offset as string) : undefined,
+    };
+    
+    const messages = await storage.getAllMessages(req.user!.contractorId, options);
+    res.json(messages);
+  }));
 
-  app.get("/api/conversations", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const { search, type, status } = req.query;
-      const options = {
-        search: search as string | undefined,
-        type: type as 'text' | 'email' | undefined,
-        status: status as 'sent' | 'delivered' | 'failed' | undefined,
-      };
-      
-      const conversations = await storage.getConversations(req.user!.contractorId, options);
-      res.json(conversations);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch conversations" });
-    }
-  });
+  app.get("/api/conversations", asyncHandler(async (req, res) => {
+    const { search, type, status } = req.query;
+    const options = {
+      search: search as string | undefined,
+      type: type as 'text' | 'email' | undefined,
+      status: status as 'sent' | 'delivered' | 'failed' | undefined,
+    };
+    
+    const conversations = await storage.getConversations(req.user!.contractorId, options);
+    res.json(conversations);
+  }));
 
   // Unified endpoint for fetching conversation messages by contactId (no contactType needed)
-  app.get("/api/conversations/:contactId", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const { contactId } = req.params;
-      
-      const messages = await storage.getConversationMessages(
-        req.user!.contractorId, 
-        contactId
-      );
-      res.json(messages);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch conversation messages" });
-    }
-  });
+  app.get("/api/conversations/:contactId", asyncHandler(async (req, res) => {
+    const { contactId } = req.params;
+    
+    const messages = await storage.getConversationMessages(
+      req.user!.contractorId, 
+      contactId
+    );
+    res.json(messages);
+  }));
 
   // Legacy endpoint for backwards compatibility (deprecated - use /api/conversations/:contactId instead)
-  app.get("/api/conversations/:contactId/:contactType", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const { contactId, contactType } = req.params;
-      
-      if (contactType !== 'lead' && contactType !== 'customer' && contactType !== 'estimate') {
-        res.status(400).json({ message: "Contact type must be 'lead', 'customer', or 'estimate'" });
-        return;
-      }
-      
-      // contactType parameter is deprecated - getConversationMessages now works with unified contacts table
-      const messages = await storage.getConversationMessages(
-        req.user!.contractorId, 
-        contactId
-      );
-      res.json(messages);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch conversation messages" });
+  app.get("/api/conversations/:contactId/:contactType", asyncHandler(async (req, res) => {
+    const { contactId, contactType } = req.params;
+    
+    if (contactType !== 'lead' && contactType !== 'customer' && contactType !== 'estimate') {
+      res.status(400).json({ message: "Contact type must be 'lead', 'customer', or 'estimate'" });
+      return;
     }
-  });
+    
+    // contactType parameter is deprecated - getConversationMessages now works with unified contacts table
+    const messages = await storage.getConversationMessages(
+      req.user!.contractorId, 
+      contactId
+    );
+    res.json(messages);
+  }));
 
   // Lightweight endpoint to check for new messages (returns count only)
-  app.get("/api/conversations/:contactId/:contactType/count", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const { contactId, contactType } = req.params;
-      
-      if (contactType !== 'lead' && contactType !== 'customer' && contactType !== 'estimate') {
-        res.status(400).json({ message: "Contact type must be 'lead', 'customer', or 'estimate'" });
-        return;
-      }
-      
-      // contactType parameter is deprecated - getConversationMessageCount now works with unified contacts table
-      const count = await storage.getConversationMessageCount(
-        req.user!.contractorId, 
-        contactId
-      );
-      res.json({ count });
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch conversation message count" });
+  app.get("/api/conversations/:contactId/:contactType/count", asyncHandler(async (req, res) => {
+    const { contactId, contactType } = req.params;
+    
+    if (contactType !== 'lead' && contactType !== 'customer' && contactType !== 'estimate') {
+      res.status(400).json({ message: "Contact type must be 'lead', 'customer', or 'estimate'" });
+      return;
     }
-  });
+    
+    // contactType parameter is deprecated - getConversationMessageCount now works with unified contacts table
+    const count = await storage.getConversationMessageCount(
+      req.user!.contractorId, 
+      contactId
+    );
+    res.json({ count });
+  }));
 
   // Template routes for text and email templates
-  app.get("/api/templates", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const type = req.query.type as 'text' | 'email' | undefined;
-      const isAdmin = req.user!.role === 'admin' || req.user!.role === 'super_admin';
-      const userId = req.user!.userId;
-      
-      // Build query to filter templates
-      // Admins see all templates, others see only approved templates OR templates they created
-      let query = db.select().from(templates).where(eq(templates.contractorId, req.user!.contractorId));
-      
-      if (type) {
-        query = (query as any).where(and(
-          eq(templates.contractorId, req.user!.contractorId),
-          eq(templates.type, type)
-        ));
-      }
-      
-      const allTemplates = await query;
-      
-      // Filter based on user role and template status
-      const filteredTemplates = allTemplates.filter(template => {
-        if (isAdmin) {
-          return true; // Admins see all templates
-        }
-        if (template.status === 'approved') {
-          return true; // Everyone sees approved templates
-        }
-        if (template.createdBy === userId) {
-          return true; // Users see their own templates regardless of status
-        }
-        return false; // Hide non-approved templates from other users
-      });
-      
-      res.json(filteredTemplates);
-    } catch (error) {
-      console.error('Failed to fetch templates:', error);
-      res.status(500).json({ message: "Failed to fetch templates" });
+  app.get("/api/templates", asyncHandler(async (req, res) => {
+    const type = req.query.type as 'text' | 'email' | undefined;
+    const isAdmin = req.user!.role === 'admin' || req.user!.role === 'super_admin';
+    const userId = req.user!.userId;
+    
+    // Build query to filter templates
+    // Admins see all templates, others see only approved templates OR templates they created
+    let query = db.select().from(templates).where(eq(templates.contractorId, req.user!.contractorId));
+    
+    if (type) {
+      query = (query as any).where(and(
+        eq(templates.contractorId, req.user!.contractorId),
+        eq(templates.type, type)
+      ));
     }
-  });
+    
+    const allTemplates = await query;
+    
+    // Filter based on user role and template status
+    const filteredTemplates = allTemplates.filter(template => {
+      if (isAdmin) {
+        return true; // Admins see all templates
+      }
+      if (template.status === 'approved') {
+        return true; // Everyone sees approved templates
+      }
+      if (template.createdBy === userId) {
+        return true; // Users see their own templates regardless of status
+      }
+      return false; // Hide non-approved templates from other users
+    });
+    
+    res.json(filteredTemplates);
+  }));
 
-  app.get("/api/templates/:id", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const template = await storage.getTemplate(req.params.id, req.user!.contractorId);
-      if (!template) {
-        res.status(404).json({ message: "Template not found" });
-        return;
-      }
-      res.json(template);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch template" });
+  app.get("/api/templates/:id", asyncHandler(async (req, res) => {
+    const template = await storage.getTemplate(req.params.id, req.user!.contractorId);
+    if (!template) {
+      res.status(404).json({ message: "Template not found" });
+      return;
     }
-  });
+    res.json(template);
+  }));
 
   app.post("/api/templates", async (req: AuthenticatedRequest, res: Response) => {
     try {
@@ -823,123 +786,101 @@ export function registerMessagingRoutes(app: Express): void {
     }
   });
 
-  app.delete("/api/templates/:id", requireManagerOrAdmin, async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const success = await storage.deleteTemplate(req.params.id, req.user!.contractorId);
-      if (!success) {
-        res.status(404).json({ message: "Template not found" });
-        return;
-      }
-      res.json({ message: "Template deleted successfully" });
-    } catch (error) {
-      res.status(500).json({ message: "Failed to delete template" });
+  app.delete("/api/templates/:id", requireManagerOrAdmin, asyncHandler(async (req, res) => {
+    const success = await storage.deleteTemplate(req.params.id, req.user!.contractorId);
+    if (!success) {
+      res.status(404).json({ message: "Template not found" });
+      return;
     }
-  });
+    res.json({ message: "Template deleted successfully" });
+  }));
 
   // Approve template (admin only)
-  app.post("/api/templates/:id/approve", requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const { id } = req.params;
-      
-      // Update template status to approved
-      const updated = await db.update(templates)
-        .set({ 
-          status: 'approved',
-          approvedBy: req.user!.userId,
-          approvedAt: new Date()
-        })
-        .where(and(
-          eq(templates.id, id),
-          eq(templates.contractorId, req.user!.contractorId)
-        ))
-        .returning();
+  app.post("/api/templates/:id/approve", requireAdmin, asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    
+    // Update template status to approved
+    const updated = await db.update(templates)
+      .set({ 
+        status: 'approved',
+        approvedBy: req.user!.userId,
+        approvedAt: new Date()
+      })
+      .where(and(
+        eq(templates.id, id),
+        eq(templates.contractorId, req.user!.contractorId)
+      ))
+      .returning();
 
-      if (updated.length === 0) {
-        res.status(404).json({ message: "Template not found" });
-        return;
-      }
-
-      res.json({ 
-        ...updated[0], 
-        message: "Template approved successfully" 
-      });
-    } catch (error) {
-      console.error('Failed to approve template:', error);
-      res.status(500).json({ message: "Failed to approve template" });
+    if (updated.length === 0) {
+      res.status(404).json({ message: "Template not found" });
+      return;
     }
-  });
+
+    res.json({ 
+      ...updated[0], 
+      message: "Template approved successfully" 
+    });
+  }));
 
   // Reject template (admin only)
-  app.post("/api/templates/:id/reject", requireAdmin, async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const { id } = req.params;
-      const { rejectionReason } = req.body;
-      
-      // Update template status to rejected
-      const updated = await db.update(templates)
-        .set({ 
-          status: 'rejected',
-          rejectionReason: rejectionReason || 'No reason provided',
-          approvedBy: req.user!.userId,
-          approvedAt: new Date()
-        })
-        .where(and(
-          eq(templates.id, id),
-          eq(templates.contractorId, req.user!.contractorId)
-        ))
-        .returning();
+  app.post("/api/templates/:id/reject", requireAdmin, asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const { rejectionReason } = req.body;
+    
+    // Update template status to rejected
+    const updated = await db.update(templates)
+      .set({ 
+        status: 'rejected',
+        rejectionReason: rejectionReason || 'No reason provided',
+        approvedBy: req.user!.userId,
+        approvedAt: new Date()
+      })
+      .where(and(
+        eq(templates.id, id),
+        eq(templates.contractorId, req.user!.contractorId)
+      ))
+      .returning();
 
-      if (updated.length === 0) {
-        res.status(404).json({ message: "Template not found" });
-        return;
-      }
-
-      res.json({ 
-        ...updated[0], 
-        message: "Template rejected" 
-      });
-    } catch (error) {
-      console.error('Failed to reject template:', error);
-      res.status(500).json({ message: "Failed to reject template" });
+    if (updated.length === 0) {
+      res.status(404).json({ message: "Template not found" });
+      return;
     }
-  });
+
+    res.json({ 
+      ...updated[0], 
+      message: "Template rejected" 
+    });
+  }));
 
   // Provider management routes
-  app.get("/api/providers", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const tenantProviders = await storage.getTenantProviders(req.user!.contractorId);
-      const availableProviders = {
-        email: providerService.getAvailableProviders('email'),
-        sms: providerService.getAvailableProviders('sms'),
-        calling: providerService.getAvailableProviders('calling')
-      };
-      res.json({ available: availableProviders, configured: tenantProviders });
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch provider information" });
-    }
-  });
+  app.get("/api/providers", asyncHandler(async (req, res) => {
+    const tenantProviders = await storage.getTenantProviders(req.user!.contractorId);
+    const availableProviders = {
+      email: providerService.getAvailableProviders('email'),
+      sms: providerService.getAvailableProviders('sms'),
+      calling: providerService.getAvailableProviders('calling')
+    };
+    res.json({ available: availableProviders, configured: tenantProviders });
+  }));
 
-  app.post("/api/providers", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const { providerType, providerName } = req.body;
-      if (!providerType || !providerName) {
-        res.status(400).json({ message: "Provider type and name are required" });
-        return;
-      }
-      if (!['email', 'sms', 'calling'].includes(providerType)) {
-        res.status(400).json({ message: "Invalid provider type" });
-        return;
-      }
-      const result = await providerService.setTenantProvider(req.user!.contractorId, providerType as 'email' | 'sms' | 'calling', providerName);
-      if (result.success) {
-        res.json({ success: true, message: `${providerType} provider set to ${providerName}` });
-      } else {
-        res.status(400).json({ success: false, error: result.error });
-      }
-    } catch (error) {
-      res.status(500).json({ message: "Failed to set provider preference" });
+  app.post("/api/providers", asyncHandler(async (req, res) => {
+    const { providerType, providerName } = req.body;
+    if (!providerType || !providerName) {
+      res.status(400).json({ message: "Provider type and name are required" });
+      return;
     }
-  });
+    if (!['email', 'sms', 'calling'].includes(providerType)) {
+      res.status(400).json({ message: "Invalid provider type" });
+      return;
+    }
+    const result = await providerService.setTenantProvider(req.user!.contractorId, providerType as 'email' | 'sms' | 'calling', providerName);
+    if (result.success) {
+      res.json({ success: true, message: `${providerType} provider set to ${providerName}` });
+    } else {
+      res.status(400).json({ success: false, error: result.error });
+    }
+  }));
 
   // Integration enablement routes
 }

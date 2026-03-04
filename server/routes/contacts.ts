@@ -1,4 +1,5 @@
 import type { Express, Response } from "express";
+import { asyncHandler } from "../utils/async-handler";
 import { storage } from "../storage";
 import { insertContactSchema } from "@shared/schema";
 import { ilike } from "drizzle-orm";
@@ -20,120 +21,87 @@ const scheduleContactSchema = z.object({
 });
 
 export function registerContactRoutes(app: Express): void {
-  app.get("/api/contacts", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const { type } = req.query;
-      const contactType = type as 'lead' | 'customer' | 'inactive' | undefined;
-      
-      const contacts = await storage.getContacts(req.user!.contractorId, contactType);
-      res.json(contacts);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch contacts" });
-    }
-  });
+  app.get("/api/contacts", asyncHandler(async (req, res) => {
+    const { type } = req.query;
+    const contactType = type as 'lead' | 'customer' | 'inactive' | undefined;
+    
+    const contacts = await storage.getContacts(req.user!.contractorId, contactType);
+    res.json(contacts);
+  }));
 
   // Paginated contacts endpoint
-  app.get("/api/contacts/paginated", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const { cursor, limit, type, status, search } = req.query;
-      
-      const options = {
-        cursor: cursor as string | undefined,
-        limit: limit ? parseInt(limit as string, 10) : 50,
-        type: type as 'lead' | 'customer' | 'inactive' | undefined,
-        status: status as string | undefined,
-        search: search as string | undefined,
-      };
+  app.get("/api/contacts/paginated", asyncHandler(async (req, res) => {
+    const { cursor, limit, type, status, search } = req.query;
+    
+    const options = {
+      cursor: cursor as string | undefined,
+      limit: limit ? parseInt(limit as string, 10) : 50,
+      type: type as 'lead' | 'customer' | 'inactive' | undefined,
+      status: status as string | undefined,
+      search: search as string | undefined,
+    };
 
-      const paginatedContacts = await storage.getContactsPaginated(req.user!.contractorId, options);
-      
-      res.json(paginatedContacts);
-    } catch (error) {
-      console.error('Paginated contacts error:', error);
-      res.status(500).json({ message: "Failed to fetch paginated contacts" });
-    }
-  });
+    const paginatedContacts = await storage.getContactsPaginated(req.user!.contractorId, options);
+    
+    res.json(paginatedContacts);
+  }));
 
   // Contacts status counts endpoint
-  app.get("/api/contacts/status-counts", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const { search, type } = req.query;
-      const counts = await storage.getContactsStatusCounts(req.user!.contractorId, {
-        search: search as string | undefined,
-        type: type as 'lead' | 'customer' | 'inactive' | undefined
-      });
-      res.json(counts);
-    } catch (error) {
-      console.error("Error fetching contact status counts:", error);
-      res.status(500).json({ message: "Failed to fetch contact status counts" });
-    }
-  });
+  app.get("/api/contacts/status-counts", asyncHandler(async (req, res) => {
+    const { search, type } = req.query;
+    const counts = await storage.getContactsStatusCounts(req.user!.contractorId, {
+      search: search as string | undefined,
+      type: type as 'lead' | 'customer' | 'inactive' | undefined
+    });
+    res.json(counts);
+  }));
 
   // Contact deduplication endpoint (admin only)
-  app.post("/api/contacts/deduplicate", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      // Only admins can trigger deduplication
-      if (req.user!.role !== 'admin') {
-        res.status(403).json({ message: "Only administrators can deduplicate contacts" });
-        return;
-      }
-      
-      const result = await storage.deduplicateContacts(req.user!.contractorId);
-      res.json(result);
-    } catch (error) {
-      console.error("Error deduplicating contacts:", error);
-      res.status(500).json({ message: "Failed to deduplicate contacts" });
+  app.post("/api/contacts/deduplicate", asyncHandler(async (req, res) => {
+    // Only admins can trigger deduplication
+    if (req.user!.role !== 'admin') {
+      res.status(403).json({ message: "Only administrators can deduplicate contacts" });
+      return;
     }
-  });
+    
+    const result = await storage.deduplicateContacts(req.user!.contractorId);
+    res.json(result);
+  }));
 
   // CSV Template Download Endpoint - Must be before :id route to avoid conflicts
-  app.get("/api/leads/csv-template", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const csvHeaders = [
-        'name',           // Required
-        'email',          // Optional
-        'phone',          // Optional  
-        'address',        // Optional
-        'source',         // Optional
-        'notes',          // Optional
-        'followUpDate'    // Optional (YYYY-MM-DD format)
-      ];
-      
-      const csvTemplate = csvHeaders.join(',') + '\n' +
-        'John Smith,john@example.com,555-123-4567,"123 Main St, City, State 12345",Website Contact Form,"Interested in HVAC installation",2024-01-15\n' +
-        'Jane Doe,jane@example.com,555-987-6543,"456 Oak Ave, City, State 12345",Referral,"Needs AC repair",2024-01-20';
-      
-      res.setHeader('Content-Type', 'text/csv');
-      res.setHeader('Content-Disposition', 'attachment; filename="leads_template.csv"');
-      res.send(csvTemplate);
-    } catch (error) {
-      console.error('CSV template error:', error);
-      res.status(500).json({ error: "Failed to generate CSV template" });
-    }
-  });
+  app.get("/api/leads/csv-template", asyncHandler(async (req, res) => {
+    const csvHeaders = [
+      'name',           // Required
+      'email',          // Optional
+      'phone',          // Optional  
+      'address',        // Optional
+      'source',         // Optional
+      'notes',          // Optional
+      'followUpDate'    // Optional (YYYY-MM-DD format)
+    ];
+    
+    const csvTemplate = csvHeaders.join(',') + '\n' +
+      'John Smith,john@example.com,555-123-4567,"123 Main St, City, State 12345",Website Contact Form,"Interested in HVAC installation",2024-01-15\n' +
+      'Jane Doe,jane@example.com,555-987-6543,"456 Oak Ave, City, State 12345",Referral,"Needs AC repair",2024-01-20';
+    
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="leads_template.csv"');
+    res.send(csvTemplate);
+  }));
 
-  app.get("/api/contacts/:id", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const contact = await storage.getContact(req.params.id, req.user!.contractorId);
-      if (!contact) {
-        res.status(404).json({ message: "Contact not found" });
-        return;
-      }
-      res.json(contact);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch contact" });
+  app.get("/api/contacts/:id", asyncHandler(async (req, res) => {
+    const contact = await storage.getContact(req.params.id, req.user!.contractorId);
+    if (!contact) {
+      res.status(404).json({ message: "Contact not found" });
+      return;
     }
-  });
+    res.json(contact);
+  }));
 
-  app.get("/api/contacts/:contactId/leads", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const leads = await storage.getLeadsByContact(req.params.contactId, req.user!.contractorId);
-      res.json(leads);
-    } catch (error) {
-      console.error('Failed to fetch leads for contact:', error);
-      res.status(500).json({ message: "Failed to fetch lead submissions" });
-    }
-  });
+  app.get("/api/contacts/:contactId/leads", asyncHandler(async (req, res) => {
+    const leads = await storage.getLeadsByContact(req.params.contactId, req.user!.contractorId);
+    res.json(leads);
+  }));
 
   app.post("/api/contacts", async (req: AuthenticatedRequest, res: Response) => {
     try {
@@ -478,189 +446,171 @@ export function registerContactRoutes(app: Express): void {
     }
   });
 
-  app.delete("/api/contacts/:id", requireManagerOrAdmin, async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const deleted = await storage.deleteContact(req.params.id, req.user!.contractorId);
-      if (!deleted) {
-        res.status(404).json({ message: "Contact not found" });
-        return;
-      }
-      
-      // Broadcast contact deletion to all connected clients for real-time lead list updates
-      broadcastToContractor(req.user!.contractorId, {
-        type: 'contact_deleted',
-        contactId: req.params.id
-      });
-      
-      res.status(200).json({ message: "Contact deleted successfully" });
-    } catch (error) {
-      console.error('Error deleting contact:', error);
-      res.status(500).json({ message: "Failed to delete contact" });
+  app.delete("/api/contacts/:id", requireManagerOrAdmin, asyncHandler(async (req, res) => {
+    const deleted = await storage.deleteContact(req.params.id, req.user!.contractorId);
+    if (!deleted) {
+      res.status(404).json({ message: "Contact not found" });
+      return;
     }
-  });
+    
+    // Broadcast contact deletion to all connected clients for real-time lead list updates
+    broadcastToContractor(req.user!.contractorId, {
+      type: 'contact_deleted',
+      contactId: req.params.id
+    });
+    
+    res.status(200).json({ message: "Contact deleted successfully" });
+  }));
 
   // Job routes
-  app.get("/api/contacts/scheduled", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const scheduledContacts = await storage.getScheduledContacts(req.user!.contractorId);
-      res.json(scheduledContacts);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch scheduled contacts" });
+  app.get("/api/contacts/scheduled", asyncHandler(async (req, res) => {
+    const scheduledContacts = await storage.getScheduledContacts(req.user!.contractorId);
+    res.json(scheduledContacts);
+  }));
+
+  app.get("/api/contacts/unscheduled", asyncHandler(async (req, res) => {
+    const unscheduledContacts = await storage.getUnscheduledContacts(req.user!.contractorId);
+    res.json(unscheduledContacts);
+  }));
+
+  app.post("/api/contacts/:id/schedule", asyncHandler(async (req, res) => {
+    const { id: contactId } = req.params;
+    
+    // Check if Housecall Pro integration is enabled (required for scheduling)
+    const isIntegrationEnabled = await storage.isIntegrationEnabled(req.user!.contractorId, 'housecall-pro');
+    if (!isIntegrationEnabled) {
+      res.status(403).json({ 
+        message: "Housecall Pro integration is not enabled for this tenant. Please enable it to schedule contacts.",
+        integrationDisabled: true 
+      });
+      return;
     }
-  });
-
-  app.get("/api/contacts/unscheduled", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const unscheduledContacts = await storage.getUnscheduledContacts(req.user!.contractorId);
-      res.json(unscheduledContacts);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch unscheduled contacts" });
+    
+    // Validate request body with Zod
+    const validation = scheduleContactSchema.safeParse(req.body);
+    if (!validation.success) {
+      res.status(400).json({ 
+        message: "Invalid request data", 
+        errors: validation.error.issues.map(issue => ({ 
+          path: issue.path.join('.'), 
+          message: issue.message 
+        }))
+      });
+      return;
     }
-  });
+    
+    const { employeeId, scheduledStart, scheduledEnd, description } = validation.data;
+    const startDate = new Date(scheduledStart);
+    const endDate = new Date(scheduledEnd);
 
-  app.post("/api/contacts/:id/schedule", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const { id: contactId } = req.params;
-      
-      // Check if Housecall Pro integration is enabled (required for scheduling)
-      const isIntegrationEnabled = await storage.isIntegrationEnabled(req.user!.contractorId, 'housecall-pro');
-      if (!isIntegrationEnabled) {
-        res.status(403).json({ 
-          message: "Housecall Pro integration is not enabled for this tenant. Please enable it to schedule contacts.",
-          integrationDisabled: true 
+    // Get the contact to schedule
+    const contact = await storage.getContact(contactId, req.user!.contractorId);
+    if (!contact) {
+      res.status(404).json({ message: "Contact not found" });
+      return;
+    }
+
+    // Check if contact is already scheduled
+    if (contact.isScheduled) {
+      res.status(400).json({ message: "Contact is already scheduled" });
+      return;
+    }
+
+    // Step 1: Find or create customer in Housecall Pro (prevent duplicates)
+    let housecallProCustomerId = contact.housecallProCustomerId;
+    
+    // Get first email and phone from arrays
+    const contactEmail = contact.emails?.[0];
+    const contactPhone = contact.phones?.[0];
+    
+    if (!housecallProCustomerId) {
+      // First try to find existing customer by email/phone
+      if (contactEmail || contactPhone) {
+        const searchResult = await housecallProService.searchCustomers(req.user!.contractorId, {
+          email: contactEmail || undefined,
+          phone: contactPhone || undefined
         });
-        return;
-      }
-      
-      // Validate request body with Zod
-      const validation = scheduleContactSchema.safeParse(req.body);
-      if (!validation.success) {
-        res.status(400).json({ 
-          message: "Invalid request data", 
-          errors: validation.error.issues.map(issue => ({ 
-            path: issue.path.join('.'), 
-            message: issue.message 
-          }))
-        });
-        return;
-      }
-      
-      const { employeeId, scheduledStart, scheduledEnd, description } = validation.data;
-      const startDate = new Date(scheduledStart);
-      const endDate = new Date(scheduledEnd);
-
-      // Get the contact to schedule
-      const contact = await storage.getContact(contactId, req.user!.contractorId);
-      if (!contact) {
-        res.status(404).json({ message: "Contact not found" });
-        return;
-      }
-
-      // Check if contact is already scheduled
-      if (contact.isScheduled) {
-        res.status(400).json({ message: "Contact is already scheduled" });
-        return;
-      }
-
-      // Step 1: Find or create customer in Housecall Pro (prevent duplicates)
-      let housecallProCustomerId = contact.housecallProCustomerId;
-      
-      // Get first email and phone from arrays
-      const contactEmail = contact.emails?.[0];
-      const contactPhone = contact.phones?.[0];
-      
-      if (!housecallProCustomerId) {
-        // First try to find existing customer by email/phone
-        if (contactEmail || contactPhone) {
-          const searchResult = await housecallProService.searchCustomers(req.user!.contractorId, {
-            email: contactEmail || undefined,
-            phone: contactPhone || undefined
-          });
-          
-          if (searchResult.success && searchResult.data && searchResult.data.length > 0) {
-            // Found existing customer, use it
-            housecallProCustomerId = searchResult.data[0].id;
-          }
-        }
         
-        // If no existing customer found, create a new one
-        if (!housecallProCustomerId) {
-          const customerResult = await housecallProService.createCustomer(req.user!.contractorId, {
-            first_name: contact.name.split(' ')[0] || contact.name,
-            last_name: contact.name.split(' ').slice(1).join(' ') || '',
-            email: contactEmail || '',
-            mobile_number: contactPhone || '',
-            addresses: contact.address ? [{
-              street: contact.address,
-              city: '',
-              state: '',
-              zip: '',
-              country: 'US'
-            }] : undefined
-          });
-
-          if (!customerResult.success) {
-            res.status(400).json({ message: `Failed to create customer in Housecall Pro: ${customerResult.error}` });
-            return;
-          }
-
-          housecallProCustomerId = customerResult.data!.id;
+        if (searchResult.success && searchResult.data && searchResult.data.length > 0) {
+          // Found existing customer, use it
+          housecallProCustomerId = searchResult.data[0].id;
         }
       }
+      
+      // If no existing customer found, create a new one
+      if (!housecallProCustomerId) {
+        const customerResult = await housecallProService.createCustomer(req.user!.contractorId, {
+          first_name: contact.name.split(' ')[0] || contact.name,
+          last_name: contact.name.split(' ').slice(1).join(' ') || '',
+          email: contactEmail || '',
+          mobile_number: contactPhone || '',
+          addresses: contact.address ? [{
+            street: contact.address,
+            city: '',
+            state: '',
+            zip: '',
+            country: 'US'
+          }] : undefined
+        });
 
-      // Step 2: Create estimate in Housecall Pro
-      const estimateResult = await housecallProService.createEstimate(req.user!.contractorId, {
-        customer_id: housecallProCustomerId,
-        employee_id: employeeId,
-        message: description || `Estimate for ${contact.name}`,
-        options: [{
-          name: 'Option 1',
-          schedule: {
-            scheduled_start: startDate.toISOString(),
-            scheduled_end: endDate.toISOString(),
-          },
-        }],
-        address: contact.address ? {
-          street: contact.address,
-          city: '',
-          state: '',
-          zip: '',
-          country: 'US'
-        } : undefined
-      });
+        if (!customerResult.success) {
+          res.status(400).json({ message: `Failed to create customer in Housecall Pro: ${customerResult.error}` });
+          return;
+        }
 
-      if (!estimateResult.success) {
-        res.status(400).json({ message: `Failed to create estimate in Housecall Pro: ${estimateResult.error}` });
-        return;
+        housecallProCustomerId = customerResult.data!.id;
       }
-
-      // Step 3: Atomic contact-to-estimate conversion (updates contact AND creates local estimate)
-      const result = await storage.scheduleContactAsEstimate(contactId, {
-        housecallProCustomerId,
-        housecallProEstimateId: estimateResult.data!.id,
-        scheduledAt: startDate,
-        scheduledEmployeeId: employeeId,
-        scheduledStart: startDate,
-        scheduledEnd: endDate,
-        description: description || `Estimate for ${contact.name}`
-      }, req.user!.contractorId);
-
-      if (!result) {
-        res.status(500).json({ message: "Failed to complete contact-to-estimate conversion" });
-        return;
-      }
-
-      res.json({
-        message: "Contact scheduled and converted to estimate successfully",
-        contact: result.contact,
-        estimate: result.estimate,
-        housecallProEstimateId: estimateResult.data!.id
-      });
-    } catch (error) {
-      console.error('Contact scheduling error:', error);
-      res.status(500).json({ message: "Failed to schedule contact" });
     }
-  });
+
+    // Step 2: Create estimate in Housecall Pro
+    const estimateResult = await housecallProService.createEstimate(req.user!.contractorId, {
+      customer_id: housecallProCustomerId,
+      employee_id: employeeId,
+      message: description || `Estimate for ${contact.name}`,
+      options: [{
+        name: 'Option 1',
+        schedule: {
+          scheduled_start: startDate.toISOString(),
+          scheduled_end: endDate.toISOString(),
+        },
+      }],
+      address: contact.address ? {
+        street: contact.address,
+        city: '',
+        state: '',
+        zip: '',
+        country: 'US'
+      } : undefined
+    });
+
+    if (!estimateResult.success) {
+      res.status(400).json({ message: `Failed to create estimate in Housecall Pro: ${estimateResult.error}` });
+      return;
+    }
+
+    // Step 3: Atomic contact-to-estimate conversion (updates contact AND creates local estimate)
+    const result = await storage.scheduleContactAsEstimate(contactId, {
+      housecallProCustomerId,
+      housecallProEstimateId: estimateResult.data!.id,
+      scheduledAt: startDate,
+      scheduledEmployeeId: employeeId,
+      scheduledStart: startDate,
+      scheduledEnd: endDate,
+      description: description || `Estimate for ${contact.name}`
+    }, req.user!.contractorId);
+
+    if (!result) {
+      res.status(500).json({ message: "Failed to complete contact-to-estimate conversion" });
+      return;
+    }
+
+    res.json({
+      message: "Contact scheduled and converted to estimate successfully",
+      contact: result.contact,
+      estimate: result.estimate,
+      housecallProEstimateId: estimateResult.data!.id
+    });
+  }));
 
   // Contractor-specific webhook endpoint for Housecall Pro estimate updates
   app.post("/api/leads/csv-upload", async (req: AuthenticatedRequest, res: Response) => {

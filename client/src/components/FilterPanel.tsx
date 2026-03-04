@@ -2,12 +2,11 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Filter, X, Calendar as CalendarIcon } from "lucide-react";
+import { Filter, X } from "lucide-react";
 import { format } from "date-fns";
-import { cn } from "@/lib/utils";
 
 export type FilterState = {
   status?: string;
@@ -125,59 +124,24 @@ export function FilterPanel({
               <div className="space-y-2">
                 <Label>{dateLabel} Range</Label>
                 <div className="space-y-2">
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-full justify-start text-left font-normal",
-                          !filters.dateFrom && "text-muted-foreground"
-                        )}
-                        data-testid="button-date-from"
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {filters.dateFrom ? format(filters.dateFrom, "PPP") : "From date"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={filters.dateFrom}
-                        onSelect={(date) => updateFilter("dateFrom", date)}
-                        disabled={(date) =>
-                          date > new Date() || (filters.dateTo ? date > filters.dateTo : false)
-                        }
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-full justify-start text-left font-normal",
-                          !filters.dateTo && "text-muted-foreground"
-                        )}
-                        data-testid="button-date-to"
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {filters.dateTo ? format(filters.dateTo, "PPP") : "To date"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={filters.dateTo}
-                        onSelect={(date) => updateFilter("dateTo", date)}
-                        disabled={(date) =>
-                          date > new Date() || (filters.dateFrom ? date < filters.dateFrom : false)
-                        }
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
+                  <DatePicker
+                    value={filters.dateFrom}
+                    onChange={(date) => updateFilter("dateFrom", date)}
+                    placeholder="From date"
+                    disabled={(date) =>
+                      date > new Date() || (filters.dateTo ? date > filters.dateTo : false)
+                    }
+                    data-testid="button-date-from"
+                  />
+                  <DatePicker
+                    value={filters.dateTo}
+                    onChange={(date) => updateFilter("dateTo", date)}
+                    placeholder="To date"
+                    disabled={(date) =>
+                      date > new Date() || (filters.dateFrom ? date < filters.dateFrom : false)
+                    }
+                    data-testid="button-date-to"
+                  />
                 </div>
               </div>
 

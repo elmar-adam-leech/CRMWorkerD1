@@ -79,6 +79,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Add AI error handler middleware (should be last middleware)
   app.use(aiErrorHandler);
 
+  // Global error handler — catches errors propagated via next(error) from asyncHandler
+  app.use((err: any, _req: any, res: any, _next: any) => {
+    const status = err.status ?? err.statusCode ?? 500;
+    const message = err.message ?? "Internal server error";
+    if (status >= 500) console.error("[route error]", err);
+    res.status(status).json({ message });
+  });
+
   const httpServer = createServer(app);
   
   // Setup WebSocket server for real-time messaging
