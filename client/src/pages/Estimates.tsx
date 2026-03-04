@@ -16,11 +16,12 @@ import { useToast } from "@/hooks/use-toast";
 import { formatStatusLabel, cn } from "@/lib/utils";
 import { downloadCsv } from "@/lib/csv";
 import type { PaginatedEstimates, TerminologySettings, Contact, EstimateSummary } from "@shared/schema";
-import { useWebSocketContext } from "@/contexts/WebSocketContext";
 import { useCommunicationActions } from "@/hooks/useCommunicationActions";
 import { useGlobalShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useFetchContact } from "@/hooks/useFetchContact";
 import { useHousecallProIntegration } from "@/hooks/useHousecallProIntegration";
+import { useHcpImport } from "@/hooks/useHcpImport";
+import { useWebSocketInvalidation } from "@/hooks/useWebSocketInvalidation";
 import { BulkActionToolbar } from "@/components/BulkActionToolbar";
 import { StatusFilterBar } from "@/components/StatusFilterBar";
 import { LoadMoreButton } from "@/components/LoadMoreButton";
@@ -48,7 +49,6 @@ const ESTIMATE_BULK_STATUSES = [
 
 export default function Estimates({ externalSearch = "" }: { externalSearch?: string }) {
   const [location] = useLocation();
-  const { subscribe } = useWebSocketContext();
   const { fetchContact } = useFetchContact();
   const [searchQuery, setSearchQuery] = useState(externalSearch);
 
@@ -82,12 +82,6 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
     isOpen: boolean;
     estimate?: EstimateListItem;
   }>({ isOpen: false });
-
-  const [importDateModal, setImportDateModal] = useState<{
-    isOpen: boolean;
-  }>({ isOpen: false });
-
-  const [selectedImportDate, setSelectedImportDate] = useState<Date | undefined>(undefined);
 
   const [followUpModal, setFollowUpModal] = useState<{
     isOpen: boolean;
@@ -161,27 +155,19 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
 
   useAddModalFromUrl(() => setAddModal(true));
 
-  useEffect(() => {
-    const unsubscribe = subscribe((message: { type: string }) => {
-      if (
-        message.type === "new_estimate" ||
-        message.type === "estimate_created" ||
-        message.type === "estimate_updated" ||
-        message.type === "estimate_deleted"
-      ) {
-        queryClient.invalidateQueries({ queryKey: ["/api/estimates/paginated"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/estimates/status-counts"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/estimates"] });
-      }
+  const { importDateOpen, setImportDateOpen, selectedImportDate, setSelectedImportDate, handleConfirmImport } =
+    useHcpImport({
+      entityType: "estimates",
+      syncStartDate,
+      queryKeysToInvalidate: ["/api/estimates/paginated", "/api/estimates/status-counts"],
     });
-    return unsubscribe;
-  }, [subscribe, queryClient]);
 
-  useEffect(() => {
-    if (syncStartDate) {
-      setSelectedImportDate(new Date(syncStartDate));
-    }
-  }, [syncStartDate]);
+  useWebSocketInvalidation([
+    {
+      types: ["new_estimate", "estimate_created", "estimate_updated", "estimate_deleted"],
+      queryKeys: ["/api/estimates/paginated", "/api/estimates/status-counts", "/api/estimates"],
+    },
+  ]);
 
   const allEstimates: EstimateListItem[] = (estimates || []).map((e) => ({
     id: e.id,
@@ -215,47 +201,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
 
   const handleAddEstimate = () => setAddModal(true);
 
-  const handleImportFromHousecallPro = () => setImportDateModal({ isOpen: true });
-
-  const handleConfirmImport = async () => {
-    setImportDateModal({ isOpen: false });
-
-    toast({
-      title: "Import Started",
-      description: "Importing estimates from Housecall Pro...",
-    });
-
-    const selectedDateISO = selectedImportDate?.toISOString();
-    const dateChanged = selectedDateISO && selectedDateISO !== syncStartDate;
-
-    try {
-      if (dateChanged) {
-        await apiRequest("POST", "/api/housecall-pro/sync-start-date", {
-          syncStartDate: selectedDateISO,
-        });
-      }
-
-      const response = await apiRequest("POST", "/api/housecall-pro/sync?type=estimates");
-      const data = await response.json();
-
-      queryClient.invalidateQueries({ queryKey: ["/api/estimates/paginated"] });
-      toast({
-        title: "Import Successful",
-        description: `Successfully imported estimates from Housecall Pro.${data.newEstimates ? ` Added ${data.newEstimates} new estimates.` : ""}`,
-      });
-    } catch (error: unknown) {
-      if (dateChanged) {
-        await apiRequest("POST", "/api/housecall-pro/sync-start-date", {
-          syncStartDate: syncStartDate,
-        }).catch(() => {});
-      }
-      toast({
-        title: "Import Failed",
-        description: error instanceof Error ? error.message : "Failed to import estimates from Housecall Pro",
-        variant: "destructive",
-      });
-    }
-  };
+  const handleImportFromHousecallPro = () => setImportDateOpen(true);
 
   const handleSend = (_estimateId: string) => {
     toast({ title: "Sending estimates is not yet available" });
@@ -637,8 +583,8 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
       />
 
       <HCPImportModal
-        isOpen={importDateModal.isOpen}
-        onClose={() => setImportDateModal({ isOpen: false })}
+        isOpen={importDateOpen}
+        onClose={() => setImportDateOpen(false)}
         onConfirm={handleConfirmImport}
         selectedDate={selectedImportDate}
         onDateChange={setSelectedImportDate}

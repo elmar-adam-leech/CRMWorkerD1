@@ -18,7 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { Contact, PaginatedContacts, TerminologySettings } from "@shared/schema";
 import { cn, formatStatusLabel } from "@/lib/utils";
 import { downloadCsv } from "@/lib/csv";
-import { useWebSocketContext } from "@/contexts/WebSocketContext";
+import { useWebSocketInvalidation } from "@/hooks/useWebSocketInvalidation";
 import { useCommunicationActions } from "@/hooks/useCommunicationActions";
 import { useGlobalShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { BulkActionToolbar } from "@/components/BulkActionToolbar";
@@ -94,7 +94,6 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { subscribe } = useWebSocketContext();
 
   const { data: terminology } = useQuery<TerminologySettings>({
     queryKey: ["/api/terminology"],
@@ -108,21 +107,11 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
     if (type === "lead") setAddContactModal(true);
   });
 
-  useEffect(() => {
-    const unsubscribe = subscribe((message) => {
-      if (message.type === "new_activity" || message.type === "activity_update") {
-        queryClient.invalidateQueries({ queryKey: ["/api/activities"] });
-      }
-      if (message.type === "new_message" || message.type === "message_update" || message.type === "message_updated") {
-        queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
-      }
-      if (message.type === "contact_created" || message.type === "contact_updated" || message.type === "contact_deleted") {
-        queryClient.invalidateQueries({ queryKey: ["/api/contacts/paginated"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/contacts/status-counts"] });
-      }
-    });
-    return () => unsubscribe();
-  }, [subscribe, queryClient]);
+  useWebSocketInvalidation([
+    { types: ["new_activity", "activity_update"], queryKeys: ["/api/activities"] },
+    { types: ["new_message", "message_update", "message_updated"], queryKeys: ["/api/conversations"] },
+    { types: ["contact_created", "contact_updated", "contact_deleted"], queryKeys: ["/api/contacts/paginated", "/api/contacts/status-counts"] },
+  ]);
 
   useAddModalFromUrl(() => setAddContactModal(true));
 

@@ -14,9 +14,10 @@ import { useToast } from "@/hooks/use-toast";
 import { formatStatusLabel } from "@/lib/utils";
 import { downloadCsv } from "@/lib/csv";
 import type { PaginatedJobs, TerminologySettings } from "@shared/schema";
-import { useWebSocketContext } from "@/contexts/WebSocketContext";
 import { useGlobalShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useHousecallProIntegration } from "@/hooks/useHousecallProIntegration";
+import { useHcpImport } from "@/hooks/useHcpImport";
+import { useWebSocketInvalidation } from "@/hooks/useWebSocketInvalidation";
 import { usePagePreferences } from "@/hooks/use-page-preferences";
 import { useAddModalFromUrl } from "@/hooks/use-add-modal-from-url";
 import { BulkActionToolbar } from "@/components/BulkActionToolbar";
@@ -36,7 +37,6 @@ type FilterStatus = "all" | JobStatus;
 
 export default function Jobs({ externalSearch = "" }: { externalSearch?: string }) {
   const [location] = useLocation();
-  const { subscribe } = useWebSocketContext();
   const { isHousecallProConfigured, syncStartDate } = useHousecallProIntegration();
 
   const {
@@ -51,23 +51,25 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
   const [searchQuery, setSearchQuery] = useState(externalSearch);
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [jobDetailsModal, setJobDetailsModal] = useState<{ isOpen: boolean; job?: JobListItem }>({ isOpen: false });
-  const [importDateModalOpen, setImportDateModalOpen] = useState(false);
-  const [selectedImportDate, setSelectedImportDate] = useState<Date | undefined>(undefined);
   const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; jobId?: string; jobTitle?: string }>({ isOpen: false });
 
   const { toast } = useToast();
+
+  const { importDateOpen, setImportDateOpen, selectedImportDate, setSelectedImportDate, handleConfirmImport } =
+    useHcpImport({
+      entityType: "jobs",
+      syncStartDate,
+      queryKeysToInvalidate: ["/api/jobs/paginated", "/api/jobs/status-counts"],
+    });
+
+  useWebSocketInvalidation([
+    { types: ["new_job", "job_created", "job_updated", "job_deleted"], queryKeys: ["/api/jobs/paginated", "/api/jobs/status-counts"] },
+  ]);
 
   // Sync global search bar into local state
   useEffect(() => {
     setSearchQuery(externalSearch);
   }, [externalSearch]);
-
-  // Initialise import date from the stored sync start date
-  useEffect(() => {
-    if (syncStartDate) {
-      setSelectedImportDate(new Date(syncStartDate));
-    }
-  }, [syncStartDate]);
 
   useAddModalFromUrl(() => setAddModalOpen(true));
 
@@ -168,17 +170,6 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
     if (type === "job") setAddModalOpen(true);
   });
 
-  // WebSocket: invalidate on any job change
-  useEffect(() => {
-    const unsubscribe = subscribe((message: { type: string }) => {
-      if (["new_job", "job_created", "job_updated", "job_deleted"].includes(message.type)) {
-        queryClient.invalidateQueries({ queryKey: ["/api/jobs/paginated"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/jobs/status-counts"] });
-      }
-    });
-    return unsubscribe;
-  }, [subscribe]);
-
   // Flatten paginated pages into a typed list
   const allJobs: JobListItem[] = jobsData?.pages.flatMap((page) =>
     (page.data || []).map((job) => ({
@@ -220,38 +211,7 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
 
   const handleImportFromHousecallPro = () => {
     setAddModalOpen(false);
-    setImportDateModalOpen(true);
-  };
-
-  const handleConfirmImport = async () => {
-    setImportDateModalOpen(false);
-    toast({ title: "Import Started", description: "Importing jobs from Housecall Pro..." });
-
-    const selectedDateISO = selectedImportDate?.toISOString();
-    const dateChanged = selectedDateISO && selectedDateISO !== syncStartDate;
-
-    try {
-      if (dateChanged) {
-        await apiRequest("POST", "/api/housecall-pro/sync-start-date", { syncStartDate: selectedDateISO });
-      }
-      const response = await apiRequest("POST", "/api/housecall-pro/sync?type=jobs");
-      const data = await response.json();
-      queryClient.invalidateQueries({ queryKey: ["/api/jobs/paginated"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/jobs/status-counts"] });
-      toast({
-        title: "Import Successful",
-        description: `Successfully imported jobs from Housecall Pro.${data.newJobs ? ` Added ${data.newJobs} new jobs.` : ""}`,
-      });
-    } catch (error: unknown) {
-      toast({
-        title: "Import Failed",
-        description: error instanceof Error ? error.message : "Failed to import jobs from Housecall Pro",
-        variant: "destructive",
-      });
-      if (dateChanged) {
-        await apiRequest("POST", "/api/housecall-pro/sync-start-date", { syncStartDate: syncStartDate }).catch(() => {});
-      }
-    }
+    setImportDateOpen(true);
   };
 
   // ----- Bulk action handlers -----
@@ -443,8 +403,8 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
       <CreateJobModal isOpen={addModalOpen} onClose={() => setAddModalOpen(false)} />
 
       <HCPImportModal
-        isOpen={importDateModalOpen}
-        onClose={() => setImportDateModalOpen(false)}
+        isOpen={importDateOpen}
+        onClose={() => setImportDateOpen(false)}
         onConfirm={handleConfirmImport}
         selectedDate={selectedImportDate}
         onDateChange={setSelectedImportDate}

@@ -11,74 +11,70 @@ import nodeCrypto from "crypto";
 import bcrypt from "bcrypt";
 import { sendGridService } from "../sendgrid-service";
 import { authLoginRateLimiter, authRegisterRateLimiter, authForgotPasswordRateLimiter } from "../middleware/rate-limiter";
+import { asyncHandler } from "../utils/async-handler";
 
 export function registerAuthRoutes(app: Express): void {
   // Authentication routes
-  app.post("/api/auth/login", authLoginRateLimiter, async (req: Request, res: Response) => {
-    try {
-      const { email, password } = req.body;
-      if (!email || !password) {
-        res.status(400).json({ message: "Email and password are required" });
-        return;
-      }
+  app.post("/api/auth/login", authLoginRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      res.status(400).json({ message: "Email and password are required" });
+      return;
+    }
 
-      const user = await storage.verifyPasswordByEmail(email, password);
-      if (!user) {
-        res.status(401).json({ message: "Invalid credentials" });
-        return;
-      }
+    const user = await storage.verifyPasswordByEmail(email, password);
+    if (!user) {
+      res.status(401).json({ message: "Invalid credentials" });
+      return;
+    }
 
-      if (!user.contractorId) {
-        res.status(500).json({ message: "User account has no contractor association" });
-        return;
-      }
+    if (!user.contractorId) {
+      res.status(500).json({ message: "User account has no contractor association" });
+      return;
+    }
 
-      // Ensure user_contractors junction table entry exists (fixes authentication persistence)
-      await storage.ensureUserContractorEntry(
-        user.id,
-        user.contractorId,
-        user.role,
-        user.canManageIntegrations || false
-      );
+    // Ensure user_contractors junction table entry exists (fixes authentication persistence)
+    await storage.ensureUserContractorEntry(
+      user.id,
+      user.contractorId,
+      user.role,
+      user.canManageIntegrations || false
+    );
 
-      // Generate JWT token
-      const token = AuthService.generateToken({
+    // Generate JWT token
+    const token = AuthService.generateToken({
+      id: user.id,
+      username: user.username,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      contractorId: user.contractorId,
+      canManageIntegrations: user.canManageIntegrations || false
+    });
+
+    // Set HTTP-only cookie for web apps (more secure)
+    res.cookie('auth_token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production', // HTTPS only in production
+      sameSite: 'lax', // 'lax' allows OAuth redirects while still protecting against CSRF
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days (sliding expiration)
+      path: '/', // Explicit path for better cookie persistence
+    });
+
+    // Also return token for API clients
+    res.json({ 
+      token,
+      user: {
         id: user.id,
         username: user.username,
         name: user.name,
         email: user.email,
         role: user.role,
-        contractorId: user.contractorId,
-        canManageIntegrations: user.canManageIntegrations || false
-      });
-
-      // Set HTTP-only cookie for web apps (more secure)
-      res.cookie('auth_token', token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production', // HTTPS only in production
-        sameSite: 'lax', // 'lax' allows OAuth redirects while still protecting against CSRF
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days (sliding expiration)
-        path: '/', // Explicit path for better cookie persistence
-      });
-
-      // Also return token for API clients
-      res.json({ 
-        token,
-        user: {
-          id: user.id,
-          username: user.username,
-          name: user.name,
-          email: user.email,
-          role: user.role,
-          contractorId: user.contractorId! // We already checked this above
-        },
-        message: "Login successful" 
-      });
-    } catch (error) {
-      console.error('Login error:', error);
-      res.status(500).json({ message: "Login failed" });
-    }
-  });
+        contractorId: user.contractorId! // We already checked this above
+      },
+      message: "Login successful" 
+    });
+  }));
 
   // User registration route - supports multi-contractor signup
   app.post("/api/auth/register", authRegisterRateLimiter, async (req: Request, res: Response) => {
@@ -288,131 +284,121 @@ export function registerAuthRoutes(app: Express): void {
   });
 
   // Request password reset
-  app.post("/api/auth/forgot-password", authForgotPasswordRateLimiter, async (req: Request, res: Response) => {
-    try {
-      const { email } = req.body;
+  app.post("/api/auth/forgot-password", authForgotPasswordRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+    const { email } = req.body;
 
-      if (!email) {
-        res.status(400).json({ message: "Email is required" });
-        return;
-      }
-
-      // Find user by email (case-insensitive) - use lower() for consistent matching
-      // and order by createdAt DESC to get the most recent record if duplicates exist
-      const userResult = await db
-        .select()
-        .from(users)
-        .where(sql`lower(${users.email}) = lower(${email})`)
-        .orderBy(desc(users.createdAt))
-        .limit(1);
-      
-      // Always return success to prevent email enumeration attacks
-      if (userResult.length === 0) {
-        res.json({ message: "If an account exists with that email, you will receive a password reset link" });
-        return;
-      }
-
-      const user = userResult[0];
-
-      // Generate a secure random token
-      const resetToken = nodeCrypto.randomBytes(32).toString('hex');
-      const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now
-
-      // Store the reset token
-      await db.insert(passwordResetTokens).values({
-        userId: user.id,
-        token: resetToken,
-        expiresAt,
-      });
-
-      // Send reset email
-      await sendGridService.sendPasswordResetEmail(user.email, user.name, resetToken);
-
-      res.json({ message: "If an account exists with that email, you will receive a password reset link" });
-    } catch (error) {
-      console.error('Password reset request error:', error);
-      res.status(500).json({ message: "Failed to process password reset request" });
+    if (!email) {
+      res.status(400).json({ message: "Email is required" });
+      return;
     }
-  });
+
+    // Find user by email (case-insensitive) - use lower() for consistent matching
+    // and order by createdAt DESC to get the most recent record if duplicates exist
+    const userResult = await db
+      .select()
+      .from(users)
+      .where(sql`lower(${users.email}) = lower(${email})`)
+      .orderBy(desc(users.createdAt))
+      .limit(1);
+    
+    // Always return success to prevent email enumeration attacks
+    if (userResult.length === 0) {
+      res.json({ message: "If an account exists with that email, you will receive a password reset link" });
+      return;
+    }
+
+    const user = userResult[0];
+
+    // Generate a secure random token
+    const resetToken = nodeCrypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now
+
+    // Store the reset token
+    await db.insert(passwordResetTokens).values({
+      userId: user.id,
+      token: resetToken,
+      expiresAt,
+    });
+
+    // Send reset email
+    await sendGridService.sendPasswordResetEmail(user.email, user.name, resetToken);
+
+    res.json({ message: "If an account exists with that email, you will receive a password reset link" });
+  }));
 
   // Reset password with token
-  app.post("/api/auth/reset-password", authForgotPasswordRateLimiter, async (req: Request, res: Response) => {
-    try {
-      const { token, newPassword } = req.body;
+  app.post("/api/auth/reset-password", authForgotPasswordRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+    const { token, newPassword } = req.body;
 
-      if (!token || !newPassword) {
-        res.status(400).json({ message: "Token and new password are required" });
-        return;
-      }
-
-      // Validate password strength
-      if (newPassword.length < 8) {
-        res.status(400).json({ message: "Password must be at least 8 characters long" });
-        return;
-      }
-
-      // Find the reset token
-      const tokenResult = await db
-        .select()
-        .from(passwordResetTokens)
-        .where(eq(passwordResetTokens.token, token))
-        .limit(1);
-
-      if (tokenResult.length === 0) {
-        res.status(400).json({ message: "Invalid or expired reset token" });
-        return;
-      }
-
-      const resetTokenRecord = tokenResult[0];
-
-      // Check if token is expired
-      if (new Date() > resetTokenRecord.expiresAt) {
-        res.status(400).json({ message: "Reset token has expired" });
-        return;
-      }
-
-      // Check if token has already been used
-      if (resetTokenRecord.usedAt) {
-        res.status(400).json({ message: "Reset token has already been used" });
-        return;
-      }
-
-      // Hash the new password
-      const hashedPassword = await bcrypt.hash(newPassword, 12);
-
-      // Update user password
-      await db
-        .update(users)
-        .set({ password: hashedPassword })
-        .where(eq(users.id, resetTokenRecord.userId));
-
-      // Mark token as used
-      await db
-        .update(passwordResetTokens)
-        .set({ usedAt: new Date() })
-        .where(eq(passwordResetTokens.id, resetTokenRecord.id));
-
-      // Get user info to send confirmation email
-      const userResult = await db
-        .select()
-        .from(users)
-        .where(eq(users.id, resetTokenRecord.userId))
-        .limit(1);
-
-      if (userResult.length > 0) {
-        const user = userResult[0];
-        await sendGridService.sendPasswordChangedEmail(user.email, user.name);
-      }
-
-      res.json({ message: "Password reset successful" });
-    } catch (error) {
-      console.error('Password reset error:', error);
-      res.status(500).json({ message: "Failed to reset password" });
+    if (!token || !newPassword) {
+      res.status(400).json({ message: "Token and new password are required" });
+      return;
     }
-  });
+
+    // Validate password strength
+    if (newPassword.length < 8) {
+      res.status(400).json({ message: "Password must be at least 8 characters long" });
+      return;
+    }
+
+    // Find the reset token
+    const tokenResult = await db
+      .select()
+      .from(passwordResetTokens)
+      .where(eq(passwordResetTokens.token, token))
+      .limit(1);
+
+    if (tokenResult.length === 0) {
+      res.status(400).json({ message: "Invalid or expired reset token" });
+      return;
+    }
+
+    const resetTokenRecord = tokenResult[0];
+
+    // Check if token is expired
+    if (new Date() > resetTokenRecord.expiresAt) {
+      res.status(400).json({ message: "Reset token has expired" });
+      return;
+    }
+
+    // Check if token has already been used
+    if (resetTokenRecord.usedAt) {
+      res.status(400).json({ message: "Reset token has already been used" });
+      return;
+    }
+
+    // Hash the new password
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+    // Update user password
+    await db
+      .update(users)
+      .set({ password: hashedPassword })
+      .where(eq(users.id, resetTokenRecord.userId));
+
+    // Mark token as used
+    await db
+      .update(passwordResetTokens)
+      .set({ usedAt: new Date() })
+      .where(eq(passwordResetTokens.id, resetTokenRecord.id));
+
+    // Get user info to send confirmation email
+    const userResult = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, resetTokenRecord.userId))
+      .limit(1);
+
+    if (userResult.length > 0) {
+      const user = userResult[0];
+      await sendGridService.sendPasswordChangedEmail(user.email, user.name);
+    }
+
+    res.json({ message: "Password reset successful" });
+  }));
 
   // Get current user info
-  app.get("/api/auth/me", async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/auth/me", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     if (!req.user) {
       res.status(401).json({ message: "Not authenticated" });
       return;
@@ -439,60 +425,55 @@ export function registerAuthRoutes(app: Express): void {
         hasActiveCompanyIntegrations: enabledIntegrations.length > 0
       }
     });
-  });
+  }));
 
   // Gmail OAuth routes
-  app.get("/api/oauth/gmail/connect", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      if (!req.user) {
-        res.status(401).json({ message: "Not authenticated" });
-        return;
-      }
-
-      // Check if Gmail OAuth is configured
-      if (!gmailService.isConfigured()) {
-        res.status(500).json({ 
-          message: "Gmail integration not configured. Please set GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET environment variables." 
-        });
-        return;
-      }
-
-      // Pre-check encryption key so users get a clear error before OAuth flow
-      try {
-        gmailService.validateEncryptionKey();
-      } catch (error) {
-        res.status(500).json({ 
-          message: error instanceof Error ? error.message : "Encryption key not configured" 
-        });
-        return;
-      }
-
-      // Extract the current host from the request to use as redirect URI
-      const host = req.get('host');
-      if (!host) {
-        res.status(400).json({ message: "Unable to determine request host" });
-        return;
-      }
-
-      // Validate the host is in the allowlist
-      if (!gmailService.validateHost(host)) {
-        console.error(`[Gmail OAuth] Invalid host: ${host}`);
-        res.status(403).json({ 
-          message: `Invalid domain. OAuth is only allowed from approved domains.` 
-        });
-        return;
-      }
-
-      console.log(`[Gmail OAuth] Initiating OAuth for user ${req.user.userId} from host ${host}`);
-
-      // Generate OAuth URL with dynamic redirect URI based on current host
-      const authUrl = await gmailService.generateAuthUrl(req.user.userId, host);
-      res.json({ authUrl });
-    } catch (error) {
-      console.error('[Gmail OAuth] Error generating auth URL:', error);
-      res.status(500).json({ message: "Failed to initiate Gmail connection" });
+  app.get("/api/oauth/gmail/connect", requireAuth, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    if (!req.user) {
+      res.status(401).json({ message: "Not authenticated" });
+      return;
     }
-  });
+
+    // Check if Gmail OAuth is configured
+    if (!gmailService.isConfigured()) {
+      res.status(500).json({ 
+        message: "Gmail integration not configured. Please set GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET environment variables." 
+      });
+      return;
+    }
+
+    // Pre-check encryption key so users get a clear error before OAuth flow
+    try {
+      gmailService.validateEncryptionKey();
+    } catch (error) {
+      res.status(500).json({ 
+        message: error instanceof Error ? error.message : "Encryption key not configured" 
+      });
+      return;
+    }
+
+    // Extract the current host from the request to use as redirect URI
+    const host = req.get('host');
+    if (!host) {
+      res.status(400).json({ message: "Unable to determine request host" });
+      return;
+    }
+
+    // Validate the host is in the allowlist
+    if (!gmailService.validateHost(host)) {
+      console.error(`[Gmail OAuth] Invalid host: ${host}`);
+      res.status(403).json({ 
+        message: `Invalid domain. OAuth is only allowed from approved domains.` 
+      });
+      return;
+    }
+
+    console.log(`[Gmail OAuth] Initiating OAuth for user ${req.user.userId} from host ${host}`);
+
+    // Generate OAuth URL with dynamic redirect URI based on current host
+    const authUrl = await gmailService.generateAuthUrl(req.user.userId, host);
+    res.json({ authUrl });
+  }));
 
   app.get("/api/oauth/gmail/callback", async (req: Request, res: Response) => {
     try {
@@ -569,55 +550,45 @@ export function registerAuthRoutes(app: Express): void {
     }
   });
 
-  app.post("/api/oauth/gmail/disconnect", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      if (!req.user) {
-        res.status(401).json({ message: "Not authenticated" });
-        return;
-      }
-
-      // Disconnect Gmail for this user
-      await db.update(users)
-        .set({
-          gmailConnected: false,
-          gmailRefreshToken: null,
-          gmailEmail: null,
-          gmailLastSyncAt: null,
-          gmailSyncHistoryId: null,
-        })
-        .where(eq(users.id, req.user.userId));
-
-      console.log(`[Gmail OAuth] User ${req.user.userId} disconnected Gmail`);
-
-      res.json({ message: "Gmail disconnected successfully" });
-    } catch (error) {
-      console.error('[Gmail OAuth] Error disconnecting Gmail:', error);
-      res.status(500).json({ message: "Failed to disconnect Gmail" });
+  app.post("/api/oauth/gmail/disconnect", requireAuth, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    if (!req.user) {
+      res.status(401).json({ message: "Not authenticated" });
+      return;
     }
-  });
+
+    // Disconnect Gmail for this user
+    await db.update(users)
+      .set({
+        gmailConnected: false,
+        gmailRefreshToken: null,
+        gmailEmail: null,
+        gmailLastSyncAt: null,
+        gmailSyncHistoryId: null,
+      })
+      .where(eq(users.id, req.user.userId));
+
+    console.log(`[Gmail OAuth] User ${req.user.userId} disconnected Gmail`);
+
+    res.json({ message: "Gmail disconnected successfully" });
+  }));
 
   // User management routes (admin/manager only)
-  app.get("/api/user/contractors", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const userContractors = await storage.getUserContractors(req.user!.userId);
-      
-      // Get contractor details for each relationship
-      const contractorsWithDetails = await Promise.all(
-        userContractors.map(async (uc) => {
-          const contractor = await storage.getContractor(uc.contractorId);
-          return {
-            ...uc,
-            contractor
-          };
-        })
-      );
-      
-      res.json(contractorsWithDetails);
-    } catch (error: any) {
-      console.error("Error getting user contractors:", error);
-      res.status(500).json({ message: "Failed to get contractors" });
-    }
-  });
+  app.get("/api/user/contractors", requireAuth, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const userContractors = await storage.getUserContractors(req.user!.userId);
+    
+    // Get contractor details for each relationship
+    const contractorsWithDetails = await Promise.all(
+      userContractors.map(async (uc) => {
+        const contractor = await storage.getContractor(uc.contractorId);
+        return {
+          ...uc,
+          contractor
+        };
+      })
+    );
+    
+    res.json(contractorsWithDetails);
+  }));
   
   // Switch to a different contractor
   app.post("/api/user/switch-contractor", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
