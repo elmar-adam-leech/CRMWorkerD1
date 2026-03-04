@@ -56,7 +56,7 @@ The system employs strategic database indexing (54 indexes), application caching
 ### Integrations
 - **Zapier**: For SMS message ingestion.
 - **Google Cloud Platform**: For Gmail OAuth, Google Maps Places API autocomplete (address input in scheduling modal), and API access.
-- **Housecall Pro**: For calendar management and scheduling.
+- **Housecall Pro**: For calendar management, scheduling, and real-time event webhooks. Webhook endpoint at `/api/webhooks/:contractorId/housecall-pro` handles `estimate.*`, `job.*`, and `customer.*` events with HMAC-SHA256 signature verification, per-tenant webhook secrets (stored via CredentialService under `housecallpro/webhook_secret`), event logging to `webhookEvents` table, and automatic workflow trigger dispatch via `workflowEngine.triggerWorkflowsForEvent()`.
 
 ### Environment Variables Required
 - `GOOGLE_MAPS_API_KEY` (secret): Google Maps API key with Places API + Maps JavaScript API enabled. Must have your domain added to "Allowed HTTP referrers" in Google Cloud Console (API Keys → Restrictions).

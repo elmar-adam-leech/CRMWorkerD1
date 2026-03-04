@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/ui/page-header-v2";
 import { PageLayout } from "@/components/ui/page-layout";
 import type { Employee } from "@shared/schema";
@@ -94,7 +94,11 @@ export default function Settings() {
   const [showApiKey, setShowApiKey] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedWebhook, setSelectedWebhook] = useState<'leads' | 'estimates' | 'jobs'>('leads');
-  
+
+  // Housecall Pro webhook secret dialog state
+  const [hcpSecretDialogOpen, setHcpSecretDialogOpen] = useState(false);
+  const [hcpSecretInput, setHcpSecretInput] = useState('');
+
   // User management state
   const [isAddUserDialogOpen, setIsAddUserDialogOpen] = useState(false);
   const [newUserData, setNewUserData] = useState({ 
@@ -155,6 +159,12 @@ export default function Settings() {
   });
 
   const integrations: IntegrationData[] = integrationsResponse?.integrations ?? [];
+
+  // Housecall Pro webhook configuration query
+  const { data: hcpWebhookConfig } = useQuery<{ webhookUrl: string; secretConfigured: boolean }>({
+    queryKey: ['/api/integrations/housecall-pro/webhook-config'],
+    enabled: integrations.some(i => i.name === 'housecall-pro' && i.isEnabled),
+  });
 
   const {
     data: employees = [],
@@ -566,6 +576,19 @@ export default function Settings() {
         variant: "destructive",
       });
     },
+  });
+
+  // Housecall Pro webhook secret mutation
+  const saveHcpWebhookSecretMutation = useMutation({
+    mutationFn: async (secret: string) =>
+      apiRequest('POST', '/api/integrations/housecall-pro/webhook-secret', { secret }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/integrations/housecall-pro/webhook-config'] });
+      toast({ title: 'Webhook secret saved' });
+      setHcpSecretDialogOpen(false);
+      setHcpSecretInput('');
+    },
+    onError: () => toast({ title: 'Failed to save webhook secret', variant: 'destructive' }),
   });
 
   // Employee role update mutation
@@ -1014,6 +1037,45 @@ export default function Settings() {
                             <RefreshCw className={`h-4 w-4 mr-2 ${(syncDialpadMutation.isPending || syncStatus.isRunning) ? 'animate-spin' : ''}`} />
                             {(syncDialpadMutation.isPending || syncStatus.isRunning) ? 'Syncing...' : 'Sync Dialpad Data'}
                           </Button>
+                        </div>
+                      )}
+
+                      {/* Housecall Pro webhook configuration */}
+                      {integration.name === 'housecall-pro' && integration.isEnabled && hcpWebhookConfig && (
+                        <div className="pt-3 border-t space-y-3">
+                          <p className="text-sm font-medium">Webhook Integration</p>
+                          <p className="text-xs text-muted-foreground">
+                            Paste this URL into Housecall Pro under My Apps &rarr; Webhooks to enable real-time workflow triggers for jobs, estimates, and customers.
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <code className="flex-1 text-xs bg-muted px-3 py-2 rounded-md truncate">
+                              {hcpWebhookConfig.webhookUrl}
+                            </code>
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              onClick={() => navigator.clipboard.writeText(hcpWebhookConfig.webhookUrl)}
+                              data-testid="button-copy-hcp-webhook-url"
+                            >
+                              <Copy className="h-4 w-4" />
+                            </Button>
+                          </div>
+                          <div className="flex items-center justify-between flex-wrap gap-2">
+                            <div className="flex items-center gap-2 text-sm">
+                              {hcpWebhookConfig.secretConfigured
+                                ? <><CheckCircle className="h-4 w-4 text-green-600" /><span>Signing secret configured</span></>
+                                : <><AlertTriangle className="h-4 w-4 text-yellow-600" /><span>Signing secret not set</span></>
+                              }
+                            </div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setHcpSecretDialogOpen(true)}
+                              data-testid="button-configure-hcp-webhook-secret"
+                            >
+                              {hcpWebhookConfig.secretConfigured ? 'Update Secret' : 'Set Secret'}
+                            </Button>
+                          </div>
                         </div>
                       )}
                       
@@ -2039,6 +2101,43 @@ export default function Settings() {
       {activeTab === 'salespeople' && (
         <SalespeopleManagement />
       )}
+
+      {/* Housecall Pro webhook signing secret dialog */}
+      <Dialog open={hcpSecretDialogOpen} onOpenChange={setHcpSecretDialogOpen}>
+        <DialogContent data-testid="dialog-hcp-webhook-secret">
+          <DialogHeader>
+            <DialogTitle>Housecall Pro Webhook Signing Secret</DialogTitle>
+            <DialogDescription>
+              Find this in Housecall Pro under My Apps &rarr; Webhooks &rarr; your webhook entry &rarr; Signing Secret.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="hcp-secret">Signing Secret</Label>
+              <Input
+                id="hcp-secret"
+                data-testid="input-hcp-webhook-secret"
+                type="password"
+                placeholder="Paste secret from Housecall Pro..."
+                value={hcpSecretInput}
+                onChange={e => setHcpSecretInput(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setHcpSecretDialogOpen(false); setHcpSecretInput(''); }}>
+              Cancel
+            </Button>
+            <Button
+              data-testid="button-save-hcp-webhook-secret"
+              disabled={!hcpSecretInput.trim() || saveHcpWebhookSecretMutation.isPending}
+              onClick={() => saveHcpWebhookSecretMutation.mutate(hcpSecretInput)}
+            >
+              {saveHcpWebhookSecretMutation.isPending ? 'Saving...' : 'Save Secret'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PageLayout>
   );
 }

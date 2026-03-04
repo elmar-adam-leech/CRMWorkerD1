@@ -4938,40 +4938,131 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Parse the JSON from raw body
       const payload = JSON.parse(rawBody.toString('utf8'));
       const { event_type, data } = payload;
-      
+
+      console.log(`[HCP Webhook] Received event: ${event_type} for contractor: ${contractorId}`);
+
+      // Log every incoming event to webhookEvents for auditing
+      const webhookEventRecord = await db.insert(webhookEvents).values({
+        contractorId,
+        service: 'housecall-pro',
+        eventType: event_type,
+        payload: JSON.stringify(payload),
+        processed: false,
+      }).returning();
+      const webhookEventId = webhookEventRecord[0]?.id;
+
+      // Map Housecall Pro work_status values to internal status values
+      const mapHcpWorkStatus = (workStatus: string): string => {
+        const statusMap: Record<string, string> = {
+          'scheduled': 'scheduled',
+          'needs_scheduling': 'scheduled',
+          'in_progress': 'in_progress',
+          'started': 'in_progress',
+          'completed': 'completed',
+          'canceled': 'cancelled',
+          'cancellation_requested': 'cancelled',
+          'pending': 'pending',
+        };
+        return statusMap[workStatus] || workStatus;
+      };
+
       if (event_type === 'estimate.updated' || event_type === 'estimate.completed') {
-        const estimateId = data.id;
-        
-        // Find the lead associated with this estimate within the specific tenant
-        const leadResult = await storage.getEstimateByHousecallProEstimateId(estimateId, contractorId);
-        
-        if (leadResult) {
-          // Also find and update the local estimate record
-          const estimateResult = await storage.getEstimateByHousecallProEstimateId(estimateId, contractorId);
-          
-          if (estimateResult) {
-            let estimateStatus = 'draft';
-            if (data.work_status === 'completed') {
-              estimateStatus = 'approved';
-            } else if (data.work_status === 'canceled') {
-              estimateStatus = 'rejected';
+        const estimate = await storage.getEstimateByHousecallProEstimateId(data.id, contractorId);
+        if (estimate) {
+          const newStatus = data.work_status === 'completed' ? 'approved'
+                          : data.work_status === 'canceled' ? 'rejected'
+                          : estimate.status;
+          const updated = await storage.updateEstimate(estimate.id, {
+            status: newStatus as any,
+            syncedAt: new Date(),
+          }, contractorId);
+          if (updated) {
+            workflowEngine.triggerWorkflowsForEvent('estimate_updated', updated as unknown as Record<string, unknown>, contractorId).catch(err =>
+              console.error('[HCP Webhook] estimate_updated trigger error:', err));
+            if (updated.status !== estimate.status) {
+              workflowEngine.triggerWorkflowsForEvent('estimate_status_changed', updated as unknown as Record<string, unknown>, contractorId).catch(err =>
+                console.error('[HCP Webhook] estimate_status_changed trigger error:', err));
             }
-            
-            // Update our estimate record
-            await storage.updateEstimate(estimateResult.id, {
-              status: estimateStatus as any,
-              syncedAt: new Date()
-            }, contractorId);
           }
         }
+      } else if (['job.created', 'job.updated', 'job.completed', 'job.scheduled', 'job.started'].includes(event_type)) {
+        const job = await storage.getJobByHousecallProJobId(data.id, contractorId);
+        if (job) {
+          const newStatus = mapHcpWorkStatus(data.work_status || '');
+          if (newStatus && newStatus !== job.status) {
+            const updated = await storage.updateJob(job.id, { status: newStatus as any }, contractorId);
+            if (updated) {
+              workflowEngine.triggerWorkflowsForEvent('job_updated', updated as unknown as Record<string, unknown>, contractorId).catch(err =>
+                console.error('[HCP Webhook] job_updated trigger error:', err));
+              workflowEngine.triggerWorkflowsForEvent('job_status_changed', updated as unknown as Record<string, unknown>, contractorId).catch(err =>
+                console.error('[HCP Webhook] job_status_changed trigger error:', err));
+            }
+          } else if (event_type === 'job.created') {
+            workflowEngine.triggerWorkflowsForEvent('job_created', job as unknown as Record<string, unknown>, contractorId).catch(err =>
+              console.error('[HCP Webhook] job_created trigger error:', err));
+          } else {
+            workflowEngine.triggerWorkflowsForEvent('job_updated', job as unknown as Record<string, unknown>, contractorId).catch(err =>
+              console.error('[HCP Webhook] job_updated trigger error:', err));
+          }
+        }
+      } else if (event_type === 'customer.created' || event_type === 'customer.updated') {
+        const contact = await storage.getContactByExternalId(data.id, 'housecall-pro', contractorId);
+        if (contact) {
+          const eventKey = event_type === 'customer.created' ? 'contact_created' : 'contact_updated';
+          workflowEngine.triggerWorkflowsForEvent(eventKey, contact as unknown as Record<string, unknown>, contractorId).catch(err =>
+            console.error(`[HCP Webhook] ${eventKey} trigger error:`, err));
+        }
+      } else {
+        console.log(`[HCP Webhook] Unhandled event type: ${event_type}`);
       }
-      
+
+      // Mark event as processed
+      if (webhookEventId) {
+        await db.update(webhookEvents)
+          .set({ processed: true })
+          .where(eq(webhookEvents.id, webhookEventId));
+      }
+
       // Always respond quickly with 200 to acknowledge receipt
       res.status(200).json({ received: true });
     } catch (error) {
       console.error('Webhook processing error:', error);
       // Still return 200 to prevent webhook retries for processing errors
       res.status(200).json({ received: true, error: 'Processing failed' });
+    }
+  });
+
+  // Housecall Pro Webhook Configuration API Routes
+  app.get("/api/integrations/housecall-pro/webhook-config", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const contractorId = req.user!.contractorId;
+      const protocol = (req.headers['x-forwarded-proto'] as string) || req.protocol;
+      const host = (req.headers['x-forwarded-host'] as string) || req.get('host');
+      const webhookUrl = `${protocol}://${host}/api/webhooks/${contractorId}/housecall-pro`;
+      let secretConfigured = false;
+      try {
+        const secret = await CredentialService.getCredential(contractorId, 'housecallpro', 'webhook_secret');
+        secretConfigured = !!(secret && secret.trim());
+      } catch { /* no secret stored yet */ }
+      res.json({ webhookUrl, secretConfigured });
+    } catch (error) {
+      console.error('Error fetching HCP webhook config:', error);
+      res.status(500).json({ error: 'Failed to fetch webhook configuration' });
+    }
+  });
+
+  app.post("/api/integrations/housecall-pro/webhook-secret", requireAuth, requireManagerOrAdmin, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { secret } = req.body;
+      if (!secret || typeof secret !== 'string' || !secret.trim()) {
+        res.status(400).json({ error: 'Secret is required' });
+        return;
+      }
+      await CredentialService.setCredential(req.user!.contractorId, 'housecallpro', 'webhook_secret', secret.trim());
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error saving HCP webhook secret:', error);
+      res.status(500).json({ error: 'Failed to save webhook secret' });
     }
   });
 
