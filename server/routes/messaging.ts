@@ -1,4 +1,4 @@
-import type { Express, Request, Response } from "express";
+import type { Express, Response } from "express";
 import { storage } from "../storage";
 import { insertMessageSchema, insertTemplateSchema, insertCallSchema, templates, messages, activities, users, contractors } from "@shared/schema";
 import { db } from "../db";

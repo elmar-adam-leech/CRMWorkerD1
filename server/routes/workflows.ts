@@ -1,4 +1,4 @@
-import type { Express, Request, Response } from "express";
+import type { Express, Response } from "express";
 import { storage } from "../storage";
 import { insertWorkflowSchema, insertWorkflowStepSchema } from "@shared/schema";
 import { requireAuth, requireManagerOrAdmin, type AuthenticatedRequest } from "../auth-service";

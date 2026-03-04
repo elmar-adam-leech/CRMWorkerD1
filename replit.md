@@ -31,6 +31,38 @@ The system employs strategic database indexing (54 indexes), application caching
 - **Real-time**: WebSocket-based architecture.
 - **Security**: HTTP-only cookies, role-based access control, AES-256-GCM encryption.
 
+### Route Architecture
+
+179 total routes split across a modular file structure. Core CRM routes live at the top level; third-party integration and inbound webhook routes are grouped into dedicated subdirectories:
+
+```
+server/routes/
+  auth.ts              — login, register, OAuth, JWT
+  users.ts             — user management, contractor switching
+  contacts.ts          — contacts CRUD
+  jobs-estimates.ts    — jobs and estimates CRUD
+  employees.ts         — employee roles
+  messaging.ts         — SMS, email, calls, conversations, templates
+  workflows.ts         — workflow builder CRUD and execution
+  ai.ts                — AI endpoints
+  settings.ts          — contractor settings
+  public.ts            — public/unauthenticated endpoints
+  integrations/        — third-party integration management
+    index.ts           — enable/disable/credentials/status/webhook-config (8 routes)
+    dialpad.ts         — Dialpad phone numbers, sync, webhook config (13 routes)
+    housecall-pro.ts   — HCP status, employees, scheduling, sync (16 routes)
+    google-sheets.ts   — Google Sheets import pipeline (6 routes)
+  webhooks/            — inbound webhooks from external systems
+    index.ts           — delegates to sub-registrars
+    housecall-pro.ts   — inbound HCP events (HMAC-verified)
+    leads.ts           — inbound lead webhook (API-key auth)
+    estimates.ts       — inbound estimate webhook (API-key auth)
+    jobs.ts            — inbound job webhook (API-key auth)
+    dialpad-sms.ts     — Dialpad SMS webhook (tenant API-key auth)
+
+server/sync-status-store.ts  — shared in-memory Map for sync progress tracking
+```
+
 ## External Dependencies
 
 ### Core Framework Dependencies

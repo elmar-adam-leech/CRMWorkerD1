@@ -1,9 +1,9 @@
-import type { Express, Request, Response } from "express";
+import type { Express, Response } from "express";
 import { storage } from "../storage";
 import { insertUserSchema, users, userContractors, dialpadPhoneNumbers, contractors } from "@shared/schema";
 import { db } from "../db";
 import { eq, and, isNotNull } from "drizzle-orm";
-import { dialpadService } from "../dialpad-service";
+
 import { AuthService, requireAuth, requireManagerOrAdmin, requireAdmin, type AuthenticatedRequest } from "../auth-service";
 import { CredentialService } from "../credential-service";
 import bcrypt from "bcrypt";
