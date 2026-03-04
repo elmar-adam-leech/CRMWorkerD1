@@ -220,7 +220,7 @@ export function ContactCombobox({ value, onChange, error }: ContactComboboxProps
             </div>
             <div className="space-y-2">
               <Label htmlFor="customer-phone">Phone *</Label>
-              <Input id="customer-phone" type="tel" {...register("phone")} placeholder="(443) 415-4374" data-testid="input-customer-phone" />
+              <Input id="customer-phone" type="tel" {...register("phone")} placeholder="(123) 456-7890" data-testid="input-customer-phone" />
               {formErrors.phone && <p className="text-sm text-destructive">{formErrors.phone.message}</p>}
             </div>
             <DialogFooter>
