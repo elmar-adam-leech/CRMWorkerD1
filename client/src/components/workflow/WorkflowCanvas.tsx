@@ -132,7 +132,7 @@ export default function WorkflowCanvas({
       const id = `${type}-${Date.now()}`;
 
       // Default data based on node type
-      const defaultData: Record<string, any> = {
+      const defaultData: Record<string, unknown> = {
         trigger: { label: 'New Trigger', triggerType: 'entity_event' },
         sendEmail: { to: '', subject: '' },
         sendSMS: { to: '', message: '' },

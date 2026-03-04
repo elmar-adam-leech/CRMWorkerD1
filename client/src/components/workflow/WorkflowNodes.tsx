@@ -9,13 +9,13 @@ import {
   GitBranch,
   Clock,
   Calendar,
-  Play,
   Zap,
+  Play,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 
-// Base node styles
+// Node style variants
 const nodeStyles = {
   trigger: {
     background: 'hsl(var(--primary))',
@@ -44,242 +44,194 @@ const nodeStyles = {
   },
 };
 
-// Trigger Node Component
+// Handle configurations:
+//   'trigger'     — source only (no incoming handle)
+//   'action'      — target top + source bottom (default)
+//   'conditional' — target top + two labelled source handles at bottom
+type HandleConfig = 'trigger' | 'action' | 'conditional';
+
+type BaseNodeProps = {
+  icon: React.ReactNode;
+  title: string;
+  preview?: React.ReactNode;
+  style: React.CSSProperties;
+  handles?: HandleConfig;
+};
+
+function BaseNode({ icon, title, preview, style, handles = 'action' }: BaseNodeProps) {
+  return (
+    <Card className="min-w-[200px] shadow-md" style={style}>
+      {handles !== 'trigger' && <Handle type="target" position={Position.Top} />}
+      <CardHeader className="p-3 pb-2">
+        <div className="flex items-center gap-2">
+          {icon}
+          <CardTitle className="text-sm font-semibold">{title}</CardTitle>
+        </div>
+      </CardHeader>
+      {preview !== undefined && (
+        <CardContent className="p-3 pt-0 text-xs text-muted-foreground">
+          {preview}
+        </CardContent>
+      )}
+      {handles === 'conditional' ? (
+        <>
+          <Handle type="source" position={Position.Bottom} id="true" style={{ left: '35%' }} />
+          <Handle type="source" position={Position.Bottom} id="false" style={{ left: '65%' }} />
+        </>
+      ) : (
+        <Handle type="source" position={Position.Bottom} />
+      )}
+    </Card>
+  );
+}
+
 export function TriggerNode({ data }: NodeProps) {
   const triggerType = data.triggerType || 'entity_event';
-  const triggerLabel = data.label || 'Trigger';
-  
-  const getIcon = () => {
-    if (triggerType === 'time_based') return <Calendar className="h-4 w-4" />;
-    if (triggerType === 'manual') return <Play className="h-4 w-4" />;
-    return <Zap className="h-4 w-4" />;
-  };
+  const icon = triggerType === 'time_based'
+    ? <Calendar className="h-4 w-4" />
+    : triggerType === 'manual'
+      ? <Play className="h-4 w-4" />
+      : <Zap className="h-4 w-4" />;
 
   return (
-    <Card
-      className="min-w-[200px] shadow-md"
+    <BaseNode
+      icon={icon}
+      title={String(data.label || 'Trigger')}
+      preview={<Badge variant="secondary" className="text-xs">{String(triggerType).replace('_', ' ')}</Badge>}
       style={nodeStyles.trigger}
-    >
-      <CardHeader className="p-3 pb-2">
-        <div className="flex items-center gap-2">
-          {getIcon()}
-          <CardTitle className="text-sm font-semibold">{triggerLabel}</CardTitle>
-        </div>
-      </CardHeader>
-      <CardContent className="p-3 pt-0">
-        <Badge variant="secondary" className="text-xs">
-          {triggerType.replace('_', ' ')}
-        </Badge>
-      </CardContent>
-      <Handle type="source" position={Position.Bottom} />
-    </Card>
+      handles="trigger"
+    />
   );
 }
 
-// Send Email Action Node
 export function SendEmailNode({ data }: NodeProps) {
-  const fromInfo = data.fromEmail 
-    ? `From: ${data.fromEmail}`
-    : "From: Creator's Gmail";
-  
   return (
-    <Card className="min-w-[200px] shadow-md" style={nodeStyles.action}>
-      <Handle type="target" position={Position.Top} />
-      <CardHeader className="p-3 pb-2">
-        <div className="flex items-center gap-2">
-          <Mail className="h-4 w-4" />
-          <CardTitle className="text-sm font-semibold">Send Email</CardTitle>
+    <BaseNode
+      icon={<Mail className="h-4 w-4" />}
+      title="Send Email"
+      preview={
+        <div className="space-y-1">
+          <div>{data.to ? `To: ${data.to}` : 'Configure recipient'}</div>
+          <div className="text-[10px] opacity-70">
+            {data.fromEmail ? `From: ${data.fromEmail}` : "From: Creator's Gmail"}
+          </div>
         </div>
-      </CardHeader>
-      <CardContent className="p-3 pt-0 text-xs text-muted-foreground space-y-1">
-        <div>{data.to ? `To: ${data.to}` : 'Configure recipient'}</div>
-        <div className="text-[10px] opacity-70">{fromInfo}</div>
-      </CardContent>
-      <Handle type="source" position={Position.Bottom} />
-    </Card>
+      }
+      style={nodeStyles.action}
+    />
   );
 }
 
-// Send SMS Action Node
 export function SendSMSNode({ data }: NodeProps) {
-  const fromInfo = data.fromNumber 
-    ? `From: ${data.fromNumber}`
-    : "From: Creator's phone";
-  
   return (
-    <Card className="min-w-[200px] shadow-md" style={nodeStyles.action}>
-      <Handle type="target" position={Position.Top} />
-      <CardHeader className="p-3 pb-2">
-        <div className="flex items-center gap-2">
-          <MessageSquare className="h-4 w-4" />
-          <CardTitle className="text-sm font-semibold">Send SMS</CardTitle>
+    <BaseNode
+      icon={<MessageSquare className="h-4 w-4" />}
+      title="Send SMS"
+      preview={
+        <div className="space-y-1">
+          <div>{data.to ? `To: ${data.to}` : 'Configure phone number'}</div>
+          <div className="text-[10px] opacity-70">
+            {data.fromNumber ? `From: ${data.fromNumber}` : "From: Creator's phone"}
+          </div>
         </div>
-      </CardHeader>
-      <CardContent className="p-3 pt-0 text-xs text-muted-foreground space-y-1">
-        <div>{data.to ? `To: ${data.to}` : 'Configure phone number'}</div>
-        <div className="text-[10px] opacity-70">{fromInfo}</div>
-      </CardContent>
-      <Handle type="source" position={Position.Bottom} />
-    </Card>
+      }
+      style={nodeStyles.action}
+    />
   );
 }
 
-// Create Notification Node
 export function NotificationNode({ data }: NodeProps) {
   return (
-    <Card className="min-w-[200px] shadow-md" style={nodeStyles.action}>
-      <Handle type="target" position={Position.Top} />
-      <CardHeader className="p-3 pb-2">
-        <div className="flex items-center gap-2">
-          <Bell className="h-4 w-4" />
-          <CardTitle className="text-sm font-semibold">Create Notification</CardTitle>
-        </div>
-      </CardHeader>
-      <CardContent className="p-3 pt-0 text-xs text-muted-foreground">
-        {data.title || 'Configure notification'}
-      </CardContent>
-      <Handle type="source" position={Position.Bottom} />
-    </Card>
+    <BaseNode
+      icon={<Bell className="h-4 w-4" />}
+      title="Create Notification"
+      preview={<>{data.title || 'Configure notification'}</>}
+      style={nodeStyles.action}
+    />
   );
 }
 
-// Update Entity Node
 export function UpdateEntityNode({ data }: NodeProps) {
   return (
-    <Card className="min-w-[200px] shadow-md" style={nodeStyles.action}>
-      <Handle type="target" position={Position.Top} />
-      <CardHeader className="p-3 pb-2">
-        <div className="flex items-center gap-2">
-          <Edit className="h-4 w-4" />
-          <CardTitle className="text-sm font-semibold">Update Entity</CardTitle>
-        </div>
-      </CardHeader>
-      <CardContent className="p-3 pt-0 text-xs text-muted-foreground">
-        {data.entityType ? `Update ${data.entityType}` : 'Configure entity'}
-      </CardContent>
-      <Handle type="source" position={Position.Bottom} />
-    </Card>
+    <BaseNode
+      icon={<Edit className="h-4 w-4" />}
+      title="Update Entity"
+      preview={<>{data.entityType ? `Update ${data.entityType}` : 'Configure entity'}</>}
+      style={nodeStyles.action}
+    />
   );
 }
 
-// Assign User Node
 export function AssignUserNode({ data }: NodeProps) {
   return (
-    <Card className="min-w-[200px] shadow-md" style={nodeStyles.action}>
-      <Handle type="target" position={Position.Top} />
-      <CardHeader className="p-3 pb-2">
-        <div className="flex items-center gap-2">
-          <UserPlus className="h-4 w-4" />
-          <CardTitle className="text-sm font-semibold">Assign User</CardTitle>
-        </div>
-      </CardHeader>
-      <CardContent className="p-3 pt-0 text-xs text-muted-foreground">
-        {data.userId ? `Assign to user` : 'Configure assignment'}
-      </CardContent>
-      <Handle type="source" position={Position.Bottom} />
-    </Card>
+    <BaseNode
+      icon={<UserPlus className="h-4 w-4" />}
+      title="Assign User"
+      preview={<>{data.userId ? 'Assign to user' : 'Configure assignment'}</>}
+      style={nodeStyles.action}
+    />
   );
 }
 
-// AI Generate Content Node
 export function AIGenerateNode({ data }: NodeProps) {
+  const preview = data.prompt
+    ? String(data.prompt).substring(0, 40) + '...'
+    : 'Configure AI prompt';
   return (
-    <Card className="min-w-[200px] shadow-md" style={nodeStyles.ai}>
-      <Handle type="target" position={Position.Top} />
-      <CardHeader className="p-3 pb-2">
-        <div className="flex items-center gap-2">
-          <Brain className="h-4 w-4" />
-          <CardTitle className="text-sm font-semibold">AI Generate Content</CardTitle>
-        </div>
-      </CardHeader>
-      <CardContent className="p-3 pt-0 text-xs">
-        {data.prompt ? data.prompt.substring(0, 40) + '...' : 'Configure AI prompt'}
-      </CardContent>
-      <Handle type="source" position={Position.Bottom} />
-    </Card>
+    <BaseNode
+      icon={<Brain className="h-4 w-4" />}
+      title="AI Generate Content"
+      preview={<>{preview}</>}
+      style={nodeStyles.ai}
+    />
   );
 }
 
-// AI Analyze Node
 export function AIAnalyzeNode({ data }: NodeProps) {
   return (
-    <Card className="min-w-[200px] shadow-md" style={nodeStyles.ai}>
-      <Handle type="target" position={Position.Top} />
-      <CardHeader className="p-3 pb-2">
-        <div className="flex items-center gap-2">
-          <Brain className="h-4 w-4" />
-          <CardTitle className="text-sm font-semibold">AI Analyze Data</CardTitle>
-        </div>
-      </CardHeader>
-      <CardContent className="p-3 pt-0">
-        <Badge variant="secondary" className="text-xs">
-          {data.analysisType || 'general'}
-        </Badge>
-      </CardContent>
-      <Handle type="source" position={Position.Bottom} />
-    </Card>
+    <BaseNode
+      icon={<Brain className="h-4 w-4" />}
+      title="AI Analyze Data"
+      preview={<Badge variant="secondary" className="text-xs">{String(data.analysisType || 'general')}</Badge>}
+      style={nodeStyles.ai}
+    />
   );
 }
 
-// Conditional Branch Node
 export function ConditionalNode({ data }: NodeProps) {
   return (
-    <Card className="min-w-[200px] shadow-md" style={nodeStyles.condition}>
-      <Handle type="target" position={Position.Top} />
-      <CardHeader className="p-3 pb-2">
-        <div className="flex items-center gap-2">
-          <GitBranch className="h-4 w-4" />
-          <CardTitle className="text-sm font-semibold">If/Else Condition</CardTitle>
-        </div>
-      </CardHeader>
-      <CardContent className="p-3 pt-0 text-xs">
-        {data.condition || 'Configure condition'}
-      </CardContent>
-      <Handle type="source" position={Position.Bottom} id="true" style={{ left: '35%' }} />
-      <Handle type="source" position={Position.Bottom} id="false" style={{ left: '65%' }} />
-    </Card>
+    <BaseNode
+      icon={<GitBranch className="h-4 w-4" />}
+      title="If/Else Condition"
+      preview={<>{data.condition || 'Configure condition'}</>}
+      style={nodeStyles.condition}
+      handles="conditional"
+    />
   );
 }
 
-// Delay Node
 export function DelayNode({ data }: NodeProps) {
   return (
-    <Card className="min-w-[200px] shadow-md" style={nodeStyles.delay}>
-      <Handle type="target" position={Position.Top} />
-      <CardHeader className="p-3 pb-2">
-        <div className="flex items-center gap-2">
-          <Clock className="h-4 w-4" />
-          <CardTitle className="text-sm font-semibold">Delay</CardTitle>
-        </div>
-      </CardHeader>
-      <CardContent className="p-3 pt-0 text-xs text-muted-foreground">
-        {data.duration || 'Configure duration'}
-      </CardContent>
-      <Handle type="source" position={Position.Bottom} />
-    </Card>
+    <BaseNode
+      icon={<Clock className="h-4 w-4" />}
+      title="Delay"
+      preview={<>{data.duration || 'Configure duration'}</>}
+      style={nodeStyles.delay}
+    />
   );
 }
 
-// Wait Until Node
 export function WaitUntilNode({ data }: NodeProps) {
   return (
-    <Card className="min-w-[200px] shadow-md" style={nodeStyles.delay}>
-      <Handle type="target" position={Position.Top} />
-      <CardHeader className="p-3 pb-2">
-        <div className="flex items-center gap-2">
-          <Calendar className="h-4 w-4" />
-          <CardTitle className="text-sm font-semibold">Wait Until</CardTitle>
-        </div>
-      </CardHeader>
-      <CardContent className="p-3 pt-0 text-xs text-muted-foreground">
-        {data.dateTime || 'Configure date/time'}
-      </CardContent>
-      <Handle type="source" position={Position.Bottom} />
-    </Card>
+    <BaseNode
+      icon={<Calendar className="h-4 w-4" />}
+      title="Wait Until"
+      preview={<>{data.dateTime || 'Configure date/time'}</>}
+      style={nodeStyles.delay}
+    />
   );
 }
 
-// Export node types mapping
 export const nodeTypes = {
   trigger: TriggerNode,
   sendEmail: SendEmailNode,

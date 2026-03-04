@@ -77,15 +77,16 @@ export function WorkflowTestDialog({ workflowId, disabled, unapprovedMessage }: 
         setIsOpen(false);
         setTestResult(null);
       }, 2000);
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Failed to start workflow execution';
       setTestResult({
         success: false,
-        message: error.message || 'Failed to start workflow execution',
+        message,
       });
 
       toast({
         title: 'Test Failed',
-        description: error.message || 'Failed to start workflow execution',
+        description: message,
         variant: 'destructive',
       });
     } finally {
@@ -130,7 +131,7 @@ export function WorkflowTestDialog({ workflowId, disabled, unapprovedMessage }: 
             <Label htmlFor="trigger-type">Trigger Type</Label>
             <Select
               value={triggerType}
-              onValueChange={(value) => setTriggerType(value as any)}
+              onValueChange={(value) => setTriggerType(value as 'manual' | 'entity_event' | 'time_based')}
             >
               <SelectTrigger id="trigger-type" data-testid="select-trigger-type">
                 <SelectValue />

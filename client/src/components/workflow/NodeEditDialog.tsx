@@ -32,7 +32,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Trash2 } from 'lucide-react';
+import { Trash2, Info } from 'lucide-react';
 import { useCurrentUser, isAdminUser } from '@/hooks/useCurrentUser';
 
 type NodeEditDialogProps = {
@@ -849,7 +849,7 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
 
             {/* Help text */}
             <div className="p-3 bg-blue-50 dark:bg-blue-950/20 rounded-md border border-blue-200 dark:border-blue-800">
-              <p className="text-xs text-blue-900 dark:text-blue-100 font-medium mb-1">💡 How it works:</p>
+              <p className="text-xs text-blue-900 dark:text-blue-100 font-medium mb-1"><Info className="h-3 w-3 inline-block mr-1" />How it works:</p>
               <ul className="text-xs text-blue-800 dark:text-blue-200 space-y-1 ml-4 list-disc">
                 <li>Select a field from the trigger entity</li>
                 <li>Choose an operator to compare</li>
@@ -860,7 +860,7 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
           </div>
         );
 
-      case 'delay':
+      case 'delay': {
         // Parse duration to extract value and unit, handling multi-part durations
         const parseDuration = (duration: string) => {
           if (!duration) return { value: '1', unit: 'm' };
@@ -972,6 +972,7 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
             </div>
           </div>
         );
+      }
 
       case 'waitUntil':
         return (

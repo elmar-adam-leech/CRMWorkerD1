@@ -82,6 +82,22 @@ function extractTriggerConfig(nodes: Node[]): { triggerType: string; triggerConf
   return { triggerType, triggerConfig };
 }
 
+const NODE_ACTION_MAP: [nodeType: string, actionType: string][] = [
+  ['trigger',      'trigger'],
+  ['sendEmail',    'send_email'],
+  ['sendSMS',      'send_sms'],
+  ['notification', 'create_notification'],
+  ['updateEntity', 'update_entity'],
+  ['assignUser',   'assign_user'],
+  ['aiGenerate',   'ai_generate_content'],
+  ['aiAnalyze',    'ai_analyze'],
+  ['conditional',  'conditional_branch'],
+  ['delay',        'delay'],
+  ['waitUntil',    'wait_until'],
+];
+const NODE_TO_ACTION = Object.fromEntries(NODE_ACTION_MAP);
+const ACTION_TO_NODE = Object.fromEntries(NODE_ACTION_MAP.map(([n, a]) => [a, n]));
+
 export default function WorkflowBuilder() {
   const params = useParams<{ id?: string }>();
   const [, setLocation] = useLocation();
@@ -119,8 +135,10 @@ export default function WorkflowBuilder() {
     enabled: !!workflowId,
   });
 
+  type RawWorkflowStep = { id: string; stepOrder: number; actionType: string; actionConfig: string; parentStepId: string | null };
+
   // Fetch workflow steps if editing existing workflow
-  const { data: workflowSteps, isLoading: stepsLoading } = useQuery<any[]>({
+  const { data: workflowSteps, isLoading: stepsLoading } = useQuery<RawWorkflowStep[]>({
     queryKey: ['/api/workflows', workflowId, 'steps'],
     queryFn: async () => {
       if (!workflowId) return [];
@@ -233,12 +251,12 @@ export default function WorkflowBuilder() {
   }, [workflow, workflowSteps]);
 
   // Helper to generate trigger label from trigger type and config
-  const getTriggerLabel = (triggerType: string, triggerConfig: any): string => {
+  const getTriggerLabel = (triggerType: string, triggerConfig: Record<string, unknown>): string => {
     if (triggerType === 'entity_created' || triggerType === 'entity_event') {
-      const entity = triggerConfig.entity || 'lead';
+      const entity = String(triggerConfig.entity || 'lead');
       return `When ${entity.charAt(0).toUpperCase() + entity.slice(1)} is Created`;
     } else if (triggerType === 'entity_updated') {
-      const entity = triggerConfig.entity || 'lead';
+      const entity = String(triggerConfig.entity || 'lead');
       return `When ${entity.charAt(0).toUpperCase() + entity.slice(1)} is Updated`;
     } else if (triggerType === 'time_based') {
       return 'Time-based Trigger';
@@ -262,22 +280,8 @@ export default function WorkflowBuilder() {
     }
   }, [currentNodes, currentEdges]);
 
-  const mapActionTypeToNodeType = (actionType: string): string => {
-    const mapping: Record<string, string> = {
-      'trigger': 'trigger',
-      'send_email': 'sendEmail',
-      'send_sms': 'sendSMS',
-      'create_notification': 'notification',
-      'update_entity': 'notification', // Legacy support: map to notification
-      'assign_user': 'assignUser',
-      'ai_generate': 'aiGenerate',
-      'ai_analyze': 'aiAnalyze',
-      'conditional': 'conditional',
-      'delay': 'delay',
-      'wait_until': 'waitUntil',
-    };
-    return mapping[actionType] || 'notification';
-  };
+  const mapActionTypeToNodeType = (actionType: string): string =>
+    ACTION_TO_NODE[actionType] ?? 'notification';
 
   const saveWorkflowMutation = useMutation({
     mutationFn: async () => {
@@ -453,21 +457,8 @@ export default function WorkflowBuilder() {
     }
   };
 
-  const mapNodeTypeToActionType = (nodeType: string): string => {
-    const mapping: Record<string, string> = {
-      'trigger': 'trigger',
-      'sendEmail': 'send_email',
-      'sendSMS': 'send_sms',
-      'notification': 'create_notification',
-      'assignUser': 'assign_user',
-      'aiGenerate': 'ai_generate',
-      'aiAnalyze': 'ai_analyze',
-      'conditional': 'conditional',
-      'delay': 'delay',
-      'waitUntil': 'wait_until',
-    };
-    return mapping[nodeType] || 'create_notification';
-  };
+  const mapNodeTypeToActionType = (nodeType: string): string =>
+    NODE_TO_ACTION[nodeType] ?? 'create_notification';
 
   const handleSelectTemplate = (template: WorkflowTemplate) => {
     setTemplateNodes(template.nodes);
