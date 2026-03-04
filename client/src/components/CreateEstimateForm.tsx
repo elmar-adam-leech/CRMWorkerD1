@@ -17,7 +17,7 @@ const createEstimateSchema = z.object({
   contactId: z.string().min(1, "Please select a contact"),
   title: z.string().min(1, "Title is required"),
   description: z.string().optional(),
-  amount: z.number().min(0, "Amount must be positive"),
+  amount: z.number().min(0).optional(),
   validUntil: z.date().optional(),
   followUpDate: z.date().optional(),
   status: z.enum(["draft", "sent", "pending", "approved", "rejected"]).default("draft"),
@@ -105,7 +105,7 @@ export function CreateEstimateForm({ onSuccess, onCancel }: CreateEstimateFormPr
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="amount">Amount *</Label>
+        <Label htmlFor="amount">Amount (Optional)</Label>
         <Input
           id="amount"
           type="number"

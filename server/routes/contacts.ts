@@ -196,9 +196,11 @@ export function registerContactRoutes(app: Express): void {
           });
           
           if (hcpResult.success && hcpResult.data?.id) {
-            // Update contact with HCP customer ID
+            // Update contact with HCP customer ID in both columns
             await storage.updateContact(contact.id, { 
-              housecallProCustomerId: hcpResult.data.id 
+              housecallProCustomerId: hcpResult.data.id,
+              externalId: hcpResult.data.id,
+              externalSource: 'housecall-pro',
             }, req.user!.contractorId);
             console.log('[HCP Sync] Created HCP customer:', hcpResult.data.id, 'for contact:', contact.id);
           } else {

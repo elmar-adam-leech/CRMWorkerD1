@@ -200,7 +200,16 @@ export function registerJobEstimateRoutes(app: Express): void {
   }));
 
   app.post("/api/estimates", asyncHandler(async (req, res) => {
-    const estimateData = parseBody(insertEstimateSchema.omit({ contractorId: true }), req, res);
+    const estimateData = parseBody(
+      insertEstimateSchema.omit({ contractorId: true }).extend({
+        amount: z.union([z.string(), z.number()])
+          .transform(val => String(val))
+          .optional()
+          .default('0.00'),
+      }),
+      req,
+      res
+    );
     if (!estimateData) return;
     let estimate: Awaited<ReturnType<typeof storage.createEstimate>>;
     try {
@@ -212,6 +221,105 @@ export function registerJobEstimateRoutes(app: Express): void {
       }
       throw err;
     }
+
+    // Sync to Housecall Pro if integration is enabled
+    const hcpEnabled = await storage.isIntegrationEnabled(req.user!.contractorId, 'housecall-pro');
+    if (hcpEnabled && estimate.contactId) {
+      try {
+        const contact = await storage.getContact(estimate.contactId, req.user!.contractorId);
+        if (contact) {
+          // Check both columns during transition period (before column cleanup)
+          let hcpCustomerId: string | undefined = contact.externalId || contact.housecallProCustomerId || undefined;
+
+          if (!hcpCustomerId) {
+            const contactEmail = contact.emails?.[0];
+            const contactPhone = contact.phones?.[0];
+
+            // Search HCP for existing customer by email/phone
+            if (contactEmail || contactPhone) {
+              const searchResult = await housecallProService.searchCustomers(
+                req.user!.contractorId,
+                { email: contactEmail, phone: contactPhone }
+              );
+              if (searchResult.success && searchResult.data && searchResult.data.length > 0) {
+                hcpCustomerId = searchResult.data[0].id;
+              }
+            }
+
+            // Create new HCP customer if still not found
+            if (!hcpCustomerId) {
+              const nameParts = contact.name.split(' ');
+              const customerResult = await housecallProService.createCustomer(
+                req.user!.contractorId,
+                {
+                  first_name: nameParts[0] || contact.name,
+                  last_name: nameParts.slice(1).join(' ') || '',
+                  email: contact.emails?.[0] || '',
+                  mobile_number: contact.phones?.[0] || '',
+                }
+              );
+              if (customerResult.success && customerResult.data?.id) {
+                hcpCustomerId = customerResult.data.id;
+              }
+            }
+
+            // Persist HCP customer ID back to contact
+            if (hcpCustomerId) {
+              await storage.updateContact(
+                contact.id,
+                { externalId: hcpCustomerId, externalSource: 'housecall-pro', housecallProCustomerId: hcpCustomerId },
+                req.user!.contractorId
+              );
+            }
+          }
+
+          // Build optional address from contact's stored address string
+          let hcpAddress: { street: string; city: string; state: string; zip: string; country: string } | undefined;
+          if (contact.address) {
+            const parts = contact.address.split(',').map((s: string) => s.trim());
+            const stateZip = (parts[2] || '').trim().split(' ');
+            hcpAddress = {
+              street: parts[0] || contact.address,
+              city: parts[1] || '',
+              state: stateZip[0] || '',
+              zip: stateZip[1] || '',
+              country: 'US',
+            };
+          }
+
+          // Create estimate in HCP
+          if (hcpCustomerId) {
+            const hcpResult = await housecallProService.createEstimate(
+              req.user!.contractorId,
+              {
+                customer_id: hcpCustomerId,
+                message: estimate.description || undefined,
+                options: [{
+                  name: estimate.title,
+                  total_amount: estimate.amount && estimate.amount !== '0.00' ? estimate.amount : undefined,
+                }],
+                address: hcpAddress,
+              }
+            );
+
+            if (hcpResult.success && hcpResult.data?.id) {
+              estimate = await storage.updateEstimate(
+                estimate.id,
+                { externalId: hcpResult.data.id, externalSource: 'housecall-pro' },
+                req.user!.contractorId
+              ) ?? estimate;
+              console.log('[HCP Sync] Created HCP estimate:', hcpResult.data.id, 'for estimate:', estimate.id);
+            } else {
+              console.warn('[HCP Sync] Failed to create HCP estimate:', hcpResult.error);
+            }
+          }
+        }
+      } catch (hcpErr) {
+        console.error('[HCP Sync] Error syncing estimate to HCP:', hcpErr);
+        // Don't fail the request — estimate is already saved locally
+      }
+    }
+
     broadcastToContractor(req.user!.contractorId, {
       type: 'estimate_created',
       estimateId: estimate.id
