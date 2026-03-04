@@ -63,6 +63,34 @@ server/routes/
 server/sync-status-store.ts  — shared in-memory Map for sync progress tracking
 ```
 
+### Storage Architecture
+
+`server/storage.ts` is a thin orchestrator (~423 lines) exporting a single `storage` object that satisfies the `IStorage` interface. All method implementations live in domain-specific files under `server/storage/`:
+
+```
+server/storage-types.ts   — 23 Update* type aliases shared across domain files
+server/storage/
+  users.ts          — User, UserContractor, Contractor methods (userMethods)
+  contacts.ts       — Contact, Lead, Deduplication, Dashboard methods (contactMethods)
+  jobs-estimates.ts — Job, Estimate methods (jobEstimateMethods)
+  messaging.ts      — Message, Template, Call, Activity methods (messagingMethods)
+  integrations.ts   — Credentials, Providers, HCP, Employees, Business Targets (integrationMethods)
+  dialpad.ts        — Dialpad phones, Permissions, Caching, Sync, Terminology, Notifications (dialpadMethods)
+  workflows.ts      — Workflow, WorkflowStep, WorkflowExecution, enriched fetching (workflowMethods)
+```
+
+All external `import { storage } from "./storage"` imports are unchanged. The `IStorage` interface (in `storage.ts`) serves as the compile-time contract ensuring all methods are implemented.
+
+### Settings Component Architecture
+
+`client/src/pages/Settings.tsx` (~2,146 lines) imports two self-contained sub-components that were extracted to keep the file manageable:
+
+```
+client/src/components/settings/
+  SalespeopleManagement.tsx  — Salespeople/scheduling tab (own queries, mutations, local state)
+  GmailConnectionCard.tsx    — Gmail OAuth connect/disconnect/sync card (own mutations, URL-param handling)
+```
+
 ## External Dependencies
 
 ### Core Framework Dependencies
