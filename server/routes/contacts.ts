@@ -105,7 +105,10 @@ export function registerContactRoutes(app: Express): void {
   }));
 
   app.post("/api/contacts", asyncHandler(async (req, res) => {
-    const contactData = parseBody(insertContactSchema.omit({ contractorId: true }), req, res);
+    const contactSchema = insertContactSchema
+      .omit({ contractorId: true })
+      .extend({ followUpDate: z.coerce.date().nullable().optional() });
+    const contactData = parseBody(contactSchema, req, res);
     if (!contactData) return;
       
       // Check for existing contact with overlapping phone numbers
