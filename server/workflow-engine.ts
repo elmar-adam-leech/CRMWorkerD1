@@ -12,6 +12,7 @@ interface ExecutionContext {
   executionId: string;
   contractorId: string;
   workflowCreatorId: string; // User who created the workflow
+  triggerEntityType: string; // 'lead' | 'estimate' | 'job' — entity type from trigger config
   triggerData: any;
   variables: Record<string, any>;
 }
@@ -92,6 +93,7 @@ export class WorkflowEngine {
         executionId: execution.id,
         contractorId: execution.contractorId,
         workflowCreatorId: workflow.createdBy,
+        triggerEntityType: entityType,
         triggerData,
         variables: {
           [entityType]: entityVariables,
@@ -370,11 +372,11 @@ export class WorkflowEngine {
         // Don't fail the workflow if saving to activities fails
       }
 
-      // Update entity status if configured
-      if (updateStatus && context.triggerData?.entityType && context.triggerData?.entityId) {
+      // Update entity status if configured ("After Sending" option on the email node)
+      if (updateStatus && context.triggerData?.id) {
         await this.updateEntityStatus(
-          context.triggerData.entityType,
-          context.triggerData.entityId,
+          context.triggerEntityType,
+          String(context.triggerData.id),
           String(updateStatus),
           context.contractorId
         );
@@ -502,11 +504,11 @@ export class WorkflowEngine {
         // Don't fail the workflow if saving to messages fails
       }
 
-      // Update entity status if configured
-      if (updateStatus && context.triggerData?.entityType && context.triggerData?.entityId) {
+      // Update entity status if configured ("After Sending" option on the SMS node)
+      if (updateStatus && context.triggerData?.id) {
         await this.updateEntityStatus(
-          context.triggerData.entityType,
-          context.triggerData.entityId,
+          context.triggerEntityType,
+          String(context.triggerData.id),
           String(updateStatus),
           context.contractorId
         );
@@ -569,14 +571,20 @@ export class WorkflowEngine {
     try {
       const params = this.extractConfig(config);
       const { entityType, entityId, updates } = params;
-      const entityIdStr = String(entityId ?? '');
+      // Fall back to trigger entity's ID when no explicit entityId configured on the node
+      const entityIdStr = String(entityId ?? context.triggerData?.id ?? '');
+      const resolvedEntityType = String(entityType ?? context.triggerEntityType ?? 'lead');
 
-      console.log(`[Workflow Engine] Updating ${entityType} ${entityIdStr}`);
+      if (!entityIdStr) {
+        return { success: false, error: 'Cannot update entity: no entity ID available (trigger entity has no id)' };
+      }
+
+      console.log(`[Workflow Engine] Updating ${resolvedEntityType} ${entityIdStr}`);
 
       // Update entity based on type (updates is typed as unknown from params — cast here)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const typedUpdates = updates as any;
-      switch (entityType) {
+      switch (resolvedEntityType) {
         case 'lead':
           await storage.updateContact(entityIdStr, typedUpdates, context.contractorId);
           break;
@@ -587,12 +595,12 @@ export class WorkflowEngine {
           await storage.updateJob(entityIdStr, typedUpdates, context.contractorId);
           break;
         default:
-          return { success: false, error: `Unknown entity type: ${entityType}` };
+          return { success: false, error: `Unknown entity type: ${resolvedEntityType}` };
       }
 
       return {
         success: true,
-        data: { entityType, entityId }
+        data: { entityType: resolvedEntityType, entityId: entityIdStr }
       };
     } catch (error) {
       return {
@@ -609,32 +617,41 @@ export class WorkflowEngine {
     try {
       const params = this.extractConfig(config);
       const { entityType, entityId, userId } = params;
-      const entityIdStr = String(entityId ?? '');
+      // Fall back to trigger entity's ID when no explicit entityId configured on the node
+      const entityIdStr = String(entityId ?? context.triggerData?.id ?? '');
       const userIdStr   = String(userId   ?? '');
+      const resolvedEntityType = String(entityType ?? context.triggerEntityType ?? 'lead');
 
-      console.log(`[Workflow Engine] Assigning user ${userIdStr} to ${entityType} ${entityIdStr}`);
+      if (!userIdStr) {
+        return { success: false, error: 'Cannot assign user: no userId configured on this node' };
+      }
+      if (!entityIdStr) {
+        return { success: false, error: 'Cannot assign user: no entity ID available (trigger entity has no id)' };
+      }
+
+      console.log(`[Workflow Engine] Assigning user ${userIdStr} to ${resolvedEntityType} ${entityIdStr}`);
 
       // Update entity assignment
-      switch (entityType) {
+      switch (resolvedEntityType) {
         case 'lead':
           // For leads, update contactedByUserId field
           await storage.updateContact(entityIdStr, { contactedByUserId: userIdStr }, context.contractorId);
           break;
         case 'estimate':
-          // Estimates don't have a direct assignment field - assignment is through linked lead
+          // Estimates don't have a direct assignment field — assign through the linked lead instead
           console.log(`[Workflow Engine] Note: Estimates don't have direct user assignment`);
-          return { success: true, data: { entityType, entityId, note: 'Estimate assignment is indirect through lead' } };
+          return { success: true, data: { entityType: resolvedEntityType, entityId: entityIdStr, note: 'Estimate assignment is indirect through lead' } };
         case 'job':
-          // Jobs don't have a direct assignment field - assignment is through estimate/customer
+          // Jobs don't have a direct assignment field — assign through estimate/customer instead
           console.log(`[Workflow Engine] Note: Jobs don't have direct user assignment`);
-          return { success: true, data: { entityType, entityId, note: 'Job assignment is indirect through estimate' } };
+          return { success: true, data: { entityType: resolvedEntityType, entityId: entityIdStr, note: 'Job assignment is indirect through estimate' } };
         default:
-          return { success: false, error: `Unknown entity type: ${entityType}` };
+          return { success: false, error: `Unknown entity type: ${resolvedEntityType}` };
       }
 
       return {
         success: true,
-        data: { entityType, entityId, userId }
+        data: { entityType: resolvedEntityType, entityId: entityIdStr, userId: userIdStr }
       };
     } catch (error) {
       return {
@@ -821,7 +838,7 @@ export class WorkflowEngine {
   ): Promise<StepResult> {
     try {
       const params = this.extractConfig(config);
-      const { delayType, delayValue, duration } = params;
+      const { delayType, delayValue, duration, dateTime } = params;
       
       // Support both duration field (new) and delayValue field (old)
       const delayValueToUse = (duration || delayValue) as string | undefined;
@@ -829,22 +846,28 @@ export class WorkflowEngine {
       // If no delayType specified, assume 'duration' (new pattern with just duration field)
       const typeToUse = String(delayType ?? 'duration');
 
-      if (typeToUse === 'duration' && delayValueToUse) {
-        // Parse delay duration (e.g., "1h", "30m", "2d", "15 seconds")
-        const delayMs = this.parseDuration(delayValueToUse);
-        console.log(`[Workflow Engine] Delaying for ${delayMs}ms (${delayValueToUse})`);
-        
-        await new Promise(resolve => setTimeout(resolve, delayMs));
-      } else if (typeToUse === 'until' && delayValueToUse) {
-        // Delay until a specific date/time
-        const targetDate = new Date(delayValueToUse);
+      if ((typeToUse === 'until' || step.actionType === 'wait_until') && (delayValueToUse || dateTime)) {
+        // waitUntil node saves dateTime; legacy stores under delayValue
+        const rawDate = String(dateTime ?? delayValueToUse ?? '');
+        const targetDate = new Date(rawDate);
         const now = new Date();
         const delayMs = targetDate.getTime() - now.getTime();
         
         if (delayMs > 0) {
-          console.log(`[Workflow Engine] Delaying until ${targetDate.toISOString()}`);
+          console.log(`[Workflow Engine] Waiting until ${targetDate.toISOString()} (${delayMs}ms)`);
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+        } else {
+          console.log(`[Workflow Engine] waitUntil target date is in the past (${targetDate.toISOString()}), skipping delay`);
+        }
+      } else if (typeToUse === 'duration' && delayValueToUse) {
+        // Parse delay duration (e.g., "1h", "30m", "2d", "15 seconds")
+        const delayMs = this.parseDuration(delayValueToUse);
+        if (delayMs > 0) {
+          console.log(`[Workflow Engine] Delaying for ${delayMs}ms (${delayValueToUse})`);
           await new Promise(resolve => setTimeout(resolve, delayMs));
         }
+      } else {
+        console.warn(`[Workflow Engine] Delay node has no valid duration or dateTime configured — skipping`);
       }
 
       return { success: true };

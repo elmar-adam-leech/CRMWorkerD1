@@ -58,7 +58,8 @@ function extractTriggerConfig(nodes: Node[]): { triggerType: string; triggerConf
       triggerConfig = {
         entity: entityType,
         event: eventType,
-        ...(triggerData.statusValue && { targetStatus: triggerData.statusValue }),
+        // targetStatus is what the form field saves — statusValue was a legacy name
+        ...(triggerData.targetStatus && { targetStatus: triggerData.targetStatus }),
         ...(triggerData.tags && (triggerData.tags as unknown[]).length > 0 && { tags: triggerData.tags }),
       };
     }
@@ -252,12 +253,23 @@ export default function WorkflowBuilder() {
 
   // Helper to generate trigger label from trigger type and config
   const getTriggerLabel = (triggerType: string, triggerConfig: Record<string, unknown>): string => {
-    if (triggerType === 'entity_created' || triggerType === 'entity_event') {
-      const entity = String(triggerConfig.entity || 'lead');
-      return `When ${entity.charAt(0).toUpperCase() + entity.slice(1)} is Created`;
-    } else if (triggerType === 'entity_updated') {
-      const entity = String(triggerConfig.entity || 'lead');
-      return `When ${entity.charAt(0).toUpperCase() + entity.slice(1)} is Updated`;
+    const entity = String(triggerConfig.entity || 'lead');
+    const entityLabel = entity.charAt(0).toUpperCase() + entity.slice(1);
+    const event = String(triggerConfig.event || '');
+
+    if (event === 'status_changed') {
+      const target = triggerConfig.targetStatus
+        ? ` to ${String(triggerConfig.targetStatus).replace(/_/g, ' ')}`
+        : '';
+      return `When ${entityLabel} Status Changes${target}`;
+    } else if (triggerType === 'entity_created' || (triggerType === 'entity_event' && event === 'created')) {
+      return `When ${entityLabel} is Created`;
+    } else if (triggerType === 'entity_updated' || (triggerType === 'entity_event' && event === 'updated')) {
+      return `When ${entityLabel} is Updated`;
+    } else if (triggerType === 'entity_event' && event === 'deleted') {
+      return `When ${entityLabel} is Deleted`;
+    } else if (triggerType === 'entity_event') {
+      return `When ${entityLabel} is Created`;
     } else if (triggerType === 'time_based') {
       return 'Time-based Trigger';
     } else if (triggerType === 'manual') {
