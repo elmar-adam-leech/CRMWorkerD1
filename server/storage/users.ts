@@ -80,11 +80,11 @@ async function switchContractor(userId: string, contractorId: string): Promise<U
 }
 
 async function getUserContractors(userId: string): Promise<UserContractor[]> {
-  return await db.select().from(userContractors).where(eq(userContractors.userId, userId));
+  return await db.select().from(userContractors).where(eq(userContractors.userId, userId)).limit(50);
 }
 
 async function getContractorUsers(contractorId: string): Promise<UserContractor[]> {
-  return await db.select().from(userContractors).where(eq(userContractors.contractorId, contractorId));
+  return await db.select().from(userContractors).where(eq(userContractors.contractorId, contractorId)).limit(500);
 }
 
 async function getUserContractor(userId: string, contractorId: string): Promise<UserContractor | undefined> {

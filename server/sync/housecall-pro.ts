@@ -6,7 +6,7 @@ import { randomUUID } from 'crypto';
 
 const SYNC_BATCH_SIZE = 25;
 
-function mapHcpEstimateStatus(hcpEstimate: any): 'approved' | 'rejected' | 'pending' | 'sent' {
+export function mapHcpEstimateStatus(hcpEstimate: any): 'approved' | 'rejected' | 'pending' | 'sent' {
   const ws = (hcpEstimate.work_status || '').toLowerCase();
   const st = (hcpEstimate.status || '').toLowerCase();
   if (['completed','approved','accepted'].some(v => ws === v || st === v)) return 'approved';
@@ -14,6 +14,15 @@ function mapHcpEstimateStatus(hcpEstimate: any): 'approved' | 'rejected' | 'pend
   if (['sent','scheduled','dispatched'].some(v => ws === v || st === v)) return 'sent';
   if (['pending','draft','needs_scheduling'].some(v => ws === v || st === v)) return 'pending';
   return 'pending';
+}
+
+export function mapHcpJobStatus(workStatus: string): 'completed' | 'cancelled' | 'scheduled' | 'in_progress' {
+  switch (workStatus) {
+    case 'completed': return 'completed';
+    case 'canceled':  return 'cancelled';
+    case 'scheduled': return 'scheduled';
+    default:          return 'in_progress';
+  }
 }
 
 function splitIntoBatches<T>(items: T[], batchSize: number): T[][] {
@@ -409,9 +418,7 @@ export async function syncHousecallProJobs(tenantId: string): Promise<void> {
           const scheduledStart = hcpJob.schedule?.scheduled_start || hcpJob.scheduled_start;
           const updateData = {
             title: hcpJob.invoice_number || hcpJob.description || 'Job from Housecall Pro',
-            status: hcpJob.work_status === 'completed' ? 'completed' as const :
-                   hcpJob.work_status === 'canceled'  ? 'cancelled' as const :
-                   hcpJob.work_status === 'scheduled' ? 'scheduled' as const : 'in_progress' as const,
+            status: mapHcpJobStatus(hcpJob.work_status || ''),
             value: ((hcpJob.total_amount || 0) / 100).toFixed(2),
             scheduledDate: scheduledStart ? new Date(scheduledStart) : null,
           };
@@ -470,9 +477,7 @@ export async function syncHousecallProJobs(tenantId: string): Promise<void> {
               const newContactId = randomUUID();
               const newJobId = randomUUID();
               const scheduledStartTx = hcpJob.schedule?.scheduled_start || hcpJob.scheduled_start;
-              const jobStatus = hcpJob.work_status === 'completed' ? 'completed' as const :
-                hcpJob.work_status === 'canceled'  ? 'cancelled' as const :
-                hcpJob.work_status === 'scheduled' ? 'scheduled' as const : 'in_progress' as const;
+              const jobStatus = mapHcpJobStatus(hcpJob.work_status || '');
 
               await db.transaction(async (tx) => {
                 await tx.insert(contacts).values({
@@ -526,9 +531,7 @@ export async function syncHousecallProJobs(tenantId: string): Promise<void> {
             contactId,
             title: hcpJob.invoice_number || hcpJob.description || 'Job from Housecall Pro',
             type: 'Service',
-            status: hcpJob.work_status === 'completed' ? 'completed' as const :
-                   hcpJob.work_status === 'canceled'  ? 'cancelled' as const :
-                   hcpJob.work_status === 'scheduled' ? 'scheduled' as const : 'in_progress' as const,
+            status: mapHcpJobStatus(hcpJob.work_status || ''),
             value: ((hcpJob.total_amount || 0) / 100).toFixed(2),
             priority: 'medium' as const,
             scheduledDate: scheduledStartNormal ? new Date(scheduledStartNormal) : null,

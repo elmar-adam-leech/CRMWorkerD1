@@ -8,6 +8,7 @@ import { CredentialService } from "../../credential-service";
 import { workflowEngine } from "../../workflow-engine";
 import { broadcastToContractor } from "../../websocket";
 import { housecallProService } from "../../housecall-pro-service";
+import { mapHcpEstimateStatus } from "../../sync/housecall-pro";
 import { webhookRateLimiter } from "../../middleware/rate-limiter";
 import crypto from "crypto";
 
@@ -93,9 +94,8 @@ export function registerHousecallProWebhookRoutes(app: Express): void {
       if (event_type === 'estimate.updated' || event_type === 'estimate.completed') {
         const estimate = await storage.getEstimateByHousecallProEstimateId(data.id, contractorId);
         if (estimate) {
-          const newStatus = data.work_status === 'completed' ? 'approved'
-                          : data.work_status === 'canceled' ? 'rejected'
-                          : estimate.status;
+          const mapped = mapHcpEstimateStatus(data);
+          const newStatus = mapped !== 'pending' ? mapped : estimate.status;
           const updated = await storage.updateEstimate(estimate.id, {
             status: newStatus as any,
             syncedAt: new Date(),

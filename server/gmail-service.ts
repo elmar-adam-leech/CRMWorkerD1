@@ -485,37 +485,40 @@ export class GmailService {
       
       const emailMessages = [];
 
-      for (const message of messages) {
-        if (!message.id) continue;
-
-        try {
-          const fullMessage = await gmail.users.messages.get({
+      // Fetch up to 10 messages concurrently instead of sequentially
+      const CONCURRENCY = 10;
+      const validMessages = messages.filter(m => m.id);
+      for (let i = 0; i < validMessages.length; i += CONCURRENCY) {
+        const batch = validMessages.slice(i, i + CONCURRENCY);
+        const batchResults = await Promise.allSettled(
+          batch.map(message => gmail.users.messages.get({
             userId: 'me',
-            id: message.id,
+            id: message.id!,
             format: 'full',
-          });
-
-          const headers = this.parseEmailHeaders(fullMessage.data.payload?.headers);
-          const body = this.getEmailBody(fullMessage.data.payload);
-
-          emailMessages.push({
-            id: fullMessage.data.id || '',
-            threadId: fullMessage.data.threadId || '',
-            from: this.extractEmailAddress(headers.from),
-            to: headers.to.map(email => this.extractEmailAddress(email)),
-            subject: headers.subject,
-            body: body,
-            date: headers.date ? new Date(headers.date) : new Date(),
-            snippet: fullMessage.data.snippet || '',
-          });
-        } catch (msgError: any) {
-          console.error(`[Gmail] Error fetching individual message ${message.id}:`, {
-            error: msgError.message,
-            code: msgError.code,
-            status: msgError.status,
-            errors: msgError.errors
-          });
-          // Continue with other messages
+          }))
+        );
+        for (const result of batchResults) {
+          if (result.status === 'rejected') {
+            console.error('[Gmail] Error fetching message in batch:', result.reason?.message);
+            continue;
+          }
+          const fullMessage = result.value;
+          try {
+            const headers = this.parseEmailHeaders(fullMessage.data.payload?.headers);
+            const body = this.getEmailBody(fullMessage.data.payload);
+            emailMessages.push({
+              id: fullMessage.data.id || '',
+              threadId: fullMessage.data.threadId || '',
+              from: this.extractEmailAddress(headers.from),
+              to: headers.to.map(email => this.extractEmailAddress(email)),
+              subject: headers.subject,
+              body: body,
+              date: headers.date ? new Date(headers.date) : new Date(),
+              snippet: fullMessage.data.snippet || '',
+            });
+          } catch (parseError: any) {
+            console.error(`[Gmail] Error parsing message ${fullMessage.data.id}:`, parseError.message);
+          }
         }
       }
 

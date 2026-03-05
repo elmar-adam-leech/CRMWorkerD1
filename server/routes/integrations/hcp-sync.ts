@@ -3,6 +3,7 @@ import { storage } from "../../storage";
 import { housecallProService } from "../../housecall-pro-service";
 import { requireAuth, requireAdmin, type AuthenticatedRequest } from "../../auth-service";
 import { syncStatus } from "../../sync-status-store";
+import { mapHcpEstimateStatus } from "../../sync/housecall-pro";
 import crypto from "crypto";
 import { asyncHandler } from "../../utils/async-handler";
 
@@ -133,8 +134,7 @@ export function registerHcpSyncRoutes(app: Express): void {
 
           if (existingEstimate) {
             const updateData = {
-              status: hcpEstimate.work_status === 'completed' ? 'approved' as const :
-                     hcpEstimate.work_status === 'canceled' ? 'rejected' as const : 'pending' as const,
+              status: mapHcpEstimateStatus(hcpEstimate),
               amount: (Math.round((hcpEstimate.total_amount || hcpEstimate.total || hcpEstimate.total_price || hcpEstimate.amount || 0) / 100 * 100) / 100).toFixed(2),
               description: hcpEstimate.description || '',
               scheduledStart: hcpEstimate.scheduled_start ? new Date(hcpEstimate.scheduled_start) : null,
@@ -198,8 +198,7 @@ export function registerHcpSyncRoutes(app: Express): void {
               title: estimateTitle,
               description: hcpEstimate.description || '',
               amount: amountInDollars,
-              status: hcpEstimate.work_status === 'completed' ? 'approved' as const :
-                     hcpEstimate.work_status === 'canceled' ? 'rejected' as const : 'pending' as const,
+              status: mapHcpEstimateStatus(hcpEstimate),
               createdAt: hcpEstimate.created_at ? new Date(hcpEstimate.created_at) : new Date(),
               updatedAt: hcpEstimate.modified_at ? new Date(hcpEstimate.modified_at) : new Date(),
               validUntil: hcpEstimate.expires_at ? new Date(hcpEstimate.expires_at) :
