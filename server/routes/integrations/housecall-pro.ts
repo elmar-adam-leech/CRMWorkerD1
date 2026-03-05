@@ -390,14 +390,13 @@ export function registerHousecallProRoutes(app: Express): void {
 
         console.log(`[housecall-pro-sync] Starting jobs sync for tenant ${contractorId}`);
 
-        const jobsBefore = await storage.getJobs(contractorId);
-        const jobsCountBefore = jobsBefore.length;
+        const jobsCountBefore = await storage.getJobsCount(contractorId);
 
         const { syncScheduler } = await import('../../sync-scheduler');
         await syncScheduler.syncHousecallProJobs(contractorId);
 
-        const jobsAfter = await storage.getJobs(contractorId);
-        newJobs = Math.max(0, jobsAfter.length - jobsCountBefore);
+        const jobsCountAfter = await storage.getJobsCount(contractorId);
+        newJobs = Math.max(0, jobsCountAfter - jobsCountBefore);
 
         console.log(`[housecall-pro-sync] Jobs sync complete. New jobs: ${newJobs}`);
       }

@@ -26,6 +26,14 @@ async function getActiveWorkflows(contractorId: string): Promise<Workflow[]> {
   )).orderBy(desc(workflows.createdAt));
 }
 
+async function getActiveApprovedWorkflows(contractorId: string): Promise<Workflow[]> {
+  return await db.select().from(workflows).where(and(
+    eq(workflows.contractorId, contractorId),
+    eq(workflows.isActive, true),
+    eq(workflows.approvalStatus, 'approved')
+  )).orderBy(desc(workflows.createdAt));
+}
+
 async function getWorkflowsPendingApproval(contractorId: string): Promise<Workflow[]> {
   return await db.select().from(workflows).where(and(
     eq(workflows.contractorId, contractorId),
@@ -177,6 +185,7 @@ async function getJobWithContact(id: string, contractorId: string): Promise<any>
 export const workflowMethods = {
   getWorkflows,
   getActiveWorkflows,
+  getActiveApprovedWorkflows,
   getWorkflowsPendingApproval,
   getWorkflow,
   createWorkflow,

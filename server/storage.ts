@@ -397,6 +397,7 @@ export interface IStorage {
   // Workflow operations
   getWorkflows(contractorId: string, approvalStatus?: string): Promise<Workflow[]>;
   getActiveWorkflows(contractorId: string): Promise<Workflow[]>;
+  getActiveApprovedWorkflows(contractorId: string): Promise<Workflow[]>;
   getWorkflowsPendingApproval(contractorId: string): Promise<Workflow[]>;
   getWorkflow(id: string, contractorId: string): Promise<Workflow | undefined>;
   createWorkflow(workflow: Omit<InsertWorkflow, 'contractorId'>, contractorId: string, userId: string): Promise<Workflow>;

@@ -27,7 +27,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ContractorSwitcher } from "./TenantSwitcher";
 import { useLocation, Link } from "wouter";
-import { useQueryClient, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 
 // Default menu item structure (will be customized with terminology)
 const getMenuItems = (terminology?: any) => [
@@ -118,7 +118,6 @@ export function AppSidebar({
   onQuickAction,
 }: AppSidebarProps) {
   const [location] = useLocation();
-  const queryClient = useQueryClient();
   const { setOpenMobile, isMobile } = useSidebar();
 
   // Fetch terminology settings
@@ -135,34 +134,6 @@ export function AppSidebar({
   const handleQuickAction = (action: string) => {
     console.log(`Quick action: ${action}`);
     onQuickAction?.(action);
-  };
-
-  // Debounced prefetch data on hover for faster navigation
-  const handleNavHover = (url: string) => {
-    // Debounce prefetching to avoid spamming slow endpoints on casual hovers
-    setTimeout(() => {
-      switch (url) {
-        case '/':
-          queryClient.prefetchQuery({ queryKey: ['/api/dashboard/metrics'] });
-          queryClient.prefetchQuery({ queryKey: ['/api/contacts', { type: 'customer' }] });
-          break;
-        case '/leads':
-          queryClient.prefetchQuery({ queryKey: ['/api/contacts', { type: 'lead' }] });
-          break;
-        case '/estimates':
-          queryClient.prefetchQuery({ queryKey: ['/api/estimates'] });
-          break;
-        case '/jobs':
-          queryClient.prefetchQuery({ queryKey: ['/api/jobs'] });
-          break;
-        case '/templates':
-          queryClient.prefetchQuery({ queryKey: ['/api/templates'] });
-          break;
-        case '/messages':
-          queryClient.prefetchQuery({ queryKey: ['/api/messages'] });
-          break;
-      }
-    }, 200); // 200ms debounce delay
   };
 
   // Close mobile sidebar when navigation link is clicked
@@ -197,7 +168,6 @@ export function AppSidebar({
                   >
                     <Link 
                       href={item.url}
-                      onMouseEnter={() => handleNavHover(item.url)}
                       onClick={handleNavClick}
                     >
                       <item.icon />

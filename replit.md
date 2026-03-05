@@ -28,6 +28,17 @@ The backend is built with Node.js and Express.js, offering a RESTful API with co
 - **Real-time**: WebSocket-based architecture.
 - **Security**: HTTP-only cookies, role-based access control, AES-256-GCM encryption.
 
+### Code Organization
+- `server/workflow-engine.ts` — slim orchestrator (~300 lines). All action handlers live in `server/workflow-actions/` (one file per action type: send-email, send-sms, create-notification, update-entity, assign-user, ai-generate, ai-analyze, condition, delay).
+- `server/sync-scheduler.ts` — slim scheduler (~210 lines). HCP sync logic lives in `server/sync/housecall-pro.ts`; Gmail sync in `server/sync/gmail.ts`.
+- `server/storage/workflows.ts` — includes `getActiveApprovedWorkflows(contractorId)` which filters `is_active=true AND approval_status='approved'` in SQL (used by workflow trigger engine).
+
+### Performance Notes
+- **Workflow trigger**: `triggerWorkflowsForEvent()` calls `getActiveApprovedWorkflows` (SQL-filtered) instead of `getWorkflows` (all) + JS filter.
+- **Dashboard metrics**: `getMetricsAggregates` in `server/services/business-metrics.ts` uses SQL `COUNT` aggregates — never fetches rows.
+- **HCP manual sync**: Uses `getJobsCount` (SQL COUNT) before/after to count new jobs — not full table loads.
+- **Follow-ups**: Dedicated `/api/contacts/follow-ups` and `/api/estimates/follow-ups` endpoints with `WHERE follow_up_date IS NOT NULL` in SQL.
+
 ## External Dependencies
 
 ### Core Framework Dependencies
