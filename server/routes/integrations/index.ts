@@ -23,19 +23,15 @@ export function registerIntegrationRoutes(app: Express): void {
       const tenantIntegrations = await storage.getTenantIntegrations(req.user!.contractorId);
       const enabledIntegrations = await storage.getEnabledIntegrations(req.user!.contractorId);
       
-      const integrationStatus = [];
-      
-      for (const integrationName of INTEGRATION_NAMES) {
-        const hasCredentials = await providerService.hasRequiredCredentials(req.user!.contractorId, integrationName);
-        const isEnabled = await storage.isIntegrationEnabled(req.user!.contractorId, integrationName);
-        
-        integrationStatus.push({
-          name: integrationName,
-          hasCredentials,
-          isEnabled,
-          canEnable: hasCredentials && !isEnabled
-        });
-      }
+      const integrationStatus = await Promise.all(
+        INTEGRATION_NAMES.map(async (integrationName) => {
+          const [hasCredentials, isEnabled] = await Promise.all([
+            providerService.hasRequiredCredentials(req.user!.contractorId, integrationName),
+            storage.isIntegrationEnabled(req.user!.contractorId, integrationName),
+          ]);
+          return { name: integrationName, hasCredentials, isEnabled, canEnable: hasCredentials && !isEnabled };
+        })
+      );
       
       res.json({ 
         integrations: integrationStatus,

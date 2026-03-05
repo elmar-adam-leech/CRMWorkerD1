@@ -1,6 +1,7 @@
 import { storage } from "../storage";
 import { providerService } from "../providers/provider-service";
 import type { ExecutionContext, StepResult } from "./types";
+import { normalizePhoneForStorage } from "../utils/phone-normalizer";
 
 export async function handleSendSMS(
   config: Record<string, unknown>,
@@ -68,8 +69,6 @@ export async function handleSendSMS(
 
     try {
       const contactId = await storage.findMatchingContact(context.contractorId, [], [processedTo]);
-      const { normalizePhoneForStorage } = await import('../utils/phone-normalizer');
-
       const msg = await storage.createMessage(
         {
           type: 'text',

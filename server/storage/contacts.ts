@@ -370,14 +370,14 @@ async function findMatchingContact(contractorId: string, emails?: string[], phon
 }
 
 async function getLeads(contractorId: string): Promise<Lead[]> {
-  return await db.select().from(leads).where(eq(leads.contractorId, contractorId)).orderBy(desc(leads.createdAt));
+  return await db.select().from(leads).where(eq(leads.contractorId, contractorId)).orderBy(desc(leads.createdAt)).limit(1000);
 }
 
 async function getLeadsByContact(contactId: string, contractorId: string): Promise<Lead[]> {
   return await db.select().from(leads).where(and(
     eq(leads.contactId, contactId),
     eq(leads.contractorId, contractorId)
-  )).orderBy(desc(leads.createdAt));
+  )).orderBy(desc(leads.createdAt)).limit(200);
 }
 
 async function getLead(id: string, contractorId: string): Promise<Lead | undefined> {

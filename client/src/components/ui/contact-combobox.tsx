@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -40,25 +40,36 @@ export function ContactCombobox({ value, onChange, error }: ContactComboboxProps
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [showCreateDialog, setShowCreateDialog] = useState(false);
 
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery), 300);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
+
   const { data: contacts = [], isLoading } = useQuery<Contact[]>({
-    queryKey: ['/api/contacts/paginated', { limit: 100 }],
+    queryKey: ['/api/contacts/paginated', { search: debouncedSearch, limit: 20 }],
     queryFn: async () => {
-      const response = await fetch('/api/contacts/paginated?limit=100', { credentials: 'include' });
+      const params = new URLSearchParams({ limit: '20' });
+      if (debouncedSearch) params.set('search', debouncedSearch);
+      const response = await fetch(`/api/contacts/paginated?${params}`, { credentials: 'include' });
       if (!response.ok) throw new Error('Failed to fetch contacts');
       const result = await response.json();
       return result.data ?? [];
     },
+    enabled: open,
   });
 
-  const filteredContacts = contacts.filter(contact =>
-    contact.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    contact.emails?.some(e => e.toLowerCase().includes(searchQuery.toLowerCase())) ||
-    contact.phones?.some(p => p.includes(searchQuery))
-  );
-
-  const selectedContact = contacts.find(c => c.id === value);
+  const { data: selectedContact } = useQuery<Contact | null>({
+    queryKey: ['/api/contacts', value],
+    queryFn: async () => {
+      const response = await fetch(`/api/contacts/${value}`, { credentials: 'include' });
+      if (!response.ok) return null;
+      return response.json();
+    },
+    enabled: !!value,
+  });
 
   const {
     register,
@@ -84,10 +95,6 @@ export function ContactCombobox({ value, onChange, error }: ContactComboboxProps
       return response.json();
     },
     onSuccess: (newCustomer) => {
-      queryClient.setQueryData<{ data: Contact[] }>(
-        ['/api/contacts/paginated', { limit: 100 }],
-        (old) => old ? { ...old, data: [newCustomer, ...old.data] } : old
-      );
       queryClient.invalidateQueries({ queryKey: ['/api/contacts/paginated'] });
       onChange(newCustomer.id);
       setShowCreateDialog(false);
@@ -163,7 +170,7 @@ export function ContactCombobox({ value, onChange, error }: ContactComboboxProps
                 </Button>
               </CommandEmpty>
               <CommandGroup>
-                {filteredContacts.map((contact) => (
+                {contacts.map((contact) => (
                   <CommandItem
                     key={contact.id}
                     value={contact.id}
@@ -183,7 +190,7 @@ export function ContactCombobox({ value, onChange, error }: ContactComboboxProps
                     </div>
                   </CommandItem>
                 ))}
-                {filteredContacts.length > 0 && (
+                {contacts.length > 0 && (
                   <CommandItem
                     onSelect={() => { setShowCreateDialog(true); setOpen(false); }}
                     data-testid="button-create-new-customer-bottom"

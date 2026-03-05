@@ -6,18 +6,7 @@ import { db } from "../../db";
 import { eq, and, sql } from "drizzle-orm";
 import { dialpadEnhancedService } from "../../dialpad-enhanced-service";
 import { webhookRateLimiter } from "../../middleware/rate-limiter";
-
-const normalizePhoneNumber = (phone: string): string => {
-  if (!phone) return '';
-  const digits = phone.replace(/\D/g, '');
-  if (digits.length === 10) {
-    return `+1${digits}`;
-  }
-  if (digits.length === 11 && digits.startsWith('1')) {
-    return `+${digits}`;
-  }
-  return phone.startsWith('+') ? phone : `+${digits}`;
-};
+import { normalizePhoneNumber, normalizePhoneForStorage } from "../../utils/phone-normalizer";
 
 export function registerDialpadSmsWebhookRoutes(app: Express): void {
   app.post("/api/webhooks/dialpad/sms/:tenantId", webhookRateLimiter, express.json(), async (req: Request, res: Response) => {
@@ -171,7 +160,6 @@ export function registerDialpadSmsWebhookRoutes(app: Express): void {
         console.log(`[Dialpad Webhook] No contact match found`);
       }
       
-      const { normalizePhoneForStorage } = await import('../../utils/phone-normalizer');
       const newMessage = await storage.createMessage({
         type: 'text',
         status: 'delivered',

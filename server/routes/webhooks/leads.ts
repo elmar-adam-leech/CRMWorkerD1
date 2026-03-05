@@ -4,6 +4,7 @@ import { CredentialService } from "../../credential-service";
 import { housecallProService } from "../../housecall-pro-service";
 import { webhookRateLimiter } from "../../middleware/rate-limiter";
 import crypto from "crypto";
+import { normalizePhoneForStorage, normalizePhoneArrayForStorage } from "../../utils/phone-normalizer";
 
 export function registerLeadWebhookRoutes(app: Express): void {
   app.post("/api/webhooks/:contractorId/leads", webhookRateLimiter, async (req: Request, res: Response) => {
@@ -257,8 +258,6 @@ export function registerLeadWebhookRoutes(app: Express): void {
           return;
         }
       }
-      
-      const { normalizePhoneForStorage, normalizePhoneArrayForStorage } = await import('../../utils/phone-normalizer');
       
       let emailsArray: string[] = [];
       if (emails && Array.isArray(emails)) {

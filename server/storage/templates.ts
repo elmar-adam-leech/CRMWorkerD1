@@ -9,7 +9,7 @@ import type { UpdateTemplate } from "../storage-types";
 async function getTemplates(contractorId: string, type?: 'text' | 'email'): Promise<Template[]> {
   const conditions = [eq(templates.contractorId, contractorId)];
   if (type) conditions.push(eq(templates.type, type));
-  return await db.select().from(templates).where(and(...conditions));
+  return await db.select().from(templates).where(and(...conditions)).limit(200);
 }
 
 async function getTemplate(id: string, contractorId: string): Promise<Template | undefined> {

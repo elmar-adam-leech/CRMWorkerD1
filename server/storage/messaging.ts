@@ -106,7 +106,7 @@ async function getConversations(contractorId: string, options: {
   }
 
   const [smsMessages, emailActivities] = await Promise.all([
-    options.type === 'email' ? Promise.resolve([]) : db.select().from(messages).where(and(...smsConditions)).orderBy(desc(messages.createdAt)),
+    options.type === 'email' ? Promise.resolve([]) : db.select().from(messages).where(and(...smsConditions)).orderBy(desc(messages.createdAt)).limit(500),
     options.type === 'text' ? Promise.resolve([]) : db.select({
       id: activities.id,
       content: activities.content,
@@ -117,7 +117,7 @@ async function getConversations(contractorId: string, options: {
       createdAt: activities.createdAt,
       metadata: activities.metadata,
       userName: users.name,
-    }).from(activities).leftJoin(users, eq(activities.userId, users.id)).where(and(...emailConditions)).orderBy(desc(activities.createdAt))
+    }).from(activities).leftJoin(users, eq(activities.userId, users.id)).where(and(...emailConditions)).orderBy(desc(activities.createdAt)).limit(500)
   ]);
 
   const emailMessages = emailActivities.map(emailActivityToMessage);
@@ -138,7 +138,8 @@ async function getConversations(contractorId: string, options: {
     const [batchSms, batchEmails] = await Promise.all([
       db.select().from(messages)
         .where(and(eq(messages.contractorId, contractorId), inArray(messages.contactId, contactIds)))
-        .orderBy(desc(messages.createdAt)),
+        .orderBy(desc(messages.createdAt))
+        .limit(500),
       db.select({
         id: activities.id, content: activities.content, contactId: activities.contactId,
         estimateId: activities.estimateId, userId: activities.userId, contractorId: activities.contractorId,
@@ -150,6 +151,7 @@ async function getConversations(contractorId: string, options: {
           inArray(activities.contactId, contactIds)
         ))
         .orderBy(desc(activities.createdAt))
+        .limit(500)
     ]);
 
     const batchEmailMessages = batchEmails.map(emailActivityToMessage);

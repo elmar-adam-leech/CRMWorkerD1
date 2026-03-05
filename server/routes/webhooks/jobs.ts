@@ -4,6 +4,7 @@ import { CredentialService } from "../../credential-service";
 import { broadcastToContractor } from "../../websocket";
 import { webhookRateLimiter } from "../../middleware/rate-limiter";
 import crypto from "crypto";
+import { normalizePhoneForStorage } from "../../utils/phone-normalizer";
 
 export function registerJobWebhookRoutes(app: Express): void {
   app.post("/api/webhooks/:contractorId/jobs", webhookRateLimiter, async (req: Request, res: Response) => {
@@ -193,7 +194,6 @@ export function registerJobWebhookRoutes(app: Express): void {
         return statusMap[val] || 'scheduled';
       };
       
-      const { normalizePhoneForStorage } = await import('../../utils/phone-normalizer');
       const normalizedPhone = customerPhone ? normalizePhoneForStorage(String(customerPhone).trim()) : null;
       
       const parsedScheduledDate = parseDate(scheduledDate);

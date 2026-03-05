@@ -16,14 +16,14 @@ async function getWorkflows(contractorId: string, approvalStatus?: string): Prom
   if (approvalStatus && approvalStatus !== 'all') {
     conditions.push(eq(workflows.approvalStatus, approvalStatus as any));
   }
-  return await db.select().from(workflows).where(and(...conditions)).orderBy(desc(workflows.createdAt));
+  return await db.select().from(workflows).where(and(...conditions)).orderBy(desc(workflows.createdAt)).limit(500);
 }
 
 async function getActiveWorkflows(contractorId: string): Promise<Workflow[]> {
   return await db.select().from(workflows).where(and(
     eq(workflows.contractorId, contractorId),
     eq(workflows.isActive, true)
-  )).orderBy(desc(workflows.createdAt));
+  )).orderBy(desc(workflows.createdAt)).limit(500);
 }
 
 async function getActiveApprovedWorkflows(contractorId: string): Promise<Workflow[]> {
@@ -31,14 +31,14 @@ async function getActiveApprovedWorkflows(contractorId: string): Promise<Workflo
     eq(workflows.contractorId, contractorId),
     eq(workflows.isActive, true),
     eq(workflows.approvalStatus, 'approved')
-  )).orderBy(desc(workflows.createdAt));
+  )).orderBy(desc(workflows.createdAt)).limit(500);
 }
 
 async function getWorkflowsPendingApproval(contractorId: string): Promise<Workflow[]> {
   return await db.select().from(workflows).where(and(
     eq(workflows.contractorId, contractorId),
     eq(workflows.approvalStatus, 'pending_approval')
-  )).orderBy(desc(workflows.createdAt));
+  )).orderBy(desc(workflows.createdAt)).limit(500);
 }
 
 async function getWorkflow(id: string, contractorId: string): Promise<Workflow | undefined> {
@@ -108,7 +108,7 @@ async function rejectWorkflow(id: string, contractorId: string, rejectedByUserId
 }
 
 async function getWorkflowSteps(workflowId: string): Promise<WorkflowStep[]> {
-  return await db.select().from(workflowSteps).where(eq(workflowSteps.workflowId, workflowId)).orderBy(asc(workflowSteps.stepOrder));
+  return await db.select().from(workflowSteps).where(eq(workflowSteps.workflowId, workflowId)).orderBy(asc(workflowSteps.stepOrder)).limit(200);
 }
 
 async function getWorkflowStep(id: string): Promise<WorkflowStep | undefined> {

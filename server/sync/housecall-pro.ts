@@ -386,14 +386,33 @@ export async function syncHousecallProJobs(tenantId: string): Promise<void> {
     include: 'tags'
   };
 
-  const jobsResult = await housecallProService.getJobs(tenantId, jobsParams);
-  if (!jobsResult.success) {
-    console.error(`[sync-scheduler] Failed to fetch jobs: ${jobsResult.error}`);
-    return;
+  let allHousecallProJobs: any[] = [];
+  let jobPage = 1;
+  let jobsKeepGoing = true;
+  const jobSyncStartTime = Date.now();
+  const jobMaxRunTime = 5 * 60 * 1000;
+
+  while (jobsKeepGoing) {
+    if (Date.now() - jobSyncStartTime > jobMaxRunTime) {
+      console.log(`[sync-scheduler] Job sync time limit reached at page ${jobPage}, aborting pagination`);
+      break;
+    }
+    const pageParams = { ...jobsParams, page: jobPage };
+    console.log(`[sync-scheduler] Fetching jobs page ${jobPage}...`);
+    const jobsResult = await housecallProService.getJobs(tenantId, pageParams);
+    if (!jobsResult.success) {
+      console.error(`[sync-scheduler] Failed to fetch jobs page ${jobPage}: ${jobsResult.error}`);
+      break;
+    }
+    const pageJobs = jobsResult.data || [];
+    console.log(`[sync-scheduler] Jobs page ${jobPage}: fetched ${pageJobs.length} jobs`);
+    if (!pageJobs.length) { jobsKeepGoing = false; break; }
+    allHousecallProJobs = allHousecallProJobs.concat(pageJobs);
+    if (pageJobs.length < jobsParams.page_size) { jobsKeepGoing = false; } else { jobPage++; }
   }
 
-  const housecallProJobs = jobsResult.data || [];
-  console.log(`[sync-scheduler] Fetched ${housecallProJobs.length} jobs from Housecall Pro`);
+  const housecallProJobs = allHousecallProJobs;
+  console.log(`[sync-scheduler] Fetched ${housecallProJobs.length} total jobs from Housecall Pro across ${jobPage} pages`);
 
   let newJobs = 0;
   let updatedJobs = 0;
