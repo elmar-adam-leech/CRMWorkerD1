@@ -6,6 +6,22 @@ import { randomUUID } from 'crypto';
 
 const SYNC_BATCH_SIZE = 25;
 
+/**
+ * Maps a Housecall Pro estimate to this CRM's estimate status.
+ *
+ * HCP represents estimate state across TWO separate fields:
+ *   `work_status` — the technician workflow state (e.g. "completed", "scheduled")
+ *   `status`      — the customer-facing sales state  (e.g. "approved", "sent")
+ *
+ * Both fields are checked so the mapping is robust regardless of which one HCP
+ * populates for a given estimate version.
+ *
+ * Key non-obvious mapping decisions:
+ *   "completed" work_status → 'approved':  In HCP, work marked "completed" means
+ *     the customer accepted and the job was done — that's our "approved" state.
+ *   "scheduled" status → 'sent':  HCP marks an estimate "scheduled" when an
+ *     appointment is booked to present it, which is closest to "sent" in our model.
+ */
 export function mapHcpEstimateStatus(hcpEstimate: any): 'approved' | 'rejected' | 'pending' | 'sent' {
   const ws = (hcpEstimate.work_status || '').toLowerCase();
   const st = (hcpEstimate.status || '').toLowerCase();

@@ -54,6 +54,12 @@ The backend is built with Node.js and Express.js, offering a RESTful API with co
 - **`upsertEmployees` N+1 eliminated**: Single `inArray` batch fetch replaces per-employee `SELECT` inside the sync loop; updates are parallelized with `Promise.all`.
 - **`getEmployees` hard cap**: `.limit(500)` added to match the pattern on other list endpoints.
 - **`useTerminology()` / `useUsers()` shared hooks**: Centralized in `client/src/hooks/`; Leads, Jobs, and Estimates pages all use them — combined with the global `staleTime: 5 min`, these queries are fetched once and shared across all three pages.
+- **`parseWebhookDate` utility**: `server/utils/parse-webhook-date.ts` — single canonical handler for HCP webhook date fields (null/"none"/Unix-seconds/Unix-ms/ISO string). Replaces two copy-pasted inline `parseDate` functions in `webhooks/estimates.ts` and `webhooks/jobs.ts`.
+- **`getContractorsByIds` batch fetch**: `GET /api/user/contractors` now fetches all contractors in a single `inArray` query instead of N individual `getContractor` calls.
+- **`integrations/index.ts` converted to asyncHandler**: All 8 routes now use the standard error-handling wrapper; `GET /api/integrations` and `GET /api/integrations/:name/status` parallelize their independent storage fetches with `Promise.all`.
+- **`POST /api/messages/send-email` parallelized**: User and contractor fetches now run via `Promise.all` instead of sequentially.
+- **Dialpad storage limits**: `getDialpadPhoneNumbers` → 200, `getDialpadUsers` → 500, `getDialpadDepartments` → 200, `getDueSyncSchedules` → 100.
+- **Inline algorithm docs added**: Union-Find in `deduplicateContacts`, fuzzy phone SQL in `getContactByPhone` / `findMatchingContact`, HCP estimate status mapping rationale in `mapHcpEstimateStatus`, sliding-window slot search in `getUnifiedAvailability`.
 
 ### DB Indexes (current full set)
 The following indexes exist beyond Drizzle's default primary keys:

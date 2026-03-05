@@ -90,6 +90,7 @@ export interface IStorage {
 
   // Contractor operations
   getContractor(id: string): Promise<Contractor | undefined>;
+  getContractorsByIds(ids: string[]): Promise<Contractor[]>;
   getContractorByDomain(domain: string): Promise<Contractor | undefined>;
   getContractorBySlug(slug: string): Promise<Contractor | undefined>;
   createContractor(contractor: InsertContractor): Promise<Contractor>;

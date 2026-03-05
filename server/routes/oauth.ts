@@ -142,12 +142,10 @@ export function registerOAuthRoutes(app: Express): void {
   app.get("/api/user/contractors", requireAuth, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     const userContractors = await storage.getUserContractors(req.user!.userId);
 
-    const contractorsWithDetails = await Promise.all(
-      userContractors.map(async (uc) => {
-        const contractor = await storage.getContractor(uc.contractorId);
-        return { ...uc, contractor };
-      })
-    );
+    // Batch-fetch all contractors in a single query instead of N individual lookups
+    const contractorList = await storage.getContractorsByIds(userContractors.map(uc => uc.contractorId));
+    const contractorMap = new Map(contractorList.map(c => [c.id, c]));
+    const contractorsWithDetails = userContractors.map(uc => ({ ...uc, contractor: contractorMap.get(uc.contractorId) }));
 
     res.json(contractorsWithDetails);
   }));

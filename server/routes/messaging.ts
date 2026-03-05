@@ -97,20 +97,20 @@ export function registerMessagingRoutes(app: Express): void {
 
     const resolvedContactId = contactId || leadId || customerId;
 
-    const userResult = await db.select().from(users).where(and(
-      eq(users.id, req.user!.userId),
-      eq(users.contractorId, req.user!.contractorId)
-    ));
+    // Fetch user and contractor in parallel — independent queries
+    const [userResult, contractorResult] = await Promise.all([
+      db.select().from(users).where(and(
+        eq(users.id, req.user!.userId),
+        eq(users.contractorId, req.user!.contractorId)
+      )),
+      db.select().from(contractors).where(eq(contractors.id, req.user!.contractorId)),
+    ]);
     const user = userResult[0];
+    const contractor = contractorResult[0];
     if (!user || !user.gmailConnected || !user.gmailRefreshToken) {
       res.status(400).json({ message: "Gmail not connected. Please connect your Gmail account in settings." });
       return;
     }
-
-    const contractorResult = await db.select().from(contractors).where(
-      eq(contractors.id, req.user!.contractorId)
-    );
-    const contractor = contractorResult[0];
 
     const fromName = contractor?.name
       ? `${user.name} @ ${contractor.name}`

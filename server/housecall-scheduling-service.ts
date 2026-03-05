@@ -508,11 +508,22 @@ export class HousecallSchedulingService {
         const dayStart = this.createDateInTimezone(currentDate, workStart.hours, workStart.minutes, timezone);
         const dayEnd = this.createDateInTimezone(currentDate, workEnd.hours, workEnd.minutes, timezone);
         
+            // Sliding-window slot search for this salesperson on this day.
+        //
+        // We step through the working day in SLOT_INTERVAL_MINUTES increments (15 min),
+        // testing candidate windows of SLOT_DURATION_MINUTES (60 min) each.
+        // A slot is "available" when the salesperson has no overlapping busy windows
+        // (HCP calendar events + existing local bookings, pre-computed in salespersonBusyWindows).
+        //
+        // If another salesperson already opened the same time slot, we append this one's
+        // ID to existingSlot.availableSalespersonIds rather than creating a duplicate entry.
+        // This lets the caller pick whichever salesperson they prefer for that window.
         let slotStart = new Date(dayStart);
         
         while (slotStart.getTime() + SLOT_DURATION_MINUTES * 60 * 1000 <= dayEnd.getTime()) {
           const slotEnd = new Date(slotStart.getTime() + SLOT_DURATION_MINUTES * 60 * 1000);
           
+          // Skip slots that have already started (can't book in the past)
           if (slotStart < new Date()) {
             slotStart = new Date(slotStart.getTime() + SLOT_INTERVAL_MINUTES * 60 * 1000);
             continue;

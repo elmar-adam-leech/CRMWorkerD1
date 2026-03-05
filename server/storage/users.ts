@@ -5,7 +5,7 @@ import {
   users, userContractors, contractors,
 } from "@shared/schema";
 import { db } from "../db";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql, inArray } from "drizzle-orm";
 import bcrypt from "bcrypt";
 import type { UpdateUser, UpdateContractor } from "../storage-types";
 
@@ -141,6 +141,12 @@ async function getContractor(id: string): Promise<Contractor | undefined> {
   return result[0];
 }
 
+// Batch fetch for multiple contractors in a single query (avoids N+1 in getUserContractors route)
+async function getContractorsByIds(ids: string[]): Promise<Contractor[]> {
+  if (ids.length === 0) return [];
+  return await db.select().from(contractors).where(inArray(contractors.id, ids));
+}
+
 async function getContractorByDomain(domain: string): Promise<Contractor | undefined> {
   const result = await db.select().from(contractors).where(eq(contractors.domain, domain)).limit(1);
   return result[0];
@@ -182,6 +188,7 @@ export const userMethods = {
   updateUserContractor,
   ensureUserContractorEntry,
   getContractor,
+  getContractorsByIds,
   getContractorByDomain,
   getContractorBySlug,
   createContractor,

@@ -5,6 +5,7 @@ import { broadcastToContractor } from "../../websocket";
 import { webhookRateLimiter } from "../../middleware/rate-limiter";
 import crypto from "crypto";
 import { normalizePhoneForStorage } from "../../utils/phone-normalizer";
+import { parseWebhookDate } from "../../utils/parse-webhook-date";
 
 export function registerJobWebhookRoutes(app: Express): void {
   app.post("/api/webhooks/:contractorId/jobs", webhookRateLimiter, async (req: Request, res: Response) => {
@@ -152,27 +153,6 @@ export function registerJobWebhookRoutes(app: Express): void {
         console.log('[webhook-job] Created new customer:', customerId);
       }
       
-      const parseDate = (value: any): Date | null => {
-        if (!value) return null;
-        if (typeof value === 'string' && (value.toLowerCase() === 'none' || value.trim() === '')) {
-          return null;
-        }
-        if (typeof value === 'string') {
-          const date = new Date(value);
-          if (!isNaN(date.getTime())) {
-            return date;
-          }
-        }
-        const numValue = typeof value === 'number' ? value : parseFloat(value);
-        if (!isNaN(numValue) && (typeof value !== 'string' || /^\d+$/.test(value))) {
-          if (numValue < 10000000000) {
-            return new Date(numValue * 1000);
-          } else {
-            return new Date(numValue);
-          }
-        }
-        return null;
-      };
       
       const normalizeJobStatus = (value: any): string => {
         if (!value) return 'scheduled';
@@ -196,7 +176,7 @@ export function registerJobWebhookRoutes(app: Express): void {
       
       const normalizedPhone = customerPhone ? normalizePhoneForStorage(String(customerPhone).trim()) : null;
       
-      const parsedScheduledDate = parseDate(scheduledDate);
+      const parsedScheduledDate = parseWebhookDate(scheduledDate);
       if (!parsedScheduledDate) {
         res.status(400).json({ 
           error: "Invalid scheduled date",

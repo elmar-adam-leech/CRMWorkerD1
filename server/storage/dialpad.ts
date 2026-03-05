@@ -21,7 +21,7 @@ import type {
 
 // Dialpad phone number operations
 async function getDialpadPhoneNumbers(contractorId: string): Promise<DialpadPhoneNumber[]> {
-  return await db.select().from(dialpadPhoneNumbers).where(eq(dialpadPhoneNumbers.contractorId, contractorId)).orderBy(asc(dialpadPhoneNumbers.phoneNumber));
+  return await db.select().from(dialpadPhoneNumbers).where(eq(dialpadPhoneNumbers.contractorId, contractorId)).orderBy(asc(dialpadPhoneNumbers.phoneNumber)).limit(200);
 }
 
 async function getDialpadPhoneNumber(id: string, contractorId: string): Promise<DialpadPhoneNumber | undefined> {
@@ -76,7 +76,7 @@ async function deleteUserPhoneNumberPermission(id: string): Promise<boolean> {
 
 // Dialpad caching operations
 async function getDialpadUsers(contractorId: string): Promise<DialpadUser[]> {
-  return await db.select().from(dialpadUsers).where(eq(dialpadUsers.contractorId, contractorId)).orderBy(asc(dialpadUsers.fullName));
+  return await db.select().from(dialpadUsers).where(eq(dialpadUsers.contractorId, contractorId)).orderBy(asc(dialpadUsers.fullName)).limit(500);
 }
 
 async function getDialpadUser(id: string, contractorId: string): Promise<DialpadUser | undefined> {
@@ -105,7 +105,7 @@ async function deleteDialpadUser(id: string): Promise<boolean> {
 }
 
 async function getDialpadDepartments(contractorId: string): Promise<DialpadDepartment[]> {
-  return await db.select().from(dialpadDepartments).where(eq(dialpadDepartments.contractorId, contractorId)).orderBy(asc(dialpadDepartments.name));
+  return await db.select().from(dialpadDepartments).where(eq(dialpadDepartments.contractorId, contractorId)).orderBy(asc(dialpadDepartments.name)).limit(200);
 }
 
 async function getDialpadDepartment(id: string, contractorId: string): Promise<DialpadDepartment | undefined> {
@@ -172,7 +172,9 @@ async function getSyncSchedule(contractorId: string, integrationName: string): P
 }
 
 async function getDueSyncSchedules(): Promise<SyncSchedule[]> {
-  return await db.select().from(syncSchedules).where(and(eq(syncSchedules.isEnabled, true), lte(syncSchedules.nextSyncAt, new Date()))).orderBy(asc(syncSchedules.nextSyncAt));
+  // Cap at 100: one sync schedule per integration per contractor; this table will never
+  // legitimately exceed a few hundred rows even at full scale.
+  return await db.select().from(syncSchedules).where(and(eq(syncSchedules.isEnabled, true), lte(syncSchedules.nextSyncAt, new Date()))).orderBy(asc(syncSchedules.nextSyncAt)).limit(100);
 }
 
 async function createSyncSchedule(schedule: InsertSyncSchedule): Promise<SyncSchedule> {

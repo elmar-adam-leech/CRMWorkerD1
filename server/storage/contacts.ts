@@ -221,6 +221,10 @@ async function getContactByExternalId(externalId: string, externalSource: string
 async function getContactByPhone(phone: string, contractorId: string): Promise<Contact | undefined> {
   const digits = phone.replace(/\D/g, '');
   const normalizedPhone = digits.length > 10 ? digits.slice(-10) : digits;
+  // The SQL subquery strips all non-digit characters from each stored phone number
+  // then takes the last 10 digits (RIGHT(..., 10)) to drop any country-code prefix,
+  // and compares against the already-normalized 10-digit input.  This lets "+1 (555)
+  // 867-5309", "5558675309", and "15558675309" all match each other.
   const result = await db.select().from(contacts)
     .where(and(
       sql`EXISTS (
@@ -349,6 +353,8 @@ async function findMatchingContact(contractorId: string, emails?: string[], phon
   }
 
   if (phones && phones.length > 0) {
+    // Strip formatting from the input phones and keep the last 10 digits of each.
+    // The SQL does the same stripping on stored phones so any format variant matches.
     const normalizedPhones = phones.map(phone => {
       const digits = phone.replace(/\D/g, '');
       return digits.length > 10 ? digits.slice(-10) : digits;
@@ -434,11 +440,31 @@ async function deduplicateContacts(contractorId: string): Promise<{ duplicatesFo
     });
   }
 
+  // Union-Find (Disjoint Set Union) algorithm for grouping duplicate contacts.
+  //
+  // Problem: two contacts are "duplicates" if they share any phone number or email,
+  // even if they share different fields (A shares a phone with B; B shares an email
+  // with C → A, B, C are all the same person).  A naive O(N²) pairwise comparison
+  // would be too slow for large contractors.
+  //
+  // How it works:
+  //   `parent` maps each contact ID to its group's representative (root) ID.
+  //   Initially every contact is its own root (lazy-initialized in `find`).
+  //
+  //   `find(id)` — path-compressed lookup: follows parent pointers to the root,
+  //   then flattens the chain so future lookups are O(1) amortized.
+  //
+  //   `union(id1, id2)` — merges two groups: finds both roots, and if they differ,
+  //   makes the OLDER contact (by createdAt) the authoritative root so the earliest
+  //   record is kept as the "primary" after merging.
+  //
+  // After all phone/email collisions are unioned, we group every contact by its root
+  // to get the final duplicate clusters.
   const parent = new Map<string, string>();
   const find = (id: string): string => {
     if (!parent.has(id)) parent.set(id, id);
     if (parent.get(id) !== id) {
-      parent.set(id, find(parent.get(id)!));
+      parent.set(id, find(parent.get(id)!)); // path compression
     }
     return parent.get(id)!;
   };
@@ -448,6 +474,7 @@ async function deduplicateContacts(contractorId: string): Promise<{ duplicatesFo
     if (root1 !== root2) {
       const contact1 = contactById.get(root1)!;
       const contact2 = contactById.get(root2)!;
+      // Keep the oldest contact as the group root (it becomes the merge target)
       if (contact1.createdAt <= contact2.createdAt) {
         parent.set(root2, root1);
       } else {

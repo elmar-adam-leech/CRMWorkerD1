@@ -5,6 +5,7 @@ import { broadcastToContractor } from "../../websocket";
 import { webhookRateLimiter } from "../../middleware/rate-limiter";
 import crypto from "crypto";
 import { normalizePhoneForStorage } from "../../utils/phone-normalizer";
+import { parseWebhookDate } from "../../utils/parse-webhook-date";
 
 export function registerEstimateWebhookRoutes(app: Express): void {
   app.post("/api/webhooks/:contractorId/estimates", webhookRateLimiter, async (req: Request, res: Response) => {
@@ -158,22 +159,6 @@ export function registerEstimateWebhookRoutes(app: Express): void {
         console.log('[webhook-estimate] Created new customer:', customerId);
       }
       
-      const parseDate = (value: any): Date | null => {
-        if (!value) return null;
-        if (typeof value === 'string' && (value.toLowerCase() === 'none' || value.trim() === '')) {
-          return null;
-        }
-        const numValue = typeof value === 'string' ? parseFloat(value) : value;
-        if (!isNaN(numValue)) {
-          if (numValue < 10000000000) {
-            return new Date(numValue * 1000);
-          } else {
-            return new Date(numValue);
-          }
-        }
-        const date = new Date(value);
-        return isNaN(date.getTime()) ? null : date;
-      };
       
       const normalizeStatus = (value: any): string => {
         if (!value) return 'draft';
@@ -198,8 +183,8 @@ export function registerEstimateWebhookRoutes(app: Express): void {
         amount: amountNum.toString(),
         description: description ? String(description).trim() : null,
         status: normalizeStatus(status),
-        validUntil: parseDate(validUntil),
-        followUpDate: parseDate(followUpDate),
+        validUntil: parseWebhookDate(validUntil),
+        followUpDate: parseWebhookDate(followUpDate),
         contactId: customerId,
         emails: customerEmail ? [String(customerEmail).trim()] : [],
         phones: normalizedPhone ? [normalizedPhone] : [],
