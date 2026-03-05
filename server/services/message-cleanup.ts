@@ -121,16 +121,22 @@ class MessageCleanupService {
       let totalMessagesDeleted = 0;
       let totalActivitiesDeleted = 0;
 
-      // Process each contractor separately for tenant isolation
-      for (const contractor of allContractors) {
-        const result = await this.performCleanupForContractor(contractor.id, contractor.name, cutoffDate);
-        
-        if (result.deletedMessagesCount > 0 || result.deletedActivitiesCount > 0) {
-          contractorResults.push(result);
-          totalMessagesDeleted += result.deletedMessagesCount;
-          totalActivitiesDeleted += result.deletedActivitiesCount;
-          
-          console.log(`[Message Cleanup] Contractor "${contractor.name}" (${contractor.id}): Deleted ${result.deletedMessagesCount} message(s), ${result.deletedActivitiesCount} activity(ies)`);
+      // Process all contractors concurrently — one failure does not abort the rest
+      const settled = await Promise.allSettled(
+        allContractors.map(c => this.performCleanupForContractor(c.id, c.name, cutoffDate))
+      );
+
+      for (const outcome of settled) {
+        if (outcome.status === 'fulfilled') {
+          const result = outcome.value;
+          if (result.deletedMessagesCount > 0 || result.deletedActivitiesCount > 0) {
+            contractorResults.push(result);
+            totalMessagesDeleted += result.deletedMessagesCount;
+            totalActivitiesDeleted += result.deletedActivitiesCount;
+            console.log(`[Message Cleanup] Contractor "${result.contractorName}" (${result.contractorId}): Deleted ${result.deletedMessagesCount} message(s), ${result.deletedActivitiesCount} activity(ies)`);
+          }
+        } else {
+          console.error(`[Message Cleanup] Contractor cleanup failed:`, outcome.reason);
         }
       }
 

@@ -43,6 +43,11 @@ The backend is built with Node.js and Express.js, offering a RESTful API with co
 - **HCP estimates sync**: `getEstimatesByHousecallProIds` pre-fetches all estimates in a batch — same pattern.
 - **Gmail sync dedup**: Batch `inArray` query collects all already-synced email IDs upfront; per-email check is O(1) Set lookup.
 - **`getContacts` hard cap**: `.limit(2000)` prevents accidental full-table dumps; use `/api/contacts/paginated` for UI.
+- **Scheduling availability**: `getUnifiedAvailability` fires all per-salesperson HCP API calls via `Promise.all` — eliminates N sequential external HTTP round-trips (was ~8 s for 5 salespeople, now ~2 s).
+- **Safety caps added**: `getCalls` → 500, `getScheduledContacts` → 500, `getUnscheduledContacts` → 500, `getUnreadNotifications` → 100.
+- **Message cleanup parallelized**: Nightly cleanup uses `Promise.allSettled` across all contractors; one failure is logged, not propagated.
+- **`/api/auth/me`**: `getUser` and `getEnabledIntegrations` now run via `Promise.all` — saves one DB round-trip on every page load.
+- **Sync-status hook**: `staleTime` raised from 0 to 5,000 ms — prevents spurious re-fetches on every React render.
 
 ### DB Indexes (current full set)
 The following indexes exist beyond Drizzle's default primary keys:
@@ -59,6 +64,7 @@ The following indexes exist beyond Drizzle's default primary keys:
 - `server/routes/public.ts` — unauthenticated routes only: `/sw-unregister`, `/api/public/*` (Places proxy, booking, availability, public lead intake), `/api/version`.
 - `server/routes/dashboard.ts` — authenticated routes split from public.ts: `/api/places/autocomplete`, `/api/places/details`, `/api/dashboard/metrics`.
 - `server/sync/housecall-pro.ts` — `mapHcpEstimateStatus(hcpEstimate)` is the single source of truth for HCP→CRM status mapping (no duplicated chains).
+- `server/types/scheduling.ts` — all shared scheduling interfaces (`TimeSlot`, `BusyWindow`, `AvailableSlot`, `AddressComponents`, `BookingRequest`, `BookingResult`, `SalespersonInfo`) and the `parseAddressString()` utility. `housecall-scheduling-service.ts` re-exports them for backwards compatibility.
 
 ## External Dependencies
 

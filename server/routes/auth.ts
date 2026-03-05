@@ -322,8 +322,10 @@ export function registerAuthRoutes(app: Express): void {
       return;
     }
 
-    const fullUser = await storage.getUser(req.user.userId);
-    const enabledIntegrations = await storage.getEnabledIntegrations(req.user.contractorId);
+    const [fullUser, enabledIntegrations] = await Promise.all([
+      storage.getUser(req.user.userId),
+      storage.getEnabledIntegrations(req.user.contractorId),
+    ]);
 
     res.json({
       user: {

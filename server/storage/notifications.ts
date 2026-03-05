@@ -10,7 +10,7 @@ async function getNotifications(userId: string, contractorId: string, limit: num
 }
 
 async function getUnreadNotifications(userId: string, contractorId: string): Promise<Notification[]> {
-  return await db.select().from(notifications).where(and(eq(notifications.userId, userId), eq(notifications.contractorId, contractorId), eq(notifications.read, false))).orderBy(desc(notifications.createdAt));
+  return await db.select().from(notifications).where(and(eq(notifications.userId, userId), eq(notifications.contractorId, contractorId), eq(notifications.read, false))).orderBy(desc(notifications.createdAt)).limit(100);  // unread notifications should never grow unbounded
 }
 
 async function getNotification(id: string, userId: string): Promise<Notification | undefined> {

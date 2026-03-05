@@ -2,87 +2,10 @@ import { db } from './db';
 import { users, userContractors, scheduledBookings, contacts, estimates, contractors } from '@shared/schema';
 import { eq, and, gte, lte, desc, asc, sql } from 'drizzle-orm';
 import { housecallProService } from './housecall-pro-service';
+import type { TimeSlot, BusyWindow, AvailableSlot, AddressComponents, BookingRequest, BookingResult, SalespersonInfo } from './types/scheduling';
+import { parseAddressString } from './types/scheduling';
 
-export interface TimeSlot {
-  start: Date;
-  end: Date;
-}
-
-export interface BusyWindow {
-  start: string;
-  end: string;
-}
-
-export interface AvailableSlot {
-  start: Date;
-  end: Date;
-  availableSalespersonIds: string[];
-}
-
-export interface AddressComponents {
-  street: string;
-  city: string;
-  state: string;
-  zip: string;
-  country?: string;
-}
-
-function parseAddressString(address: string): AddressComponents {
-  const parts = address.split(',').map(s => s.trim());
-  if (parts.length >= 3) {
-    const street = parts[0];
-    const city = parts[1];
-    const stateZipMatch = parts[2].match(/^([A-Z]{2})\s+(\d{5}(?:-\d{4})?)$/);
-    if (stateZipMatch) {
-      return {
-        street,
-        city,
-        state: stateZipMatch[1],
-        zip: stateZipMatch[2],
-        country: parts[3]?.trim() || 'US',
-      };
-    }
-  }
-  return { street: address, city: '', state: '', zip: '', country: 'US' };
-}
-
-export interface BookingRequest {
-  startTime: Date;
-  title: string;
-  customerName: string;
-  customerEmail?: string;
-  customerPhone?: string;
-  customerAddress?: string;
-  customerAddressComponents?: AddressComponents;
-  notes?: string;
-  contactId?: string;
-  salespersonId?: string; // If provided, use this salesperson instead of auto-assigning
-  housecallProEmployeeId?: string; // HCP employee ID for direct assignment
-  timezone?: string; // Timezone for working hours calculations (defaults to America/New_York)
-}
-
-export interface BookingResult {
-  success: boolean;
-  bookingId?: string;
-  assignedSalespersonId?: string;
-  assignedSalespersonName?: string;
-  housecallProEventId?: string;
-  error?: string;
-}
-
-export interface SalespersonInfo {
-  userId: string;
-  name: string;
-  email: string;
-  housecallProUserId: string | null;
-  lastAssignmentAt: Date | null;
-  calendarColor: string | null;
-  isSalesperson: boolean;
-  workingDays: number[];
-  workingHoursStart: string;
-  workingHoursEnd: string;
-  hasCustomSchedule: boolean;
-}
+export type { TimeSlot, BusyWindow, AvailableSlot, AddressComponents, BookingRequest, BookingResult, SalespersonInfo };
 
 const SLOT_DURATION_MINUTES = 60;
 const SLOT_INTERVAL_MINUTES = 15; // Time slots offered every 15 minutes for more booking options
@@ -532,27 +455,37 @@ export class HousecallSchedulingService {
     console.log(`[scheduling] Found ${salespeople.length} salespeople for availability calculation. Timezone: ${timezone}`);
     
     const salespersonBusyWindows = new Map<string, BusyWindow[]>();
-    
-    for (const sp of salespeople) {
-      const busyWindows = await this.getCalendarEvents(tenantId, sp.userId, startDate, endDate);
-      
-      const expandedStart = new Date(startDate.getTime() - BUFFER_MINUTES * 60 * 1000);
-      const expandedEnd = new Date(endDate.getTime() + BUFFER_MINUTES * 60 * 1000);
-      
-      const existingBookings = await db.select()
-        .from(scheduledBookings)
-        .where(and(
-          eq(scheduledBookings.assignedSalespersonId, sp.userId),
-          eq(scheduledBookings.contractorId, tenantId),
-          lte(scheduledBookings.startTime, expandedEnd),
-          gte(scheduledBookings.endTime, expandedStart)
-        ));
-      
+
+    const expandedStart = new Date(startDate.getTime() - BUFFER_MINUTES * 60 * 1000);
+    const expandedEnd = new Date(endDate.getTime() + BUFFER_MINUTES * 60 * 1000);
+
+    // Fire all per-salesperson HCP API calls concurrently instead of sequentially
+    const calendarResults = await Promise.all(
+      salespeople.map(sp => this.getCalendarEvents(tenantId, sp.userId, startDate, endDate))
+    );
+    const bookingResults = await Promise.all(
+      salespeople.map(sp =>
+        db.select()
+          .from(scheduledBookings)
+          .where(and(
+            eq(scheduledBookings.assignedSalespersonId, sp.userId),
+            eq(scheduledBookings.contractorId, tenantId),
+            lte(scheduledBookings.startTime, expandedEnd),
+            gte(scheduledBookings.endTime, expandedStart)
+          ))
+      )
+    );
+
+    for (let i = 0; i < salespeople.length; i++) {
+      const sp = salespeople[i];
+      const busyWindows = calendarResults[i];
+      const existingBookings = bookingResults[i];
+
       const allBusyWindows = [
         ...busyWindows.map(bw => this.expandBusyWindowWithBuffer(bw.start, bw.end)),
         ...existingBookings.map(b => this.expandBusyWindowWithBuffer(b.startTime, b.endTime))
       ];
-      
+
       salespersonBusyWindows.set(sp.userId, allBusyWindows);
       console.log(`[scheduling] Salesperson ${sp.name}: workingDays=${JSON.stringify(sp.workingDays)}, hours=${sp.workingHoursStart}-${sp.workingHoursEnd}, busyWindows=${allBusyWindows.length}`);
     }

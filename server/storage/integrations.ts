@@ -202,7 +202,7 @@ async function getScheduledContacts(contractorId: string): Promise<Contact[]> {
     eq(contacts.contractorId, contractorId),
     eq(contacts.isScheduled, true),
     eq(contacts.type, 'lead')
-  )).orderBy(desc(contacts.scheduledAt));
+  )).orderBy(desc(contacts.scheduledAt)).limit(500);  // safety cap for HCP scheduling flow
 }
 
 async function getUnscheduledContacts(contractorId: string): Promise<Contact[]> {
@@ -210,7 +210,7 @@ async function getUnscheduledContacts(contractorId: string): Promise<Contact[]> 
     eq(contacts.contractorId, contractorId),
     eq(contacts.isScheduled, false),
     eq(contacts.type, 'lead')
-  )).orderBy(desc(contacts.createdAt));
+  )).orderBy(desc(contacts.createdAt)).limit(500);  // safety cap for HCP scheduling flow
 }
 
 async function scheduleContactAsEstimate(contactId: string, housecallProData: {

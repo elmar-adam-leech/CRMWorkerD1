@@ -263,7 +263,10 @@ async function getConversationMessageCount(contractorId: string, contactId: stri
 }
 
 async function getCalls(contractorId: string): Promise<Call[]> {
-  return await db.select().from(calls).where(eq(calls.contractorId, contractorId));
+  return await db.select().from(calls)
+    .where(eq(calls.contractorId, contractorId))
+    .orderBy(desc(calls.createdAt))
+    .limit(500);  // safety cap — add pagination if call volume grows
 }
 
 async function getCall(id: string, contractorId: string): Promise<Call | undefined> {

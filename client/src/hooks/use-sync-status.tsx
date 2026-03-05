@@ -52,7 +52,7 @@ export function SyncStatusProvider({ children }: { children: ReactNode }) {
     enabled: canReceiveSyncUpdates,
     refetchInterval: (query) => query.state.data?.isRunning ? 2000 : 30000,
     refetchIntervalInBackground: false,
-    staleTime: 0,
+    staleTime: 5_000,  // refetchInterval handles freshness; 0 causes a re-fetch on every render
   });
 
   useEffect(() => {
