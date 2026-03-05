@@ -410,6 +410,7 @@ export interface IStorage {
   getWorkflowSteps(workflowId: string): Promise<WorkflowStep[]>;
   getWorkflowStep(id: string): Promise<WorkflowStep | undefined>;
   createWorkflowStep(step: InsertWorkflowStep): Promise<WorkflowStep>;
+  bulkCreateWorkflowSteps(steps: InsertWorkflowStep[]): Promise<WorkflowStep[]>;
   updateWorkflowStep(id: string, step: UpdateWorkflowStep): Promise<WorkflowStep | undefined>;
   deleteWorkflowStep(id: string): Promise<boolean>;
   deleteWorkflowSteps(workflowId: string): Promise<boolean>;

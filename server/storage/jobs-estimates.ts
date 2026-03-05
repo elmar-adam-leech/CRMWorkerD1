@@ -18,7 +18,7 @@ type PaginatedEstimates = {
 };
 
 async function getJobs(contractorId: string): Promise<Job[]> {
-  return await db.select().from(jobs).where(eq(jobs.contractorId, contractorId));
+  return await db.select().from(jobs).where(eq(jobs.contractorId, contractorId)).orderBy(desc(jobs.createdAt)).limit(500);
 }
 
 async function getJobsPaginated(contractorId: string, options: {
@@ -210,7 +210,8 @@ async function getEstimates(contractorId: string): Promise<Estimate[]> {
   .from(estimates)
   .leftJoin(contacts, eq(estimates.contactId, contacts.id))
   .where(eq(estimates.contractorId, contractorId))
-  .orderBy(desc(estimates.createdAt)) as unknown as Estimate[];
+  .orderBy(desc(estimates.createdAt))
+  .limit(500) as unknown as Estimate[];
 }
 
 async function getEstimatesPaginated(contractorId: string, options: {

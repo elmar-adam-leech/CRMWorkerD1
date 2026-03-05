@@ -46,7 +46,9 @@ export const users = pgTable("users", {
   gmailSyncHistoryId: text("gmail_sync_history_id"), // Gmail API history ID for incremental sync
   canManageIntegrations: boolean("can_manage_integrations").default(false).notNull(), // Legacy field, now in user_contractors
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  emailIdx: index("users_email_idx").on(table.email),
+}));
 
 // User-Contractor junction table (many-to-many relationship)
 // Allows users to belong to multiple contractors with different roles per contractor
@@ -321,6 +323,10 @@ export const messages = pgTable("messages", {
   contractorPhoneIdx: index("messages_contractor_phone_idx").on(table.contractorId, table.toNumber),
   // Composite index for contractor + contact queries
   contractorContactIdx: index("messages_contractor_contact_idx").on(table.contractorId, table.contactId),
+  // Index for webhook/sync lookups by external message ID
+  externalMessageIdIdx: index("messages_external_message_id_idx").on(table.externalMessageId),
+  // Composite index for conversation timeline queries
+  contractorContactCreatedIdx: index("messages_contractor_contact_created_idx").on(table.contractorId, table.contactId, table.createdAt),
 }));
 
 // Webhooks table for tracking webhook configurations
@@ -383,7 +389,10 @@ export const templates = pgTable("templates", {
   contractorId: varchar("contractor_id").notNull().references(() => contractors.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  contractorIdIdx: index("templates_contractor_id_idx").on(table.contractorId),
+  typeIdx: index("templates_type_idx").on(table.type),
+}));
 
 // Calls table for tracking Dialpad calls with contractor isolation
 export const calls = pgTable("calls", {
@@ -633,6 +642,8 @@ export const activities = pgTable("activities", {
   contractorDateIdx: index("activities_contractor_date_idx").on(table.contractorId, table.createdAt),
   // Index for external system lookups
   externalLookupIdx: index("activities_external_lookup_idx").on(table.externalSource, table.externalId),
+  // Composite index for conversation-style email queries (type filter + contact lookup)
+  contractorTypeContactIdx: index("activities_contractor_type_contact_idx").on(table.contractorId, table.type, table.contactId),
 }));
 
 // Insert schemas

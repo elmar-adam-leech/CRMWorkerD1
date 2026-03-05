@@ -135,24 +135,27 @@ async function getConversations(contractorId: string, options: {
     if (conversationKeys.size === 0) return [];
 
     const contactIds = Array.from(conversationKeys);
-    const allConversationMessages = await Promise.all(contactIds.map(async (contactId) => {
-      const [contactSms, contactEmails] = await Promise.all([
-        db.select().from(messages).where(and(eq(messages.contractorId, contractorId), eq(messages.contactId, contactId))).orderBy(desc(messages.createdAt)),
-        db.select({
-          id: activities.id, content: activities.content, contactId: activities.contactId,
-          estimateId: activities.estimateId, userId: activities.userId, contractorId: activities.contractorId,
-          createdAt: activities.createdAt, metadata: activities.metadata, userName: users.name,
-        }).from(activities).leftJoin(users, eq(activities.userId, users.id))
-          .where(and(eq(activities.contractorId, contractorId), eq(activities.type, 'email'), eq(activities.contactId, contactId)))
-          .orderBy(desc(activities.createdAt))
-      ]);
 
-      const contactEmailMessages = contactEmails.map(emailActivityToMessage);
+    // Batch fetch — 2 queries total regardless of how many contactIds
+    const [batchSms, batchEmails] = await Promise.all([
+      db.select().from(messages)
+        .where(and(eq(messages.contractorId, contractorId), inArray(messages.contactId, contactIds)))
+        .orderBy(desc(messages.createdAt)),
+      db.select({
+        id: activities.id, content: activities.content, contactId: activities.contactId,
+        estimateId: activities.estimateId, userId: activities.userId, contractorId: activities.contractorId,
+        createdAt: activities.createdAt, metadata: activities.metadata, userName: users.name,
+      }).from(activities).leftJoin(users, eq(activities.userId, users.id))
+        .where(and(
+          eq(activities.contractorId, contractorId),
+          eq(activities.type, 'email'),
+          inArray(activities.contactId, contactIds)
+        ))
+        .orderBy(desc(activities.createdAt))
+    ]);
 
-      return [...contactSms, ...contactEmailMessages as Message[]];
-    }));
-
-    allMessages = allConversationMessages.flat();
+    const batchEmailMessages = batchEmails.map(emailActivityToMessage);
+    allMessages = [...batchSms, ...batchEmailMessages as Message[]];
   } else {
     const [allSms, allEmailActivities] = await Promise.all([
       db.select().from(messages).where(eq(messages.contractorId, contractorId)).orderBy(desc(messages.createdAt)),
@@ -227,7 +230,9 @@ async function getConversationMessages(contractorId: string, contactId: string):
     externalMessageId: messages.externalMessageId, contractorId: messages.contractorId,
     createdAt: messages.createdAt, userName: users.name,
   }).from(messages).leftJoin(users, eq(messages.userId, users.id))
-    .where(and(eq(messages.contractorId, contractorId), eq(messages.contactId, contactId)));
+    .where(and(eq(messages.contractorId, contractorId), eq(messages.contactId, contactId)))
+    .orderBy(desc(messages.createdAt))
+    .limit(500);
 
   console.log(`[getConversationMessages] Found ${smsMessages.length} SMS messages`);
 
@@ -236,7 +241,9 @@ async function getConversationMessages(contractorId: string, contactId: string):
     estimateId: activities.estimateId, userId: activities.userId, contractorId: activities.contractorId,
     createdAt: activities.createdAt, metadata: activities.metadata, userName: users.name,
   }).from(activities).leftJoin(users, eq(activities.userId, users.id))
-    .where(and(eq(activities.contractorId, contractorId), eq(activities.type, 'email'), eq(activities.contactId, contactId)));
+    .where(and(eq(activities.contractorId, contractorId), eq(activities.type, 'email'), eq(activities.contactId, contactId)))
+    .orderBy(desc(activities.createdAt))
+    .limit(500);
 
   const emailMessages = emailActivities.map(emailActivityToMessage);
 

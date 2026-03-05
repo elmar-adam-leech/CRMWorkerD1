@@ -136,6 +136,11 @@ async function deleteWorkflowSteps(workflowId: string): Promise<boolean> {
   return result.length > 0;
 }
 
+async function bulkCreateWorkflowSteps(steps: InsertWorkflowStep[]): Promise<WorkflowStep[]> {
+  if (steps.length === 0) return [];
+  return await db.insert(workflowSteps).values(steps).returning();
+}
+
 async function getWorkflowExecutions(workflowId: string, contractorId: string, limit: number = 50): Promise<WorkflowExecution[]> {
   return await db.select().from(workflowExecutions).where(and(
     eq(workflowExecutions.workflowId, workflowId),
@@ -196,6 +201,7 @@ export const workflowMethods = {
   getWorkflowSteps,
   getWorkflowStep,
   createWorkflowStep,
+  bulkCreateWorkflowSteps,
   updateWorkflowStep,
   deleteWorkflowStep,
   deleteWorkflowSteps,

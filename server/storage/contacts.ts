@@ -4,7 +4,7 @@ import {
   contacts, leads, messages, activities, estimates, jobs, users,
 } from "@shared/schema";
 import { db } from "../db";
-import { eq, and, or, desc, ne, gt, lte, gte, lt, ilike, isNotNull, sql, count } from "drizzle-orm";
+import { eq, and, or, desc, ne, gt, lte, gte, lt, ilike, isNotNull, notInArray, sql, count } from "drizzle-orm";
 import { normalizePhoneArrayForStorage } from "../utils/phone-normalizer";
 import type { UpdateContact } from "../storage-types";
 
@@ -293,7 +293,10 @@ async function unlinkOrphanedEmailActivities(contactId: string, currentEmails: s
       eq(activities.externalSource, 'gmail')
     ));
 
+  if (emailActivities.length === 0) return;
+
   const lowerCurrentEmails = currentEmails.map(e => e.toLowerCase());
+  const keepIds: string[] = [];
   for (const activity of emailActivities) {
     if (!activity.metadata) continue;
     try {
@@ -301,14 +304,23 @@ async function unlinkOrphanedEmailActivities(contactId: string, currentEmails: s
       const fromEmail = (meta.from || '').toLowerCase();
       const toEmails: string[] = (meta.to || []).map((e: string) => e.toLowerCase());
       const allEmails = [fromEmail, ...toEmails];
-      const stillMatches = allEmails.some(e => lowerCurrentEmails.includes(e));
-      if (!stillMatches) {
-        await db.update(activities).set({ contactId: null }).where(eq(activities.id, activity.id));
+      if (allEmails.some(e => lowerCurrentEmails.includes(e))) {
+        keepIds.push(activity.id);
       }
     } catch {
       // Skip unparseable metadata
     }
   }
+
+  // Single bulk update instead of one per activity
+  await db.update(activities)
+    .set({ contactId: null })
+    .where(and(
+      eq(activities.contactId, contactId),
+      eq(activities.contractorId, contractorId),
+      eq(activities.externalSource, 'gmail'),
+      keepIds.length > 0 ? notInArray(activities.id, keepIds) : sql`true`
+    ));
 }
 
 async function findMatchingContact(contractorId: string, emails?: string[], phones?: string[]): Promise<string | null> {
@@ -496,61 +508,45 @@ async function getDashboardMetrics(contractorId: string, userId: string, userRol
   totalLeads: number;
   todaysFollowUps: number;
 }> {
-  const conditions = [eq(contacts.contractorId, contractorId), eq(contacts.type, 'lead')];
-  if (startDate) conditions.push(gte(contacts.createdAt, startDate));
-  if (endDate) conditions.push(lte(contacts.createdAt, endDate));
-
-  const allLeads = await db.select().from(contacts).where(and(...conditions));
-  const totalLeads = allLeads.length;
-  const contactedLeads = allLeads.filter(contact => contact.contactedAt !== null);
-
-  let speedToLeadMinutes = 0;
-  if (contactedLeads.length > 0) {
-    const isAdmin = userRole === 'admin' || userRole === 'super_admin';
-    const relevantLeads = isAdmin
-      ? contactedLeads
-      : contactedLeads.filter(contact => contact.contactedByUserId === userId);
-
-    if (relevantLeads.length > 0) {
-      const totalMinutes = relevantLeads.reduce((sum, contact) => {
-        if (contact.contactedAt && contact.createdAt) {
-          const diff = contact.contactedAt.getTime() - contact.createdAt.getTime();
-          return sum + (diff / (1000 * 60));
-        }
-        return sum;
-      }, 0);
-      speedToLeadMinutes = totalMinutes / relevantLeads.length;
-    }
-  }
-
   const isAdmin = userRole === 'admin' || userRole === 'super_admin';
-  const scheduledLeadsForUser = isAdmin
-    ? allLeads.filter(contact => contact.status === 'scheduled')
-    : allLeads.filter(contact => contact.status === 'scheduled' && contact.scheduledByUserId === userId);
 
-  const totalLeadsForUser = isAdmin ? totalLeads : allLeads.filter(contact =>
-    contact.contactedByUserId === userId || contact.scheduledByUserId === userId
-  ).length;
-
-  const setRate = totalLeadsForUser > 0 ? (scheduledLeadsForUser.length / totalLeadsForUser) * 100 : 0;
+  const baseConditions = [eq(contacts.contractorId, contractorId), eq(contacts.type, 'lead')];
+  if (startDate) baseConditions.push(gte(contacts.createdAt, startDate));
+  if (endDate) baseConditions.push(lte(contacts.createdAt, endDate));
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
 
-  const allLeadsForFollowUp = await db.select().from(contacts).where(and(
-    eq(contacts.contractorId, contractorId),
-    eq(contacts.type, 'lead'),
-    gte(contacts.followUpDate, today),
-    lt(contacts.followUpDate, tomorrow)
-  ));
+  const [metricsRow] = await db.select({
+    totalLeads: sql<number>`COUNT(*)::int`,
+    scheduledAll: sql<number>`COUNT(*) FILTER (WHERE ${contacts.status} = 'scheduled')::int`,
+    scheduledByUser: sql<number>`COUNT(*) FILTER (WHERE ${contacts.status} = 'scheduled' AND ${contacts.scheduledByUserId} = ${userId})::int`,
+    touchedByUser: sql<number>`COUNT(*) FILTER (WHERE ${contacts.contactedByUserId} = ${userId} OR ${contacts.scheduledByUserId} = ${userId})::int`,
+    speedToLeadAll: sql<number>`COALESCE(AVG(EXTRACT(EPOCH FROM (${contacts.contactedAt} - ${contacts.createdAt})) / 60.0) FILTER (WHERE ${contacts.contactedAt} IS NOT NULL), 0)::float`,
+    speedToLeadUser: sql<number>`COALESCE(AVG(EXTRACT(EPOCH FROM (${contacts.contactedAt} - ${contacts.createdAt})) / 60.0) FILTER (WHERE ${contacts.contactedAt} IS NOT NULL AND ${contacts.contactedByUserId} = ${userId}), 0)::float`,
+    todaysFollowUps: sql<number>`COUNT(*) FILTER (WHERE ${contacts.followUpDate} >= ${today} AND ${contacts.followUpDate} < ${tomorrow})::int`,
+  }).from(contacts).where(and(...baseConditions));
+
+  const totalLeads = metricsRow?.totalLeads ?? 0;
+  const speedToLeadMinutes = isAdmin
+    ? (metricsRow?.speedToLeadAll ?? 0)
+    : (metricsRow?.speedToLeadUser ?? 0);
+
+  const scheduledCount = isAdmin
+    ? (metricsRow?.scheduledAll ?? 0)
+    : (metricsRow?.scheduledByUser ?? 0);
+  const denominatorCount = isAdmin
+    ? totalLeads
+    : (metricsRow?.touchedByUser ?? 0);
+  const setRate = denominatorCount > 0 ? (scheduledCount / denominatorCount) * 100 : 0;
 
   return {
     speedToLeadMinutes: Math.round(speedToLeadMinutes * 10) / 10,
     setRate: Math.round(setRate * 10) / 10,
     totalLeads,
-    todaysFollowUps: allLeadsForFollowUp.length,
+    todaysFollowUps: metricsRow?.todaysFollowUps ?? 0,
   };
 }
 
