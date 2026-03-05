@@ -14,6 +14,8 @@ import { useToast } from "@/hooks/use-toast";
 import { formatStatusLabel } from "@/lib/utils";
 import { downloadCsv } from "@/lib/csv";
 import type { PaginatedJobs, TerminologySettings } from "@shared/schema";
+import { useTerminology } from "@/hooks/useTerminology";
+import { useUsers } from "@/hooks/useUsers";
 import { useGlobalShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useHousecallProIntegration } from "@/hooks/useHousecallProIntegration";
 import { useHcpImport } from "@/hooks/useHcpImport";
@@ -73,15 +75,8 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
 
   useAddModalFromUrl(() => setAddModalOpen(true));
 
-  // Fetch terminology settings
-  const { data: terminology } = useQuery<TerminologySettings>({
-    queryKey: ["/api/terminology"],
-  });
-
-  // Fetch users for the advanced filter panel
-  const { data: usersData } = useQuery<Array<{ id: string; fullName: string }>>({
-    queryKey: ["/api/users"],
-  });
+  const { data: terminology } = useTerminology();
+  const { data: usersData } = useUsers();
 
   // Paginated jobs list
   const {

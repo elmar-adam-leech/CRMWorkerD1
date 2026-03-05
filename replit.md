@@ -48,17 +48,24 @@ The backend is built with Node.js and Express.js, offering a RESTful API with co
 - **Message cleanup parallelized**: Nightly cleanup uses `Promise.allSettled` across all contractors; one failure is logged, not propagated.
 - **`/api/auth/me`**: `getUser` and `getEnabledIntegrations` now run via `Promise.all` — saves one DB round-trip on every page load.
 - **Sync-status hook**: `staleTime` raised from 0 to 5,000 ms — prevents spurious re-fetches on every React render.
+- **GIN indexes on `contacts.emails[]` and `contacts.phones[]`**: `findMatchingContact` uses `unnest()` + `ANY()` scans on every webhook, import, and lead creation — GIN indexes make these array lookups efficient at scale.
+- **Index on `jobs.estimate_id`**: `getJobByEstimateId` no longer does a full jobs table scan.
+- **Index on `password_reset_tokens.user_id`**: Covers the password reset lookup flow.
+- **`upsertEmployees` N+1 eliminated**: Single `inArray` batch fetch replaces per-employee `SELECT` inside the sync loop; updates are parallelized with `Promise.all`.
+- **`getEmployees` hard cap**: `.limit(500)` added to match the pattern on other list endpoints.
+- **`useTerminology()` / `useUsers()` shared hooks**: Centralized in `client/src/hooks/`; Leads, Jobs, and Estimates pages all use them — combined with the global `staleTime: 5 min`, these queries are fetched once and shared across all three pages.
 
 ### DB Indexes (current full set)
 The following indexes exist beyond Drizzle's default primary keys:
-- `contacts`: contractor_id, contractor+status, contractor+type, contractor+date, contractor+scheduled, external_lookup (contractor+source+external_id), **housecall_pro_customer_id (partial)**, follow_up_date, tags, created_at, status, type, contacted_at, is_scheduled
-- `jobs`: contractor_id, contractor+status, contractor+date, contact_id, status, created_at, scheduled_date, **external_id (partial)**
+- `contacts`: contractor_id, contractor+status, contractor+type, contractor+date, contractor+scheduled, external_lookup (contractor+source+external_id), **housecall_pro_customer_id (partial)**, follow_up_date, tags, created_at, status, type, contacted_at, is_scheduled, **emails GIN**, **phones GIN**
+- `jobs`: contractor_id, contractor+status, contractor+date, contact_id, status, created_at, scheduled_date, **external_id (partial)**, **estimate_id (partial, non-null)**
 - `estimates`: contractor_id, contractor+status, contractor+date, contact_id, status, created_at, follow_up_date, **external_id+contractor_id (partial)**
 - `activities`: contractor_id, contractor+type, contractor+type+contact, contractor+date, contact_id, estimate_id, job_id, external_lookup (source+external_id), user_id, type, created_at
 - `messages`: contractor_id, contractor+contact, contractor+contact+created, contractor+phone, contact_id, estimate_id, external_message_id, from_number, to_number, direction, created_at
 - `leads`: contractor_id, contractor+status, contact_id, status, assigned_to_user_id
 - `user_invitations`: contractor_id
 - `business_targets`: contractor_id
+- `password_reset_tokens`: **user_id**
 
 ### Code Organization
 - `server/routes/public.ts` — unauthenticated routes only: `/sw-unregister`, `/api/public/*` (Places proxy, booking, availability, public lead intake), `/api/version`.

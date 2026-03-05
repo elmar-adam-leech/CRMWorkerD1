@@ -16,6 +16,8 @@ import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tansta
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Contact, PaginatedContacts, TerminologySettings } from "@shared/schema";
+import { useTerminology } from "@/hooks/useTerminology";
+import { useUsers } from "@/hooks/useUsers";
 import { cn, formatStatusLabel } from "@/lib/utils";
 import { downloadCsv } from "@/lib/csv";
 import { useWebSocketInvalidation } from "@/hooks/useWebSocketInvalidation";
@@ -95,13 +97,8 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const { data: terminology } = useQuery<TerminologySettings>({
-    queryKey: ["/api/terminology"],
-  });
-
-  const { data: usersData } = useQuery<Array<{ id: string; fullName: string }>>({
-    queryKey: ["/api/users"],
-  });
+  const { data: terminology } = useTerminology();
+  const { data: usersData } = useUsers();
 
   useGlobalShortcuts((type) => {
     if (type === "lead") setAddContactModal(true);

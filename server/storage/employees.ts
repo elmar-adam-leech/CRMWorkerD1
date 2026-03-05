@@ -3,7 +3,7 @@ import {
   employees,
 } from "@shared/schema";
 import { db } from "../db";
-import { eq, and, asc } from "drizzle-orm";
+import { eq, and, asc, inArray } from "drizzle-orm";
 import type { UpdateEmployee } from "../storage-types";
 
 function mapExternalRoleToInternalRoles(externalRole: string): string[] {
@@ -17,7 +17,10 @@ function mapExternalRoleToInternalRoles(externalRole: string): string[] {
 }
 
 async function getEmployees(contractorId: string): Promise<Employee[]> {
-  return await db.select().from(employees).where(eq(employees.contractorId, contractorId)).orderBy(asc(employees.lastName), asc(employees.firstName));
+  return await db.select().from(employees)
+    .where(eq(employees.contractorId, contractorId))
+    .orderBy(asc(employees.lastName), asc(employees.firstName))
+    .limit(500);
 }
 
 async function getEmployee(id: string, contractorId: string): Promise<Employee | undefined> {
@@ -35,36 +38,71 @@ async function getEmployeeByExternalId(externalId: string, externalSource: strin
 }
 
 async function upsertEmployees(employeeData: Omit<InsertEmployee, 'contractorId'>[], contractorId: string): Promise<Employee[]> {
-  const results: Employee[] = [];
-  for (const empData of employeeData) {
-    let existingEmployee: Employee | undefined;
-    if (empData.externalId && empData.externalSource) {
-      existingEmployee = await getEmployeeByExternalId(empData.externalId, empData.externalSource, contractorId);
+  if (employeeData.length === 0) return [];
+
+  const externalIds = employeeData
+    .filter(e => e.externalId && e.externalSource)
+    .map(e => e.externalId as string);
+
+  const existingMap = new Map<string, Employee>();
+  if (externalIds.length > 0) {
+    const existing = await db.select().from(employees).where(
+      and(
+        eq(employees.contractorId, contractorId),
+        inArray(employees.externalId, externalIds)
+      )
+    );
+    for (const emp of existing) {
+      if (emp.externalId) existingMap.set(emp.externalId, emp);
     }
+  }
+
+  const toInsert: (typeof employees.$inferInsert)[] = [];
+  const toUpdate: { id: string; data: UpdateEmployee }[] = [];
+
+  for (const empData of employeeData) {
+    const existingEmployee = empData.externalId ? existingMap.get(empData.externalId) : undefined;
     if (existingEmployee) {
-      const updateData: UpdateEmployee = {
-        firstName: empData.firstName,
-        lastName: empData.lastName,
-        email: empData.email,
-        isActive: empData.isActive,
-        externalRole: empData.externalRole,
-        ...(existingEmployee.roles.length === 0 && empData.externalRole ? {
-          roles: mapExternalRoleToInternalRoles(empData.externalRole)
-        } : {})
-      };
-      const result = await db.update(employees).set(updateData).where(eq(employees.id, existingEmployee.id)).returning();
-      results.push(result[0]);
+      toUpdate.push({
+        id: existingEmployee.id,
+        data: {
+          firstName: empData.firstName,
+          lastName: empData.lastName,
+          email: empData.email,
+          isActive: empData.isActive,
+          externalRole: empData.externalRole,
+          ...(existingEmployee.roles.length === 0 && empData.externalRole ? {
+            roles: mapExternalRoleToInternalRoles(empData.externalRole)
+          } : {})
+        }
+      });
     } else {
-      const newEmployee = await db.insert(employees).values({
+      toInsert.push({
         ...empData,
         contractorId,
         roles: empData.externalRole ? mapExternalRoleToInternalRoles(empData.externalRole) : [],
         createdAt: new Date(),
-        updatedAt: new Date()
-      }).returning();
-      results.push(newEmployee[0]);
+        updatedAt: new Date(),
+      });
     }
   }
+
+  const results: Employee[] = [];
+
+  if (toInsert.length > 0) {
+    const inserted = await db.insert(employees).values(toInsert).returning();
+    results.push(...inserted);
+  }
+
+  if (toUpdate.length > 0) {
+    const updated = await Promise.all(
+      toUpdate.map(({ id, data }) =>
+        db.update(employees).set(data).where(eq(employees.id, id)).returning().then(r => r[0])
+      )
+    );
+    results.push(...updated.filter(Boolean));
+  }
+
   return results;
 }
 

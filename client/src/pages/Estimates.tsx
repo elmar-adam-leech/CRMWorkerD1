@@ -16,6 +16,8 @@ import { useToast } from "@/hooks/use-toast";
 import { formatStatusLabel, cn } from "@/lib/utils";
 import { downloadCsv } from "@/lib/csv";
 import type { PaginatedEstimates, TerminologySettings, Contact, EstimateSummary } from "@shared/schema";
+import { useTerminology } from "@/hooks/useTerminology";
+import { useUsers } from "@/hooks/useUsers";
 import { useCommunicationActions } from "@/hooks/useCommunicationActions";
 import { useGlobalShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useFetchContact } from "@/hooks/useFetchContact";
@@ -94,13 +96,8 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
     estimateTitle?: string;
   }>({ isOpen: false });
 
-  const { data: terminology } = useQuery<TerminologySettings>({
-    queryKey: ["/api/terminology"],
-  });
-
-  const { data: usersData } = useQuery<Array<{ id: string; fullName: string }>>({
-    queryKey: ["/api/users"],
-  });
+  const { data: terminology } = useTerminology();
+  const { data: usersData } = useUsers();
 
   const { data: detailsContact } = useQuery<Contact>({
     queryKey: ["/api/contacts", detailsModal.estimate?.contactId],
