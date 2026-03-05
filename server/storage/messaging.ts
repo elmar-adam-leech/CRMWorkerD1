@@ -6,14 +6,17 @@ import {
   messages, templates, calls, activities, contacts, users,
 } from "@shared/schema";
 import { db } from "../db";
-import { eq, and, or, desc, asc, isNotNull, like, sql } from "drizzle-orm";
+import { eq, and, or, desc, asc, isNotNull, inArray, like, sql } from "drizzle-orm";
 import type { UpdateTemplate, UpdateCall, UpdateActivity } from "../storage-types";
 
 async function getMessages(contractorId: string, contactId?: string, estimateId?: string): Promise<Message[]> {
   const conditions = [eq(messages.contractorId, contractorId)];
   if (contactId) conditions.push(eq(messages.contactId, contactId));
   if (estimateId) conditions.push(eq(messages.estimateId, estimateId));
-  return await db.select().from(messages).where(and(...conditions));
+  return await db.select().from(messages)
+    .where(and(...conditions))
+    .orderBy(desc(messages.createdAt))
+    .limit(200);
 }
 
 async function getMessage(id: string, contractorId: string): Promise<Message | undefined> {
@@ -176,19 +179,20 @@ async function getConversations(contractorId: string, options: {
     conversationMap.get(message.contactId)!.messages.push(message);
   }
 
+  const conversationContactIds = Array.from(conversationMap.keys());
+  const contactRows = conversationContactIds.length > 0
+    ? await db.select({ id: contacts.id, name: contacts.name, phones: contacts.phones, emails: contacts.emails })
+        .from(contacts)
+        .where(and(inArray(contacts.id, conversationContactIds), eq(contacts.contractorId, contractorId)))
+    : [];
+  const contactLookup = new Map(contactRows.map(c => [c.id, c]));
+
   const conversations = [];
   for (const [contactId, conversation] of Array.from(conversationMap.entries())) {
-    let contactName = 'Unknown';
-    let contactPhone: string | undefined;
-    let contactEmail: string | undefined;
-
-    const contact = await db.select({ name: contacts.name, phones: contacts.phones, emails: contacts.emails })
-      .from(contacts).where(and(eq(contacts.id, contactId), eq(contacts.contractorId, contractorId))).limit(1);
-    if (contact[0]) {
-      contactName = contact[0].name;
-      contactPhone = contact[0].phones?.[0] || undefined;
-      contactEmail = contact[0].emails?.[0] || undefined;
-    }
+    const contact = contactLookup.get(contactId);
+    const contactName = contact?.name ?? 'Unknown';
+    const contactPhone = contact?.phones?.[0] ?? undefined;
+    const contactEmail = contact?.emails?.[0] ?? undefined;
 
     const sorted = conversation.messages.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     conversations.push({

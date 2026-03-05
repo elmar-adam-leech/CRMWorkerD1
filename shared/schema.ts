@@ -184,6 +184,8 @@ export const contacts = pgTable("contacts", {
   externalLookupIdx: index("contacts_external_lookup_idx").on(table.contractorId, table.externalSource, table.externalId),
   // Index for tag-based filtering in workflows
   tagsIdx: index("contacts_tags_idx").on(table.tags),
+  // Index for follow-up date queries (Follow-ups page)
+  followUpDateIdx: index("contacts_follow_up_date_idx").on(table.followUpDate),
 }));
 
 // Leads table - tracks individual lead submissions
@@ -287,6 +289,8 @@ export const estimates = pgTable("estimates", {
   contractorStatusIdx: index("estimates_contractor_status_idx").on(table.contractorId, table.status),
   // Composite index for contractor + date range queries
   contractorDateIdx: index("estimates_contractor_date_idx").on(table.contractorId, table.createdAt),
+  // Index for follow-up date queries (Follow-ups page)
+  followUpDateIdx: index("estimates_follow_up_date_idx").on(table.followUpDate),
 }));
 
 // Messages table for texting functionality

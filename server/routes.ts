@@ -6,11 +6,15 @@ import { aiErrorHandler } from './middleware/error-monitor';
 import { setupWebSocket } from './websocket';
 
 import { registerAuthRoutes } from './routes/auth';
+import { registerOAuthRoutes } from './routes/oauth';
 import { registerUserRoutes } from './routes/users';
 import { registerContactRoutes } from './routes/contacts';
+import { registerContactActionRoutes } from './routes/contact-actions';
 import { registerJobEstimateRoutes } from './routes/jobs-estimates';
 import { registerEmployeeRoutes } from './routes/employees';
 import { registerMessagingRoutes } from './routes/messaging';
+import { registerTemplateRoutes } from './routes/templates';
+import { registerEmailSyncRoutes } from './routes/email-sync';
 import { registerWorkflowRoutes } from './routes/workflows';
 import { registerAiRoutes } from './routes/ai';
 import { registerSettingsRoutes } from './routes/settings';
@@ -22,10 +26,8 @@ import { registerWebhookRoutes } from './routes/webhooks';
 import { registerPublicRoutes } from './routes/public';
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Add cookie parser middleware for JWT tokens in cookies
   app.use(cookieParser());
-  
-  // Add cache control headers for better cache management
+
   app.use((req, res, next) => {
     if (req.path.endsWith('.html') || req.path === '/' || req.path.startsWith('/api/')) {
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
@@ -38,8 +40,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     next();
   });
-  
-  // Apply authentication middleware to all /api routes except public auth routes and webhooks
+
   app.use("/api", (req, res, next: NextFunction) => {
     if (req.path === '/auth/login' || req.path === '/auth/register' || req.path === '/auth/logout') {
       return next();
@@ -59,13 +60,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     return requireAuth(req, res, next);
   });
 
-  // Register all domain route handlers
   registerAuthRoutes(app);
+  registerOAuthRoutes(app);
   registerUserRoutes(app);
+  registerContactActionRoutes(app);
   registerContactRoutes(app);
   registerJobEstimateRoutes(app);
   registerEmployeeRoutes(app);
   registerMessagingRoutes(app);
+  registerTemplateRoutes(app);
+  registerEmailSyncRoutes(app);
   registerWorkflowRoutes(app);
   registerAiRoutes(app);
   registerSettingsRoutes(app);
@@ -76,10 +80,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerWebhookRoutes(app);
   registerPublicRoutes(app);
 
-  // Add AI error handler middleware (should be last middleware)
   app.use(aiErrorHandler);
 
-  // Global error handler — catches errors propagated via next(error) from asyncHandler
   app.use((err: any, _req: any, res: any, _next: any) => {
     const status = err.status ?? err.statusCode ?? 500;
     const message = err.message ?? "Internal server error";
@@ -88,9 +90,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   const httpServer = createServer(app);
-  
-  // Setup WebSocket server for real-time messaging
   setupWebSocket(httpServer);
-  
+
   return httpServer;
 }
