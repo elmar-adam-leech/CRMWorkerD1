@@ -190,6 +190,12 @@ export function registerJobEstimateRoutes(app: Express): void {
     res.json(counts);
   }));
 
+  app.get("/api/estimates/follow-ups", asyncHandler(async (req, res) => {
+    const limit = Math.min(parseInt(req.query.limit as string) || 200, 500);
+    const estimatesList = await storage.getEstimatesWithFollowUp(req.user!.contractorId, limit);
+    res.json(estimatesList);
+  }));
+
   app.get("/api/estimates/:id", asyncHandler(async (req, res) => {
     const estimate = await storage.getEstimate(req.params.id, req.user!.contractorId);
     if (!estimate) {

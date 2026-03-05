@@ -936,40 +936,20 @@ export class SyncScheduler {
             const toEmails = email.to || [];
             const isOutbound = fromEmail.toLowerCase() === user.gmailEmail?.toLowerCase();
             
-            // Get all contacts to match against
-            const contactsData = await storage.getContacts(tenantId);
-            let matchingContact;
-            if (isOutbound && toEmails.length > 0) {
-              // For outbound, check if any recipient matches a contact's email
-              matchingContact = contactsData.find((contact: any) => 
-                contact.emails && toEmails.some((toEmail: string) =>
-                  contact.emails.some((e: string) => e.toLowerCase() === toEmail.toLowerCase())
-                )
-              );
-            } else if (!isOutbound) {
-              // For inbound, match on sender
-              matchingContact = contactsData.find((contact: any) => 
-                contact.emails && contact.emails.some((e: string) => e.toLowerCase() === fromEmail.toLowerCase())
-              );
+            // Match email to a CRM contact using a single indexed SQL lookup
+            const emailsToSearch = isOutbound ? toEmails : (fromEmail ? [fromEmail] : []);
+            const matchedContactId = emailsToSearch.length > 0
+              ? await storage.findMatchingContact(tenantId, emailsToSearch, [])
+              : null;
+            const matchingContact = matchedContactId
+              ? await storage.getContact(matchedContactId, tenantId)
+              : undefined;
+
+            // Only store email as an activity if it matches a CRM contact
+            if (!matchingContact) {
+              continue;
             }
-            
-            // Also try to match estimates
-            const estimatesData = await storage.getEstimates(tenantId);
-            let matchingEstimate;
-            if (isOutbound && toEmails.length > 0) {
-              // For outbound, check if any recipient matches an estimate's email
-              matchingEstimate = estimatesData.find((estimate: any) => 
-                estimate.emails && toEmails.some((toEmail: string) =>
-                  estimate.emails.some((e: string) => e.toLowerCase() === toEmail.toLowerCase())
-                )
-              );
-            } else if (!isOutbound) {
-              // For inbound, match on sender
-              matchingEstimate = estimatesData.find((estimate: any) => 
-                estimate.emails && estimate.emails.some((e: string) => e.toLowerCase() === fromEmail.toLowerCase())
-              );
-            }
-            
+
             const emailMetadata = {
               subject: email.subject,
               to: email.to,
@@ -977,19 +957,14 @@ export class SyncScheduler {
               messageId: email.id,
               direction: isOutbound ? 'outbound' : 'inbound',
             };
-            
-            // Only store email as an activity if it matches a CRM contact or estimate
-            if (!matchingContact && !matchingEstimate) {
-              continue;
-            }
 
             await storage.createActivity({
               type: 'email',
               title: isOutbound ? `Email sent: ${email.subject}` : `Email received: ${email.subject}`,
               content: email.body,
               metadata: JSON.stringify(emailMetadata),
-              contactId: matchingContact?.id || null,
-              estimateId: matchingEstimate?.id || null,
+              contactId: matchingContact.id,
+              estimateId: null,
               userId: user.id,
               externalId: email.id,
               externalSource: 'gmail',

@@ -126,11 +126,14 @@ export function registerJobWebhookRoutes(app: Express): void {
         return;
       }
       
-      const customers = await storage.getContacts(contractorId, 'customer');
-      let existingCustomer = customers.find((c: any) => 
-        (customerEmail && c.emails?.some((e: string) => e.toLowerCase() === customerEmail.toLowerCase())) ||
-        (customerPhone && c.phones?.includes(customerPhone))
+      const matchedCustomerId = await storage.findMatchingContact(
+        contractorId,
+        customerEmail ? [customerEmail] : [],
+        customerPhone ? [customerPhone] : []
       );
+      let existingCustomer = matchedCustomerId
+        ? await storage.getContact(matchedCustomerId, contractorId)
+        : undefined;
       
       let customerId: string;
       if (existingCustomer) {

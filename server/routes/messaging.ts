@@ -387,29 +387,21 @@ export function registerMessagingRoutes(app: Express): void {
       // For outbound emails, match on 'to', for inbound emails, match on 'from'
       const emailToMatch = isOutbound ? toEmail : fromEmail;
       
-      let matchingLead = null;
-      let matchingCustomer = null;
-      
-      // Only search for matches if we have a valid email to match
-      if (emailToMatch && typeof emailToMatch === 'string') {
-        const emailToMatchLower = emailToMatch.toLowerCase();
-        
-        // Search for leads (contacts with type='lead') with this email
-        const leadsData = await storage.getContacts(req.user!.contractorId, 'lead');
-        matchingLead = leadsData.find((lead: any) => 
-          lead.emails && Array.isArray(lead.emails) && lead.emails.some((e: any) => 
-            typeof e === 'string' && e.toLowerCase() === emailToMatchLower
-          )
-        );
+      let matchingContact = null;
 
-        // Search for customers (contacts with type='customer') with this email
-        const customers = await storage.getContacts(req.user!.contractorId, 'customer');
-        matchingCustomer = customers.find((customer: any) => 
-          customer.emails && Array.isArray(customer.emails) && customer.emails.some((e: any) => 
-            typeof e === 'string' && e.toLowerCase() === emailToMatchLower
-          )
+      // Only search for a match if we have a valid email to match
+      if (emailToMatch && typeof emailToMatch === 'string') {
+        const matchedId = await storage.findMatchingContact(
+          req.user!.contractorId,
+          [emailToMatch]
         );
+        if (matchedId) {
+          matchingContact = await storage.getContact(matchedId, req.user!.contractorId) ?? null;
+        }
       }
+
+      const matchingLead = matchingContact?.type === 'lead' ? matchingContact : null;
+      const matchingCustomer = matchingContact?.type === 'customer' ? matchingContact : null;
 
       // Create activity record with email metadata including direction
       const emailMetadata = {
@@ -425,25 +417,19 @@ export function registerMessagingRoutes(app: Express): void {
         title: direction === 'inbound' ? `Email received: ${email.subject}` : `Email sent: ${email.subject}`,
         content: email.body || email.snippet,
         metadata: JSON.stringify(emailMetadata),
-        contactId: matchingLead?.id || matchingCustomer?.id || null,
+        contactId: matchingContact?.id || null,
         userId: req.user!.userId,
         externalId: email.id,
         externalSource: 'gmail',
       }, req.user!.contractorId);
 
       // Broadcast activity update via WebSocket
-      if (matchingLead) {
+      if (matchingContact) {
         broadcastToContractor(req.user!.contractorId, {
           type: 'activity',
-          contactId: matchingLead.id,
-          leadId: matchingLead.id,
-          activity: activity,
-        });
-      } else if (matchingCustomer) {
-        broadcastToContractor(req.user!.contractorId, {
-          type: 'activity',
-          contactId: matchingCustomer.id,
-          customerId: matchingCustomer.id,
+          contactId: matchingContact.id,
+          ...(matchingLead ? { leadId: matchingLead.id } : {}),
+          ...(matchingCustomer ? { customerId: matchingCustomer.id } : {}),
           activity: activity,
         });
       }

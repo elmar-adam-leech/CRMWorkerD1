@@ -554,6 +554,75 @@ async function getDashboardMetrics(contractorId: string, userId: string, userRol
   };
 }
 
+export interface MetricsAggregates {
+  totalLeads: number;
+  contactedLeads: number;
+  avgSpeedToLeadHours: number;
+  scheduledLeads: number;
+  totalEstimates: number;
+  completedJobs: number;
+  revenue: number;
+}
+
+async function getMetricsAggregates(contractorId: string, periodStart: Date): Promise<MetricsAggregates> {
+  const [leadRow] = await db.select({
+    totalLeads: sql<number>`COUNT(*)::int`,
+    contactedLeads: sql<number>`COUNT(${contacts.contactedAt})::int`,
+    avgSpeedToLeadHours: sql<number>`COALESCE(
+      AVG(EXTRACT(EPOCH FROM (${contacts.contactedAt} - ${contacts.createdAt})) / 3600.0)
+        FILTER (WHERE ${contacts.contactedAt} IS NOT NULL), 0
+    )::float`,
+    scheduledLeads: sql<number>`COUNT(*) FILTER (WHERE ${contacts.isScheduled} = true)::int`,
+  })
+    .from(contacts)
+    .where(and(
+      eq(contacts.contractorId, contractorId),
+      eq(contacts.type, 'lead'),
+      gte(contacts.createdAt, periodStart)
+    ));
+
+  const [estimateRow] = await db.select({
+    totalEstimates: sql<number>`COUNT(*)::int`,
+  })
+    .from(estimates)
+    .where(and(
+      eq(estimates.contractorId, contractorId),
+      gte(estimates.createdAt, periodStart)
+    ));
+
+  const [jobRow] = await db.select({
+    completedJobs: sql<number>`COUNT(*)::int`,
+    revenue: sql<number>`COALESCE(SUM(${jobs.value}::numeric), 0)::float`,
+  })
+    .from(jobs)
+    .where(and(
+      eq(jobs.contractorId, contractorId),
+      eq(jobs.status, 'completed'),
+      gte(jobs.createdAt, periodStart)
+    ));
+
+  return {
+    totalLeads: leadRow?.totalLeads ?? 0,
+    contactedLeads: leadRow?.contactedLeads ?? 0,
+    avgSpeedToLeadHours: leadRow?.avgSpeedToLeadHours ?? 0,
+    scheduledLeads: leadRow?.scheduledLeads ?? 0,
+    totalEstimates: estimateRow?.totalEstimates ?? 0,
+    completedJobs: jobRow?.completedJobs ?? 0,
+    revenue: jobRow?.revenue ?? 0,
+  };
+}
+
+async function getContactsWithFollowUp(contractorId: string, limit = 200): Promise<Contact[]> {
+  return db.select()
+    .from(contacts)
+    .where(and(
+      eq(contacts.contractorId, contractorId),
+      isNotNull(contacts.followUpDate)
+    ))
+    .orderBy(contacts.followUpDate)
+    .limit(limit) as unknown as Contact[];
+}
+
 export const contactMethods = {
   getContacts,
   getContactsPaginated,
@@ -577,4 +646,6 @@ export const contactMethods = {
   deleteLead,
   deduplicateContacts,
   getDashboardMetrics,
+  getMetricsAggregates,
+  getContactsWithFollowUp,
 };

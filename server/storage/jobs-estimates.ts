@@ -352,6 +352,17 @@ async function deleteEstimate(id: string, contractorId: string): Promise<boolean
   return result.length > 0;
 }
 
+async function getEstimatesWithFollowUp(contractorId: string, limit = 200): Promise<Estimate[]> {
+  return db.select()
+    .from(estimates)
+    .where(and(
+      eq(estimates.contractorId, contractorId),
+      sql`${estimates.followUpDate} IS NOT NULL`
+    ))
+    .orderBy(estimates.followUpDate)
+    .limit(limit) as unknown as Estimate[];
+}
+
 export const jobEstimateMethods = {
   getJobs,
   getJobsPaginated,
@@ -371,4 +382,5 @@ export const jobEstimateMethods = {
   createEstimate,
   updateEstimate,
   deleteEstimate,
+  getEstimatesWithFollowUp,
 };

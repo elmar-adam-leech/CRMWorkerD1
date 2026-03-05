@@ -95,18 +95,12 @@ export default function FollowUps() {
     },
   });
 
-  // Fetch leads using unified contacts API
   const { data: leads = [], isLoading: leadsLoading } = useQuery<Contact[]>({
-    queryKey: ['/api/contacts', { type: 'lead' }],
-    queryFn: async () => {
-      const response = await fetch('/api/contacts?type=lead');
-      if (!response.ok) throw new Error('Failed to fetch contacts');
-      return response.json();
-    },
+    queryKey: ['/api/contacts/follow-ups'],
   });
 
   const { data: estimates = [], isLoading: estimatesLoading } = useQuery<Estimate[]>({
-    queryKey: ['/api/estimates'],
+    queryKey: ['/api/estimates/follow-ups'],
   });
 
   const isLoading = leadsLoading || estimatesLoading;
@@ -266,6 +260,7 @@ export default function FollowUps() {
       });
       queryClient.invalidateQueries({ queryKey: ['/api/contacts/paginated'] });
       queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/contacts/follow-ups'] });
     },
     onError: (error: any) => {
       toast({
@@ -290,6 +285,7 @@ export default function FollowUps() {
       });
       queryClient.invalidateQueries({ queryKey: ['/api/estimates/paginated'] });
       queryClient.invalidateQueries({ queryKey: ['/api/estimates'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/estimates/follow-ups'] });
     },
     onError: (error) => {
       toast({
@@ -313,6 +309,7 @@ export default function FollowUps() {
       });
       queryClient.invalidateQueries({ queryKey: ['/api/contacts/paginated'] });
       queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/contacts/follow-ups'] });
       setEditLeadModal({ isOpen: false });
       editForm.reset();
     },
@@ -339,6 +336,7 @@ export default function FollowUps() {
       queryClient.invalidateQueries({ queryKey: ['/api/contacts/paginated'] });
       queryClient.invalidateQueries({ queryKey: ['/api/contacts/status-counts'] });
       queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/contacts/follow-ups'] });
     },
     onError: (error: any) => {
       toast({

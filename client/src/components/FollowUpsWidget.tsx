@@ -17,18 +17,12 @@ interface FollowUpItem {
 }
 
 export function FollowUpsWidget() {
-  // Fetch leads using unified contacts API
   const { data: leads = [], isLoading: leadsLoading } = useQuery<Contact[]>({
-    queryKey: ['/api/contacts', { type: 'lead' }],
-    queryFn: async () => {
-      const response = await fetch('/api/contacts?type=lead');
-      if (!response.ok) throw new Error('Failed to fetch contacts');
-      return response.json();
-    },
+    queryKey: ['/api/contacts/follow-ups'],
   });
 
   const { data: estimates = [], isLoading: estimatesLoading } = useQuery<Estimate[]>({
-    queryKey: ['/api/estimates'],
+    queryKey: ['/api/estimates/follow-ups'],
   });
 
   const isLoading = leadsLoading || estimatesLoading;

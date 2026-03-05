@@ -247,19 +247,22 @@ export function registerGoogleSheetsRoutes(app: Express): void {
           continue;
         }
         
-        if (validationResult.data.phones && validationResult.data.phones.length > 0) {
-          const existingContacts = await storage.getContacts(contractorId, 'lead');
-          const duplicate = existingContacts.find(existingContact =>
-            existingContact.phones && existingContact.phones.some(existingPhone =>
-              validationResult.data.phones!.includes(existingPhone)
-            )
+        if (
+          (validationResult.data.phones && validationResult.data.phones.length > 0) ||
+          (validationResult.data.emails && validationResult.data.emails.length > 0)
+        ) {
+          const matchedId = await storage.findMatchingContact(
+            contractorId,
+            validationResult.data.emails ?? [],
+            validationResult.data.phones ?? []
           );
-          if (duplicate) {
-            const duplicatePhone = duplicate.phones?.find(p => validationResult.data.phones!.includes(p));
+          if (matchedId) {
+            const duplicate = await storage.getContact(matchedId, contractorId);
+            const duplicatePhone = duplicate?.phones?.find(p => validationResult.data.phones?.includes(p));
             results.skipped++;
             results.errors.push({
               row: importConfig.startRow + i,
-              error: `Skipped - Duplicate phone number ${duplicatePhone} (already exists for contact: ${duplicate.name})`,
+              error: `Skipped - Duplicate ${duplicatePhone ? `phone number ${duplicatePhone}` : 'email'} (already exists for contact: ${duplicate?.name})`,
               data: leadData
             });
             continue;

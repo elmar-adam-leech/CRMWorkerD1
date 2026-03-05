@@ -58,6 +58,12 @@ export function registerContactRoutes(app: Express): void {
     res.json(counts);
   }));
 
+  app.get("/api/contacts/follow-ups", asyncHandler(async (req, res) => {
+    const limit = Math.min(parseInt(req.query.limit as string) || 200, 500);
+    const contacts = await storage.getContactsWithFollowUp(req.user!.contractorId, limit);
+    res.json(contacts);
+  }));
+
   // Contact deduplication endpoint (admin only)
   app.post("/api/contacts/deduplicate", asyncHandler(async (req, res) => {
     // Only admins can trigger deduplication

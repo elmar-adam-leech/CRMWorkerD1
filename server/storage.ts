@@ -195,6 +195,19 @@ export interface IStorage {
     todaysFollowUps: number;
   }>;
 
+  getMetricsAggregates(contractorId: string, periodStart: Date): Promise<{
+    totalLeads: number;
+    contactedLeads: number;
+    avgSpeedToLeadHours: number;
+    scheduledLeads: number;
+    totalEstimates: number;
+    completedJobs: number;
+    revenue: number;
+  }>;
+
+  getContactsWithFollowUp(contractorId: string, limit?: number): Promise<Contact[]>;
+  getEstimatesWithFollowUp(contractorId: string, limit?: number): Promise<Estimate[]>;
+
   // Contact deduplication
   deduplicateContacts(contractorId: string): Promise<{
     duplicatesFound: number;
