@@ -7,6 +7,7 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
+  useDroppable,
   DragStartEvent,
   DragOverEvent,
   DragEndEvent,
@@ -125,6 +126,8 @@ function KanbanColumnComponent({
   onEditStatus?: (leadId: string) => void;
   onSetFollowUp?: (lead: Contact) => void;
 }) {
+  const { setNodeRef: setDropRef } = useDroppable({ id: column.id });
+
   return (
     <Card className="flex flex-col h-[calc(100vh-20rem)] min-w-[320px]">
       <CardHeader className="pb-3">
@@ -135,32 +138,34 @@ function KanbanColumnComponent({
       </CardHeader>
       <CardContent className="flex-1 overflow-hidden p-0">
         <ScrollArea className="h-full px-4 pb-4">
-          <SortableContext
-            items={column.leads.map((lead) => lead.id)}
-            strategy={verticalListSortingStrategy}
-          >
-            <div className="space-y-3">
-              {column.leads.map((lead) => (
-                <SortableLeadCard
-                  key={lead.id}
-                  lead={lead}
-                  onViewDetails={onViewDetails}
-                  onEdit={onEdit}
-                  onContact={onContact}
-                  onSchedule={onSchedule}
-                  onSendText={onSendText}
-                  onSendEmail={onSendEmail}
-                  onEditStatus={onEditStatus}
-                  onSetFollowUp={onSetFollowUp}
-                />
-              ))}
-            </div>
-          </SortableContext>
-          {column.leads.length === 0 && (
-            <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">
-              No leads
-            </div>
-          )}
+          <div ref={setDropRef} className="min-h-full">
+            <SortableContext
+              items={column.leads.map((lead) => lead.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <div className="space-y-3">
+                {column.leads.map((lead) => (
+                  <SortableLeadCard
+                    key={lead.id}
+                    lead={lead}
+                    onViewDetails={onViewDetails}
+                    onEdit={onEdit}
+                    onContact={onContact}
+                    onSchedule={onSchedule}
+                    onSendText={onSendText}
+                    onSendEmail={onSendEmail}
+                    onEditStatus={onEditStatus}
+                    onSetFollowUp={onSetFollowUp}
+                  />
+                ))}
+              </div>
+            </SortableContext>
+            {column.leads.length === 0 && (
+              <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">
+                No leads
+              </div>
+            )}
+          </div>
         </ScrollArea>
       </CardContent>
     </Card>
@@ -188,7 +193,9 @@ export function LeadKanbanBoard({
   ]);
 
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
