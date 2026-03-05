@@ -58,8 +58,13 @@ import { userMethods } from "./storage/users";
 import { contactMethods } from "./storage/contacts";
 import { jobEstimateMethods } from "./storage/jobs-estimates";
 import { messagingMethods } from "./storage/messaging";
+import { templateMethods } from "./storage/templates";
+import { activityMethods } from "./storage/activities";
 import { integrationMethods } from "./storage/integrations";
+import { employeeMethods } from "./storage/employees";
 import { dialpadMethods } from "./storage/dialpad";
+import { notificationMethods } from "./storage/notifications";
+import { settingsMethods } from "./storage/settings";
 import { workflowMethods } from "./storage/workflows";
 
 export interface IStorage {
@@ -119,6 +124,7 @@ export interface IStorage {
   getContactByPhone(phone: string, contractorId: string): Promise<Contact | undefined>;
   getContactByHousecallProCustomerId(housecallProCustomerId: string, contractorId: string): Promise<Contact | undefined>;
   createContact(contact: Omit<InsertContact, 'contractorId'>, contractorId: string): Promise<Contact>;
+  bulkCreateContacts(contacts: Array<Omit<InsertContact, 'contractorId'>>, contractorId: string): Promise<{ inserted: number }>;
   updateContact(id: string, contact: UpdateContact, contractorId: string): Promise<Contact | undefined>;
   markContactContacted(contactId: string, contractorId: string, userId: string, contactedAt?: Date): Promise<Contact | undefined>;
   deleteContact(id: string, contractorId: string): Promise<boolean>;
@@ -432,7 +438,12 @@ export const storage: IStorage = {
   ...contactMethods,
   ...jobEstimateMethods,
   ...messagingMethods,
+  ...templateMethods,
+  ...activityMethods,
   ...integrationMethods,
+  ...employeeMethods,
   ...dialpadMethods,
+  ...notificationMethods,
+  ...settingsMethods,
   ...workflowMethods,
 };

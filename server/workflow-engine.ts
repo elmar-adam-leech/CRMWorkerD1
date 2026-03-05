@@ -413,16 +413,18 @@ export class WorkflowEngine {
 
       console.log(`[Workflow Engine] Found ${matchingWorkflows.length} matching workflows for ${eventType}`);
 
+      let enrichedData: Record<string, unknown> = entityData;
+      if (eventType.startsWith('estimate_') && entityData.id) {
+        const enriched = await storage.getEstimateWithContact(String(entityData.id), contractorId);
+        if (enriched) enrichedData = enriched as Record<string, unknown>;
+      } else if (eventType.startsWith('job_') && entityData.id) {
+        const enriched = await storage.getJobWithContact(String(entityData.id), contractorId);
+        if (enriched) enrichedData = enriched as Record<string, unknown>;
+      }
+
       for (const workflow of matchingWorkflows) {
         try {
-          let triggerData = entityData;
-          if (eventType.startsWith('estimate_')) {
-            const enrichedEstimate = await storage.getEstimateWithContact(String(entityData.id), contractorId);
-            triggerData = (enrichedEstimate as Record<string, unknown> | null) || entityData;
-          } else if (eventType.startsWith('job_')) {
-            const enrichedJob = await storage.getJobWithContact(String(entityData.id), contractorId);
-            triggerData = (enrichedJob as Record<string, unknown> | null) || entityData;
-          }
+          const triggerData = enrichedData;
 
           const execution = await storage.createWorkflowExecution(
             {

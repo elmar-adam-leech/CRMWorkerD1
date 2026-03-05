@@ -204,6 +204,8 @@ export function registerContactActionRoutes(app: Express): void {
         errors: [] as Array<{ row: number; error: string; data: any }>
       };
 
+      const validContacts: Array<ReturnType<typeof insertContactSchema.omit> extends { parse: (v: any) => infer T } ? T : never> = [];
+
       for (let i = 1; i < lines.length; i++) {
         try {
           const values: string[] = [];
@@ -266,8 +268,7 @@ export function registerContactActionRoutes(app: Express): void {
             continue;
           }
 
-          await storage.createContact(validationResult.data, contractorId);
-          results.imported++;
+          (validContacts as any[]).push(validationResult.data);
         } catch (error) {
           results.errors.push({
             row: i + 1,
@@ -275,6 +276,11 @@ export function registerContactActionRoutes(app: Express): void {
             data: lines[i]
           });
         }
+      }
+
+      if (validContacts.length > 0) {
+        const bulkResult = await storage.bulkCreateContacts(validContacts as any[], contractorId);
+        results.imported = bulkResult.inserted;
       }
 
       console.log(`CSV import completed for contractor ${contractorId}: ${results.imported}/${results.total} leads imported`);

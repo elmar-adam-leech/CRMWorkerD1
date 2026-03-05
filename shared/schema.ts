@@ -113,7 +113,9 @@ export const userInvitations = pgTable("user_invitations", {
   acceptedAt: timestamp("accepted_at"),
   expiresAt: timestamp("expires_at").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  contractorIdIdx: index("user_invitations_contractor_id_idx").on(table.contractorId),
+}));
 
 // Contractors table
 export const contractors = pgTable("contractors", {
@@ -226,6 +228,7 @@ export const leads = pgTable("leads", {
   contractorStatusIdx: index("leads_contractor_status_idx").on(table.contractorId, table.status),
   contractorDateIdx: index("leads_contractor_date_idx").on(table.contractorId, table.createdAt),
   contactCreatedIdx: index("leads_contact_created_idx").on(table.contactId, table.createdAt),
+  assignedToUserIdIdx: index("leads_assigned_to_user_id_idx").on(table.assignedToUserId),
 }));
 
 // Jobs table
@@ -432,7 +435,9 @@ export const businessTargets = pgTable("business_targets", {
   closeRatePercent: decimal("close_rate_percent", { precision: 5, scale: 2 }).notNull().default(sql`25.00`), // Target close rate percentage (estimates to jobs)
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  contractorIdIdx: index("business_targets_contractor_id_idx").on(table.contractorId),
+}));
 
 // Contractor credentials table for secure per-contractor API key storage
 export const contractorCredentials = pgTable("contractor_credentials", {

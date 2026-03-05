@@ -4,7 +4,7 @@ import {
   contacts, leads, messages, activities, estimates, jobs, users,
 } from "@shared/schema";
 import { db } from "../db";
-import { eq, and, or, desc, ne, gt, lte, gte, lt, ilike, isNotNull, notInArray, sql, count } from "drizzle-orm";
+import { eq, and, or, desc, ne, gt, lte, gte, lt, ilike, isNotNull, notInArray, inArray, sql, count } from "drizzle-orm";
 import { normalizePhoneArrayForStorage } from "../utils/phone-normalizer";
 import type { UpdateContact } from "../storage-types";
 
@@ -51,39 +51,42 @@ async function getContactsPaginated(contractorId: string, options: {
     )!);
   }
 
-  const contactsData = await db.select({
-    id: contacts.id,
-    name: contacts.name,
-    emails: sql<string[]>`COALESCE(${contacts.emails}, '{}')`,
-    phones: sql<string[]>`COALESCE(${contacts.phones}, '{}')`,
-    address: contacts.address,
-    type: contacts.type,
-    status: contacts.status,
-    source: contacts.source,
-    notes: contacts.notes,
-    tags: sql<string[]>`COALESCE(${contacts.tags}, '{}')`,
-    followUpDate: contacts.followUpDate,
-    pageUrl: contacts.pageUrl,
-    utmSource: contacts.utmSource,
-    utmMedium: contacts.utmMedium,
-    utmCampaign: contacts.utmCampaign,
-    utmTerm: contacts.utmTerm,
-    utmContent: contacts.utmContent,
-    isScheduled: contacts.isScheduled,
-    contactedAt: contacts.contactedAt,
-    housecallProCustomerId: contacts.housecallProCustomerId,
-    housecallProEstimateId: contacts.housecallProEstimateId,
-    scheduledAt: contacts.scheduledAt,
-    scheduledEmployeeId: contacts.scheduledEmployeeId,
-    contractorId: contacts.contractorId,
-    createdAt: contacts.createdAt,
-    updatedAt: contacts.updatedAt,
-    hasJobs: sql<boolean>`EXISTS(SELECT 1 FROM ${jobs} WHERE ${jobs.contactId} = ${contacts.id})`,
-  })
-  .from(contacts)
-  .where(and(...conditions))
-  .orderBy(desc(contacts.createdAt))
-  .limit(limit + 1);
+  const [contactsData, total] = await Promise.all([
+    db.select({
+      id: contacts.id,
+      name: contacts.name,
+      emails: sql<string[]>`COALESCE(${contacts.emails}, '{}')`,
+      phones: sql<string[]>`COALESCE(${contacts.phones}, '{}')`,
+      address: contacts.address,
+      type: contacts.type,
+      status: contacts.status,
+      source: contacts.source,
+      notes: contacts.notes,
+      tags: sql<string[]>`COALESCE(${contacts.tags}, '{}')`,
+      followUpDate: contacts.followUpDate,
+      pageUrl: contacts.pageUrl,
+      utmSource: contacts.utmSource,
+      utmMedium: contacts.utmMedium,
+      utmCampaign: contacts.utmCampaign,
+      utmTerm: contacts.utmTerm,
+      utmContent: contacts.utmContent,
+      isScheduled: contacts.isScheduled,
+      contactedAt: contacts.contactedAt,
+      housecallProCustomerId: contacts.housecallProCustomerId,
+      housecallProEstimateId: contacts.housecallProEstimateId,
+      scheduledAt: contacts.scheduledAt,
+      scheduledEmployeeId: contacts.scheduledEmployeeId,
+      contractorId: contacts.contractorId,
+      createdAt: contacts.createdAt,
+      updatedAt: contacts.updatedAt,
+      hasJobs: sql<boolean>`EXISTS(SELECT 1 FROM ${jobs} WHERE ${jobs.contactId} = ${contacts.id})`,
+    })
+    .from(contacts)
+    .where(and(...conditions))
+    .orderBy(desc(contacts.createdAt))
+    .limit(limit + 1),
+    getContactsCount(contractorId, { type: options.type, status: options.status, search: options.search }),
+  ]);
 
   const hasMore = contactsData.length > limit;
   if (hasMore) contactsData.pop();
@@ -91,12 +94,6 @@ async function getContactsPaginated(contractorId: string, options: {
   const nextCursor = hasMore && contactsData.length > 0
     ? contactsData[contactsData.length - 1].createdAt.toISOString()
     : null;
-
-  const total = await getContactsCount(contractorId, {
-    type: options.type,
-    status: options.status,
-    search: options.search,
-  });
 
   return { data: contactsData, pagination: { total, hasMore, nextCursor } };
 }
@@ -472,10 +469,14 @@ async function deduplicateContacts(contractorId: string): Promise<{ duplicatesFo
   let contactsMerged = 0;
   let contactsDeleted = 0;
 
-  for (const [, duplicates] of Array.from(contactGroups.entries())) {
+  const allDuplicateIds: string[] = [];
+
+  await Promise.all(Array.from(contactGroups.entries()).map(async ([, duplicates]) => {
     const primary = duplicates[0];
     const duplicatesToMerge = duplicates.slice(1);
-    console.log(`[deduplicateContacts] Merging ${duplicatesToMerge.length} duplicates into primary: ${primary.id} (${primary.name})`);
+    if (duplicatesToMerge.length === 0) return;
+
+    const duplicateIds = duplicatesToMerge.map(d => d.id);
 
     const allPhones = new Set<string>();
     const allEmails = new Set<string>();
@@ -484,18 +485,21 @@ async function deduplicateContacts(contractorId: string): Promise<{ duplicatesFo
       contact.emails?.forEach(email => allEmails.add(email.toLowerCase()));
     }
 
-    await db.update(contacts).set({ phones: Array.from(allPhones), emails: Array.from(allEmails), updatedAt: new Date() }).where(eq(contacts.id, primary.id));
+    await Promise.all([
+      db.update(contacts).set({ phones: Array.from(allPhones), emails: Array.from(allEmails), updatedAt: new Date() }).where(eq(contacts.id, primary.id)),
+      db.update(messages as any).set({ contactId: primary.id }).where(inArray((messages as any).contactId, duplicateIds)),
+      db.update(activities).set({ contactId: primary.id }).where(inArray(activities.contactId, duplicateIds)),
+      db.update(estimates).set({ contactId: primary.id }).where(inArray(estimates.contactId, duplicateIds)),
+      db.update(jobs).set({ contactId: primary.id }).where(inArray(jobs.contactId, duplicateIds)),
+    ]);
 
-    for (const duplicate of duplicatesToMerge) {
-      console.log(`[deduplicateContacts] Updating references from ${duplicate.id} to ${primary.id}`);
-      await db.update(messages as any).set({ contactId: primary.id }).where(eq((messages as any).contactId, duplicate.id));
-      await db.update(activities).set({ contactId: primary.id }).where(eq(activities.contactId, duplicate.id));
-      await db.update(estimates).set({ contactId: primary.id }).where(eq(estimates.contactId, duplicate.id));
-      await db.update(jobs).set({ contactId: primary.id }).where(eq(jobs.contactId, duplicate.id));
-      await db.delete(contacts).where(eq(contacts.id, duplicate.id));
-      contactsDeleted++;
-    }
+    allDuplicateIds.push(...duplicateIds);
+    contactsDeleted += duplicateIds.length;
     contactsMerged++;
+  }));
+
+  if (allDuplicateIds.length > 0) {
+    await db.delete(contacts).where(inArray(contacts.id, allDuplicateIds));
   }
 
   console.log(`[deduplicateContacts] Completed: ${contactsMerged} contacts merged, ${contactsDeleted} duplicates deleted`);
@@ -619,6 +623,17 @@ async function getContactsWithFollowUp(contractorId: string, limit = 200): Promi
     .limit(limit) as unknown as Contact[];
 }
 
+async function bulkCreateContacts(contactList: Array<Omit<InsertContact, 'contractorId'>>, contractorId: string): Promise<{ inserted: number }> {
+  if (contactList.length === 0) return { inserted: 0 };
+  const prepared = contactList.map(c => ({
+    ...c,
+    phones: c.phones ? normalizePhoneArrayForStorage(c.phones) : [],
+    contractorId,
+  }));
+  const result = await db.insert(contacts).values(prepared).onConflictDoNothing().returning({ id: contacts.id });
+  return { inserted: result.length };
+}
+
 export const contactMethods = {
   getContacts,
   getContactsPaginated,
@@ -629,6 +644,7 @@ export const contactMethods = {
   getContactByPhone,
   getContactByHousecallProCustomerId,
   createContact,
+  bulkCreateContacts,
   updateContact,
   markContactContacted,
   deleteContact,

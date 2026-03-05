@@ -1,13 +1,11 @@
 import {
   type Message, type InsertMessage,
-  type Template, type InsertTemplate,
   type Call, type InsertCall,
-  type Activity, type InsertActivity,
-  messages, templates, calls, activities, contacts, users,
+  messages, calls, activities, contacts, users,
 } from "@shared/schema";
 import { db } from "../db";
-import { eq, and, or, desc, asc, isNotNull, inArray, like, sql } from "drizzle-orm";
-import type { UpdateTemplate, UpdateCall, UpdateActivity } from "../storage-types";
+import { eq, and, desc, inArray, like, sql } from "drizzle-orm";
+import type { UpdateCall } from "../storage-types";
 
 async function getMessages(contractorId: string, contactId?: string, estimateId?: string): Promise<Message[]> {
   const conditions = [eq(messages.contractorId, contractorId)];
@@ -158,7 +156,7 @@ async function getConversations(contractorId: string, options: {
     allMessages = [...batchSms, ...batchEmailMessages as Message[]];
   } else {
     const [allSms, allEmailActivities] = await Promise.all([
-      db.select().from(messages).where(eq(messages.contractorId, contractorId)).orderBy(desc(messages.createdAt)),
+      db.select().from(messages).where(eq(messages.contractorId, contractorId)).orderBy(desc(messages.createdAt)).limit(2000),
       db.select({
         id: activities.id, content: activities.content, contactId: activities.contactId,
         estimateId: activities.estimateId, userId: activities.userId, contractorId: activities.contractorId,
@@ -166,6 +164,7 @@ async function getConversations(contractorId: string, options: {
       }).from(activities).leftJoin(users, eq(activities.userId, users.id))
         .where(and(eq(activities.contractorId, contractorId), eq(activities.type, 'email')))
         .orderBy(desc(activities.createdAt))
+        .limit(2000)
     ]);
 
     const allEmailMessages = allEmailActivities.map(emailActivityToMessage);
@@ -223,27 +222,28 @@ async function getConversationMessages(contractorId: string, contactId: string):
   const contactEmails = contact[0]?.emails || [];
   console.log(`[getConversationMessages] Contact phones: ${JSON.stringify(contactPhones)}, emails: ${JSON.stringify(contactEmails)}`);
 
-  const smsMessages = await db.select({
-    id: messages.id, type: messages.type, status: messages.status, direction: messages.direction,
-    content: messages.content, toNumber: messages.toNumber, fromNumber: messages.fromNumber,
-    contactId: messages.contactId, estimateId: messages.estimateId, userId: messages.userId,
-    externalMessageId: messages.externalMessageId, contractorId: messages.contractorId,
-    createdAt: messages.createdAt, userName: users.name,
-  }).from(messages).leftJoin(users, eq(messages.userId, users.id))
-    .where(and(eq(messages.contractorId, contractorId), eq(messages.contactId, contactId)))
-    .orderBy(desc(messages.createdAt))
-    .limit(500);
+  const [smsMessages, emailActivities] = await Promise.all([
+    db.select({
+      id: messages.id, type: messages.type, status: messages.status, direction: messages.direction,
+      content: messages.content, toNumber: messages.toNumber, fromNumber: messages.fromNumber,
+      contactId: messages.contactId, estimateId: messages.estimateId, userId: messages.userId,
+      externalMessageId: messages.externalMessageId, contractorId: messages.contractorId,
+      createdAt: messages.createdAt, userName: users.name,
+    }).from(messages).leftJoin(users, eq(messages.userId, users.id))
+      .where(and(eq(messages.contractorId, contractorId), eq(messages.contactId, contactId)))
+      .orderBy(desc(messages.createdAt))
+      .limit(500),
+    db.select({
+      id: activities.id, content: activities.content, contactId: activities.contactId,
+      estimateId: activities.estimateId, userId: activities.userId, contractorId: activities.contractorId,
+      createdAt: activities.createdAt, metadata: activities.metadata, userName: users.name,
+    }).from(activities).leftJoin(users, eq(activities.userId, users.id))
+      .where(and(eq(activities.contractorId, contractorId), eq(activities.type, 'email'), eq(activities.contactId, contactId)))
+      .orderBy(desc(activities.createdAt))
+      .limit(500),
+  ]);
 
   console.log(`[getConversationMessages] Found ${smsMessages.length} SMS messages`);
-
-  const emailActivities = await db.select({
-    id: activities.id, content: activities.content, contactId: activities.contactId,
-    estimateId: activities.estimateId, userId: activities.userId, contractorId: activities.contractorId,
-    createdAt: activities.createdAt, metadata: activities.metadata, userName: users.name,
-  }).from(activities).leftJoin(users, eq(activities.userId, users.id))
-    .where(and(eq(activities.contractorId, contractorId), eq(activities.type, 'email'), eq(activities.contactId, contactId)))
-    .orderBy(desc(activities.createdAt))
-    .limit(500);
 
   const emailMessages = emailActivities.map(emailActivityToMessage);
 
@@ -253,40 +253,13 @@ async function getConversationMessages(contractorId: string, contactId: string):
 }
 
 async function getConversationMessageCount(contractorId: string, contactId: string): Promise<number> {
-  const smsResult = await db.select({ count: sql<number>`count(*)::int` }).from(messages)
-    .where(and(eq(messages.contractorId, contractorId), eq(messages.contactId, contactId)));
-  const emailResult = await db.select({ count: sql<number>`count(*)::int` }).from(activities)
-    .where(and(eq(activities.contractorId, contractorId), eq(activities.type, 'email'), eq(activities.contactId, contactId)));
+  const [smsResult, emailResult] = await Promise.all([
+    db.select({ count: sql<number>`count(*)::int` }).from(messages)
+      .where(and(eq(messages.contractorId, contractorId), eq(messages.contactId, contactId))),
+    db.select({ count: sql<number>`count(*)::int` }).from(activities)
+      .where(and(eq(activities.contractorId, contractorId), eq(activities.type, 'email'), eq(activities.contactId, contactId))),
+  ]);
   return (smsResult[0]?.count || 0) + (emailResult[0]?.count || 0);
-}
-
-async function getTemplates(contractorId: string, type?: 'text' | 'email'): Promise<Template[]> {
-  const conditions = [eq(templates.contractorId, contractorId)];
-  if (type) conditions.push(eq(templates.type, type));
-  return await db.select().from(templates).where(and(...conditions));
-}
-
-async function getTemplate(id: string, contractorId: string): Promise<Template | undefined> {
-  const result = await db.select().from(templates).where(and(eq(templates.id, id), eq(templates.contractorId, contractorId))).limit(1);
-  return result[0];
-}
-
-async function createTemplate(template: Omit<InsertTemplate, 'contractorId'>, contractorId: string): Promise<Template> {
-  const result = await db.insert(templates).values({ ...template, contractorId }).returning();
-  return result[0];
-}
-
-async function updateTemplate(id: string, template: UpdateTemplate, contractorId: string): Promise<Template | undefined> {
-  const result = await db.update(templates)
-    .set({ ...template, updatedAt: new Date() })
-    .where(and(eq(templates.id, id), eq(templates.contractorId, contractorId)))
-    .returning();
-  return result[0];
-}
-
-async function deleteTemplate(id: string, contractorId: string): Promise<boolean> {
-  const result = await db.delete(templates).where(and(eq(templates.id, id), eq(templates.contractorId, contractorId)));
-  return (result.rowCount ?? 0) > 0;
 }
 
 async function getCalls(contractorId: string): Promise<Call[]> {
@@ -319,64 +292,6 @@ async function updateCall(id: string, call: UpdateCall, contractorId: string): P
   return result[0];
 }
 
-async function getActivities(contractorId: string, options: {
-  contactId?: string;
-  estimateId?: string;
-  jobId?: string;
-  type?: 'note' | 'call' | 'email' | 'sms' | 'meeting' | 'follow_up' | 'status_change';
-  limit?: number;
-  offset?: number;
-} = {}): Promise<Activity[]> {
-  const conditions = [
-    eq(activities.contractorId, contractorId),
-    or(isNotNull(activities.contactId), isNotNull(activities.estimateId), isNotNull(activities.jobId))!
-  ];
-
-  if (options.contactId) conditions.push(eq(activities.contactId, options.contactId));
-  if (options.estimateId) conditions.push(eq(activities.estimateId, options.estimateId));
-  if (options.jobId) conditions.push(eq(activities.jobId, options.jobId));
-  if (options.type) conditions.push(eq(activities.type, options.type));
-
-  const result = await db.select({
-    id: activities.id, type: activities.type, title: activities.title, content: activities.content,
-    contactId: activities.contactId, estimateId: activities.estimateId, jobId: activities.jobId,
-    userId: activities.userId, contractorId: activities.contractorId,
-    createdAt: activities.createdAt, updatedAt: activities.updatedAt, userName: users.name,
-  }).from(activities).leftJoin(users, eq(activities.userId, users.id))
-    .where(and(...conditions))
-    .orderBy(desc(activities.createdAt))
-    .limit(options.limit || 50)
-    .offset(options.offset || 0);
-
-  return result as unknown as Activity[];
-}
-
-async function getActivity(id: string, contractorId: string): Promise<Activity | undefined> {
-  const result = await db.select().from(activities).where(and(
-    eq(activities.id, id),
-    eq(activities.contractorId, contractorId)
-  )).limit(1);
-  return result[0];
-}
-
-async function createActivity(activity: Omit<InsertActivity, 'contractorId'>, contractorId: string): Promise<Activity> {
-  const result = await db.insert(activities).values({ ...activity, contractorId }).returning();
-  return result[0];
-}
-
-async function updateActivity(id: string, activity: UpdateActivity, contractorId: string): Promise<Activity | undefined> {
-  const result = await db.update(activities)
-    .set({ ...activity, updatedAt: new Date() })
-    .where(and(eq(activities.id, id), eq(activities.contractorId, contractorId)))
-    .returning();
-  return result[0];
-}
-
-async function deleteActivity(id: string, contractorId: string): Promise<boolean> {
-  const result = await db.delete(activities).where(and(eq(activities.id, id), eq(activities.contractorId, contractorId))).returning();
-  return result.length > 0;
-}
-
 export const messagingMethods = {
   getMessages,
   getMessage,
@@ -385,19 +300,9 @@ export const messagingMethods = {
   getConversations,
   getConversationMessages,
   getConversationMessageCount,
-  getTemplates,
-  getTemplate,
-  createTemplate,
-  updateTemplate,
-  deleteTemplate,
   getCalls,
   getCall,
   getCallByExternalId,
   createCall,
   updateCall,
-  getActivities,
-  getActivity,
-  createActivity,
-  updateActivity,
-  deleteActivity,
 };

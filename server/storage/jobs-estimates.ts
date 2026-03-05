@@ -43,25 +43,28 @@ async function getJobsPaginated(contractorId: string, options: {
     )!);
   }
 
-  const jobsData = await db.select({
-    id: jobs.id,
-    title: jobs.title,
-    type: jobs.type,
-    status: jobs.status,
-    priority: jobs.priority,
-    value: jobs.value,
-    scheduledDate: jobs.scheduledDate,
-    contactId: jobs.contactId,
-    contactName: contacts.name,
-    estimatedHours: jobs.estimatedHours,
-    createdAt: jobs.createdAt,
-    updatedAt: jobs.updatedAt,
-  })
-  .from(jobs)
-  .leftJoin(contacts, eq(jobs.contactId, contacts.id))
-  .where(and(...conditions))
-  .orderBy(desc(jobs.createdAt))
-  .limit(limit + 1);
+  const [jobsData, total] = await Promise.all([
+    db.select({
+      id: jobs.id,
+      title: jobs.title,
+      type: jobs.type,
+      status: jobs.status,
+      priority: jobs.priority,
+      value: jobs.value,
+      scheduledDate: jobs.scheduledDate,
+      contactId: jobs.contactId,
+      contactName: contacts.name,
+      estimatedHours: jobs.estimatedHours,
+      createdAt: jobs.createdAt,
+      updatedAt: jobs.updatedAt,
+    })
+    .from(jobs)
+    .leftJoin(contacts, eq(jobs.contactId, contacts.id))
+    .where(and(...conditions))
+    .orderBy(desc(jobs.createdAt))
+    .limit(limit + 1),
+    getJobsCount(contractorId, { status: options.status, search: options.search }),
+  ]);
 
   const hasMore = jobsData.length > limit;
   if (hasMore) jobsData.pop();
@@ -69,8 +72,6 @@ async function getJobsPaginated(contractorId: string, options: {
   const nextCursor = hasMore && jobsData.length > 0
     ? jobsData[jobsData.length - 1].createdAt.toISOString()
     : null;
-
-  const total = await getJobsCount(contractorId, { status: options.status, search: options.search });
 
   return {
     data: jobsData.map(job => ({ ...job, contactName: job.contactName || 'Unknown Contact' })),
@@ -236,31 +237,32 @@ async function getEstimatesPaginated(contractorId: string, options: {
     )!);
   }
 
-  const estimatesData = await db.select({
-    id: estimates.id,
-    title: estimates.title,
-    amount: estimates.amount,
-    status: estimates.status,
-    validUntil: estimates.validUntil,
-    contactId: estimates.contactId,
-    contactName: sql<string>`COALESCE(${contacts.name}, 'Unknown Contact')`,
-    createdAt: estimates.createdAt,
-    updatedAt: estimates.updatedAt,
-  })
-  .from(estimates)
-  .leftJoin(contacts, eq(estimates.contactId, contacts.id))
-  .where(and(...conditions))
-  .orderBy(desc(estimates.createdAt))
-  .limit(limit + 1);
+  const [estimatesData, total] = await Promise.all([
+    db.select({
+      id: estimates.id,
+      title: estimates.title,
+      amount: estimates.amount,
+      status: estimates.status,
+      validUntil: estimates.validUntil,
+      contactId: estimates.contactId,
+      contactName: sql<string>`COALESCE(${contacts.name}, 'Unknown Contact')`,
+      createdAt: estimates.createdAt,
+      updatedAt: estimates.updatedAt,
+    })
+    .from(estimates)
+    .leftJoin(contacts, eq(estimates.contactId, contacts.id))
+    .where(and(...conditions))
+    .orderBy(desc(estimates.createdAt))
+    .limit(limit + 1),
+    getEstimatesCount(contractorId, { status: options.status, search: options.search }),
+  ]);
 
   const hasMore = estimatesData.length > limit;
-  if (hasMore) estimatesData.pop();
+  if (estimatesData.length > limit) estimatesData.pop();
 
   const nextCursor = hasMore && estimatesData.length > 0
     ? estimatesData[estimatesData.length - 1].createdAt.toISOString()
     : null;
-
-  const total = await getEstimatesCount(contractorId, { status: options.status, search: options.search });
 
   return { data: estimatesData, pagination: { total, hasMore, nextCursor } };
 }
