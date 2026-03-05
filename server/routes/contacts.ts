@@ -46,6 +46,14 @@ export function registerContactRoutes(app: Express): void {
     res.json(contacts);
   }));
 
+  app.get("/api/contacts/lead-trend", asyncHandler(async (req, res) => {
+    const days = Math.min(parseInt(req.query.days as string) || 30, 90);
+    const since = new Date();
+    since.setDate(since.getDate() - days);
+    const rows = await storage.getLeadTrend(req.user!.contractorId, since);
+    res.json(rows);
+  }));
+
   app.get("/api/leads/csv-template", asyncHandler(async (req, res) => {
     const csvHeaders = ['name', 'email', 'phone', 'address', 'source', 'notes', 'followUpDate'];
     const csvTemplate = csvHeaders.join(',') + '\n' +

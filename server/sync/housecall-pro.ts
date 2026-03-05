@@ -6,6 +6,16 @@ import { randomUUID } from 'crypto';
 
 const SYNC_BATCH_SIZE = 25;
 
+function mapHcpEstimateStatus(hcpEstimate: any): 'approved' | 'rejected' | 'pending' | 'sent' {
+  const ws = (hcpEstimate.work_status || '').toLowerCase();
+  const st = (hcpEstimate.status || '').toLowerCase();
+  if (['completed','approved','accepted'].some(v => ws === v || st === v)) return 'approved';
+  if (['canceled','cancelled','rejected','declined'].some(v => ws === v || st === v)) return 'rejected';
+  if (['sent','scheduled','dispatched'].some(v => ws === v || st === v)) return 'sent';
+  if (['pending','draft','needs_scheduling'].some(v => ws === v || st === v)) return 'pending';
+  return 'pending';
+}
+
 function splitIntoBatches<T>(items: T[], batchSize: number): T[][] {
   const batches: T[][] = [];
   for (let i = 0; i < items.length; i += batchSize) {
@@ -163,21 +173,7 @@ export async function syncHousecallPro(tenantId: string): Promise<void> {
         if (existingEstimate) {
           console.log(`[sync-scheduler] Estimate ${hcpEstimate.id} - status: '${hcpEstimate.status}', work_status: '${hcpEstimate.work_status}'`);
 
-          const newStatus =
-            (hcpEstimate.work_status === 'completed' || hcpEstimate.status === 'completed' ||
-             hcpEstimate.work_status === 'approved'  || hcpEstimate.status === 'approved'  ||
-             hcpEstimate.work_status === 'accepted'  || hcpEstimate.status === 'accepted') ? 'approved' as const :
-            (hcpEstimate.work_status === 'canceled'  || hcpEstimate.status === 'canceled'  ||
-             hcpEstimate.work_status === 'cancelled' || hcpEstimate.status === 'cancelled' ||
-             hcpEstimate.work_status === 'rejected'  || hcpEstimate.status === 'rejected'  ||
-             hcpEstimate.work_status === 'declined'  || hcpEstimate.status === 'declined') ? 'rejected' as const :
-            (hcpEstimate.work_status === 'pending'   || hcpEstimate.status === 'pending'   ||
-             hcpEstimate.work_status === 'draft'     || hcpEstimate.status === 'draft'     ||
-             hcpEstimate.work_status === 'needs_scheduling' || hcpEstimate.status === 'needs_scheduling') ? 'pending' as const :
-            (hcpEstimate.work_status === 'sent'      || hcpEstimate.status === 'sent'      ||
-             hcpEstimate.work_status === 'scheduled' || hcpEstimate.status === 'scheduled' ||
-             hcpEstimate.work_status === 'dispatched'|| hcpEstimate.status === 'dispatched') ? 'sent' as const :
-            'pending' as const;
+          const newStatus = mapHcpEstimateStatus(hcpEstimate);
 
           console.log(`[sync-scheduler] Estimate ${hcpEstimate.id} - mapped status: '${newStatus}'`);
 
@@ -222,21 +218,7 @@ export async function syncHousecallPro(tenantId: string): Promise<void> {
 
           console.log(`[sync-scheduler] New Estimate ${hcpEstimate.id} - status: '${hcpEstimate.status}', work_status: '${hcpEstimate.work_status}'`);
 
-          const estimateStatus =
-            (hcpEstimate.work_status === 'completed' || hcpEstimate.status === 'completed' ||
-             hcpEstimate.work_status === 'approved'  || hcpEstimate.status === 'approved'  ||
-             hcpEstimate.work_status === 'accepted'  || hcpEstimate.status === 'accepted') ? 'approved' as const :
-            (hcpEstimate.work_status === 'canceled'  || hcpEstimate.status === 'canceled'  ||
-             hcpEstimate.work_status === 'cancelled' || hcpEstimate.status === 'cancelled' ||
-             hcpEstimate.work_status === 'rejected'  || hcpEstimate.status === 'rejected'  ||
-             hcpEstimate.work_status === 'declined'  || hcpEstimate.status === 'declined') ? 'rejected' as const :
-            (hcpEstimate.work_status === 'pending'   || hcpEstimate.status === 'pending'   ||
-             hcpEstimate.work_status === 'draft'     || hcpEstimate.status === 'draft'     ||
-             hcpEstimate.work_status === 'needs_scheduling' || hcpEstimate.status === 'needs_scheduling') ? 'pending' as const :
-            (hcpEstimate.work_status === 'sent'      || hcpEstimate.status === 'sent'      ||
-             hcpEstimate.work_status === 'scheduled' || hcpEstimate.status === 'scheduled' ||
-             hcpEstimate.work_status === 'dispatched'|| hcpEstimate.status === 'dispatched') ? 'sent' as const :
-            'pending' as const;
+          const estimateStatus = mapHcpEstimateStatus(hcpEstimate);
 
           console.log(`[sync-scheduler] New Estimate ${hcpEstimate.id} - mapped status: '${estimateStatus}'`);
 
@@ -415,9 +397,13 @@ export async function syncHousecallProJobs(tenantId: string): Promise<void> {
     const batch = jobBatches[batchIndex];
     console.log(`[sync-scheduler] Processing job batch ${batchIndex + 1}/${jobBatches.length} (${batch.length} items)`);
 
+    const batchJobIds = batch.map((j: any) => j.id);
+    const existingJobsMap = await storage.getJobsByExternalIds(batchJobIds, tenantId);
+    console.log(`[sync-scheduler] Found ${existingJobsMap.size} existing jobs in batch`);
+
     for (const hcpJob of batch) {
       try {
-        const existingJob = await storage.getJobByHousecallProJobId(hcpJob.id, tenantId);
+        const existingJob = existingJobsMap.get(hcpJob.id);
 
         if (existingJob) {
           const scheduledStart = hcpJob.schedule?.scheduled_start || hcpJob.scheduled_start;

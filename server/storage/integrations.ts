@@ -1,12 +1,13 @@
 import {
   type Contact, type InsertContact,
   type Estimate, type InsertEstimate,
+  type Job,
   type ContractorCredential, type InsertContractorCredential,
   type ContractorProvider,
   type ContractorIntegration,
   type BusinessTargets, type InsertBusinessTargets,
   contractorCredentials, contractorProviders, contractorIntegrations,
-  contacts, estimates, businessTargets, contractors,
+  contacts, estimates, jobs, businessTargets, contractors,
 } from "@shared/schema";
 import { db } from "../db";
 import { eq, and, asc, desc, inArray } from "drizzle-orm";
@@ -187,6 +188,15 @@ async function getEstimatesByHousecallProIds(housecallProEstimateIds: string[], 
   return estimateMap;
 }
 
+async function getJobsByExternalIds(externalIds: string[], contractorId: string): Promise<Map<string, Job>> {
+  if (externalIds.length === 0) return new Map();
+  const rows = await db.select().from(jobs).where(and(
+    inArray(jobs.externalId, externalIds),
+    eq(jobs.contractorId, contractorId)
+  ));
+  return new Map(rows.filter(j => j.externalId).map(j => [j.externalId!, j]));
+}
+
 async function getScheduledContacts(contractorId: string): Promise<Contact[]> {
   return await db.select().from(contacts).where(and(
     eq(contacts.contractorId, contractorId),
@@ -313,6 +323,7 @@ export const integrationMethods = {
   getContactByHousecallProEstimateId,
   getEstimateByHousecallProEstimateId,
   getEstimatesByHousecallProIds,
+  getJobsByExternalIds,
   getScheduledContacts,
   getUnscheduledContacts,
   scheduleContactAsEstimate,

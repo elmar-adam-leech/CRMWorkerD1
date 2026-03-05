@@ -29,6 +29,7 @@ import { registerHcpSchedulingRoutes } from './routes/integrations/hcp-schedulin
 import { registerGoogleSheetsRoutes } from './routes/integrations/google-sheets';
 import { registerWebhookRoutes } from './routes/webhooks';
 import { registerPublicRoutes } from './routes/public';
+import { registerDashboardRoutes } from './routes/dashboard';
 
 export async function registerRoutes(app: Express): Promise<Server> {
   app.use(cookieParser());
@@ -89,6 +90,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerGoogleSheetsRoutes(app);
   registerWebhookRoutes(app);
   registerPublicRoutes(app);
+  registerDashboardRoutes(app);
 
   app.use(aiErrorHandler);
 

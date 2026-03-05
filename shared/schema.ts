@@ -190,6 +190,8 @@ export const contacts = pgTable("contacts", {
   tagsIdx: index("contacts_tags_idx").on(table.tags),
   // Index for follow-up date queries (Follow-ups page)
   followUpDateIdx: index("contacts_follow_up_date_idx").on(table.followUpDate),
+  // Partial index for HCP customer ID lookups (sync path)
+  housecallProCustomerIdIdx: index("contacts_housecall_pro_customer_id_idx").on(table.housecallProCustomerId).where(sql`housecall_pro_customer_id IS NOT NULL`),
 }));
 
 // Leads table - tracks individual lead submissions
@@ -259,6 +261,8 @@ export const jobs = pgTable("jobs", {
   contractorStatusIdx: index("jobs_contractor_status_idx").on(table.contractorId, table.status),
   // Composite index for contractor + date range queries
   contractorDateIdx: index("jobs_contractor_date_idx").on(table.contractorId, table.createdAt),
+  // Partial index for external ID lookups (HCP sync path)
+  externalIdIdx: index("jobs_external_id_idx").on(table.externalId).where(sql`external_id IS NOT NULL`),
 }));
 
 // Estimates table
@@ -296,6 +300,8 @@ export const estimates = pgTable("estimates", {
   contractorDateIdx: index("estimates_contractor_date_idx").on(table.contractorId, table.createdAt),
   // Index for follow-up date queries (Follow-ups page)
   followUpDateIdx: index("estimates_follow_up_date_idx").on(table.followUpDate),
+  // Partial index for external ID + contractor lookups (HCP sync path)
+  externalIdContractorIdx: index("estimates_external_id_contractor_idx").on(table.externalId, table.contractorId).where(sql`external_id IS NOT NULL`),
 }));
 
 // Messages table for texting functionality

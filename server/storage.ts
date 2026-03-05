@@ -97,6 +97,7 @@ export interface IStorage {
 
   // Contact operations (unified leads and customers)
   getContacts(contractorId: string, type?: 'lead' | 'customer' | 'inactive'): Promise<Contact[]>;
+  getLeadTrend(contractorId: string, since: Date): Promise<{ date: string; count: number }[]>;
   getContactsPaginated(contractorId: string, options?: {
     cursor?: string;
     limit?: number;
@@ -300,6 +301,7 @@ export interface IStorage {
   getContactByHousecallProEstimateId(housecallProEstimateId: string, contractorId: string): Promise<Contact | undefined>;
   getEstimateByHousecallProEstimateId(housecallProEstimateId: string, contractorId: string): Promise<Estimate | undefined>;
   getEstimatesByHousecallProIds(housecallProEstimateIds: string[], contractorId: string): Promise<Map<string, Estimate>>;
+  getJobsByExternalIds(externalIds: string[], contractorId: string): Promise<Map<string, Job>>;
   getScheduledContacts(contractorId: string): Promise<Contact[]>;
   getUnscheduledContacts(contractorId: string): Promise<Contact[]>;
   scheduleContactAsEstimate(contactId: string, housecallProData: {

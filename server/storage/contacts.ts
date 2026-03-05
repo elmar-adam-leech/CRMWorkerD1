@@ -16,7 +16,22 @@ type PaginatedContacts = {
 async function getContacts(contractorId: string, type?: 'lead' | 'customer' | 'inactive'): Promise<Contact[]> {
   const conditions = [eq(contacts.contractorId, contractorId)];
   if (type) conditions.push(eq(contacts.type, type));
-  return await db.select().from(contacts).where(and(...conditions)).orderBy(desc(contacts.createdAt));
+  return await db.select().from(contacts).where(and(...conditions)).orderBy(desc(contacts.createdAt)).limit(2000);
+}
+
+async function getLeadTrend(contractorId: string, since: Date): Promise<{ date: string; count: number }[]> {
+  return await db.select({
+    date: sql<string>`DATE(${contacts.createdAt})::text`,
+    count: sql<number>`COUNT(*)::int`,
+  })
+    .from(contacts)
+    .where(and(
+      eq(contacts.contractorId, contractorId),
+      eq(contacts.type, 'lead'),
+      gte(contacts.createdAt, since),
+    ))
+    .groupBy(sql`DATE(${contacts.createdAt})`)
+    .orderBy(sql`DATE(${contacts.createdAt})`);
 }
 
 async function getContactsPaginated(contractorId: string, options: {
@@ -636,6 +651,7 @@ async function bulkCreateContacts(contactList: Array<Omit<InsertContact, 'contra
 
 export const contactMethods = {
   getContacts,
+  getLeadTrend,
   getContactsPaginated,
   getContactsCount,
   getContactsStatusCounts,

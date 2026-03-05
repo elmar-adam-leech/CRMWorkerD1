@@ -38,6 +38,27 @@ The backend is built with Node.js and Express.js, offering a RESTful API with co
 - **Dashboard metrics**: `getMetricsAggregates` in `server/services/business-metrics.ts` uses SQL `COUNT` aggregates — never fetches rows.
 - **HCP manual sync**: Uses `getJobsCount` (SQL COUNT) before/after to count new jobs — not full table loads.
 - **Follow-ups**: Dedicated `/api/contacts/follow-ups` and `/api/estimates/follow-ups` endpoints with `WHERE follow_up_date IS NOT NULL` in SQL.
+- **Lead Trend Chart**: `GET /api/contacts/lead-trend` returns a SQL `GROUP BY DATE` aggregate (≤30 rows). The `LeadsTrendChart` component uses this instead of fetching all lead contacts.
+- **HCP jobs sync**: `getJobsByExternalIds` pre-fetches all jobs in a batch via `inArray` before the inner loop — eliminates 1 DB query per job.
+- **HCP estimates sync**: `getEstimatesByHousecallProIds` pre-fetches all estimates in a batch — same pattern.
+- **Gmail sync dedup**: Batch `inArray` query collects all already-synced email IDs upfront; per-email check is O(1) Set lookup.
+- **`getContacts` hard cap**: `.limit(2000)` prevents accidental full-table dumps; use `/api/contacts/paginated` for UI.
+
+### DB Indexes (current full set)
+The following indexes exist beyond Drizzle's default primary keys:
+- `contacts`: contractor_id, contractor+status, contractor+type, contractor+date, contractor+scheduled, external_lookup (contractor+source+external_id), **housecall_pro_customer_id (partial)**, follow_up_date, tags, created_at, status, type, contacted_at, is_scheduled
+- `jobs`: contractor_id, contractor+status, contractor+date, contact_id, status, created_at, scheduled_date, **external_id (partial)**
+- `estimates`: contractor_id, contractor+status, contractor+date, contact_id, status, created_at, follow_up_date, **external_id+contractor_id (partial)**
+- `activities`: contractor_id, contractor+type, contractor+type+contact, contractor+date, contact_id, estimate_id, job_id, external_lookup (source+external_id), user_id, type, created_at
+- `messages`: contractor_id, contractor+contact, contractor+contact+created, contractor+phone, contact_id, estimate_id, external_message_id, from_number, to_number, direction, created_at
+- `leads`: contractor_id, contractor+status, contact_id, status, assigned_to_user_id
+- `user_invitations`: contractor_id
+- `business_targets`: contractor_id
+
+### Code Organization
+- `server/routes/public.ts` — unauthenticated routes only: `/sw-unregister`, `/api/public/*` (Places proxy, booking, availability, public lead intake), `/api/version`.
+- `server/routes/dashboard.ts` — authenticated routes split from public.ts: `/api/places/autocomplete`, `/api/places/details`, `/api/dashboard/metrics`.
+- `server/sync/housecall-pro.ts` — `mapHcpEstimateStatus(hcpEstimate)` is the single source of truth for HCP→CRM status mapping (no duplicated chains).
 
 ## External Dependencies
 

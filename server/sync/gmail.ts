@@ -1,7 +1,7 @@
 import { storage } from '../storage';
 import { db } from '../db';
 import { users, activities } from '@shared/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 
 export async function syncGmail(tenantId: string): Promise<void> {
   console.log(`[sync-scheduler] Syncing Gmail emails for tenant ${tenantId}`);
@@ -56,15 +56,24 @@ export async function syncGmail(tenantId: string): Promise<void> {
         const emails = result.emails;
         console.log(`[sync-scheduler] Found ${emails.length} new emails for user ${user.name}`);
 
+        // Batch dedup: one query for all email IDs instead of one per email
+        const allEmailIds = emails.map((e: any) => e.id).filter(Boolean);
+        let knownEmailIds = new Set<string>();
+        if (allEmailIds.length > 0) {
+          const existingRows = await db
+            .select({ externalId: activities.externalId })
+            .from(activities)
+            .where(and(
+              inArray(activities.externalId, allEmailIds),
+              eq(activities.externalSource, 'gmail'),
+              eq(activities.contractorId, tenantId),
+            ));
+          knownEmailIds = new Set(existingRows.map(r => r.externalId!));
+        }
+
         let processedCount = 0;
         for (const email of emails) {
-          const existingActivity = await db.select().from(activities).where(and(
-            eq(activities.externalId, email.id),
-            eq(activities.externalSource, 'gmail'),
-            eq(activities.contractorId, tenantId)
-          )).limit(1);
-
-          if (existingActivity.length > 0) {
+          if (knownEmailIds.has(email.id)) {
             continue;
           }
 

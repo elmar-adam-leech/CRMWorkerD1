@@ -5,46 +5,43 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { Loader2 } from "lucide-react";
 import { format, subDays, startOfDay } from "date-fns";
 
+interface TrendRow {
+  date: string;
+  count: number;
+}
+
 interface TrendDataPoint {
   date: string;
   count: number;
 }
 
 export function LeadsTrendChart() {
-  const { data: leads, isLoading } = useQuery<any[]>({
-    queryKey: ["/api/contacts", { type: 'lead' }],
+  const { data: trendRows, isLoading } = useQuery<TrendRow[]>({
+    queryKey: ["/api/contacts/lead-trend"],
     queryFn: async () => {
-      const response = await fetch('/api/contacts?type=lead');
-      if (!response.ok) throw new Error('Failed to fetch contacts');
+      const response = await fetch('/api/contacts/lead-trend?days=30');
+      if (!response.ok) throw new Error('Failed to fetch lead trend');
       return response.json();
     },
   });
 
-  // Aggregate leads by date (last 30 days)
   const trendData: TrendDataPoint[] = useMemo(() => {
-    if (!leads) return [];
+    const rowMap = new Map<string, number>();
+    if (trendRows) {
+      for (const row of trendRows) {
+        rowMap.set(row.date, row.count);
+      }
+    }
 
-    const last30Days = Array.from({ length: 30 }, (_, i) => {
-      const date = startOfDay(subDays(new Date(), 29 - i));
+    return Array.from({ length: 30 }, (_, i) => {
+      const day = startOfDay(subDays(new Date(), 29 - i));
+      const key = format(day, "yyyy-MM-dd");
       return {
-        date: format(date, "MMM d"),
-        fullDate: date,
-        count: 0,
+        date: format(day, "MMM d"),
+        count: rowMap.get(key) ?? 0,
       };
     });
-
-    leads.forEach((lead) => {
-      const createdDate = startOfDay(new Date(lead.createdAt));
-      const dataPoint = last30Days.find(
-        (d) => d.fullDate.getTime() === createdDate.getTime()
-      );
-      if (dataPoint) {
-        dataPoint.count++;
-      }
-    });
-
-    return last30Days.map(({ date, count }) => ({ date, count }));
-  }, [leads]);
+  }, [trendRows]);
 
   if (isLoading) {
     return (
