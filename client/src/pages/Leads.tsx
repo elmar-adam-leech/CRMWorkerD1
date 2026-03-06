@@ -121,7 +121,9 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
   } = useInfiniteQuery({
     queryKey: ["/api/contacts/paginated", {
       type: "lead",
-      // In kanban mode all columns must be visible, so never filter by status
+      // includeAll is true in kanban mode so all status columns are populated;
+      // it is kept in the key so kanban and card views use separate cache entries
+      includeAll: viewMode === "kanban",
       status: viewMode === "kanban" ? "all" : filterStatus,
       search: searchQuery,
       assignedTo: advancedFilters.assignedTo,
