@@ -7,10 +7,9 @@ import { EmailComposerModal } from "@/components/EmailComposerModal";
 import { LocalSchedulingModal } from "@/components/LocalSchedulingModal";
 import { FollowUpDateModal } from "@/components/FollowUpDateModal";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header-v2";
 import { PageLayout } from "@/components/ui/page-layout";
-import { Plus, Search, Filter, UserPlus, Users, AlertCircle } from "lucide-react";
+import { Plus, Filter, UserPlus, Users, AlertCircle } from "lucide-react";
 import { LeadKanbanBoard } from "@/components/LeadKanbanBoard";
 import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -346,16 +345,6 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
 
       <div className="flex flex-col gap-4">
         <div className="flex flex-col sm:flex-row gap-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder={`Search ${(terminology?.leadsLabel || "leads").toLowerCase()} by name, email, phone, or source...`}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-8"
-              data-testid="input-lead-search"
-            />
-          </div>
           <ViewToggle viewMode={viewMode} onViewModeChange={setViewMode} />
         </div>
 

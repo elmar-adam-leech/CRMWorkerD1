@@ -5,11 +5,10 @@ import { CardSkeleton } from "@/components/CardSkeleton";
 import { TextingModal } from "@/components/TextingModal";
 import { EmailComposerModal } from "@/components/EmailComposerModal";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { DeleteConfirmDialog } from "@/components/DeleteConfirmDialog";
 import { PageHeader } from "@/components/ui/page-header-v2";
 import { PageLayout } from "@/components/ui/page-layout";
-import { Plus, Search, Calendar, FileText, Download, Filter } from "lucide-react";
+import { Plus, Calendar, FileText, Download, Filter } from "lucide-react";
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -435,19 +434,6 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
       />
 
       <div className="flex flex-col gap-4">
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder={`Search ${(terminology?.estimatesLabel || "estimates").toLowerCase()} by title, customer, or description...`}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-8"
-              data-testid="input-estimate-search"
-            />
-          </div>
-        </div>
-
         <StatusFilterBar
           statuses={ESTIMATE_FILTER_STATUSES}
           activeStatus={filterStatus}
