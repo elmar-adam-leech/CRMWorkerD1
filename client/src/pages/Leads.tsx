@@ -122,7 +122,8 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
   } = useInfiniteQuery({
     queryKey: ["/api/contacts/paginated", {
       type: "lead",
-      status: filterStatus,
+      // In kanban mode all columns must be visible, so never filter by status
+      status: viewMode === "kanban" ? "all" : filterStatus,
       search: searchQuery,
       assignedTo: advancedFilters.assignedTo,
       dateFrom: advancedFilters.dateFrom?.toISOString(),
@@ -132,7 +133,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
       const url = new URL("/api/contacts/paginated", window.location.origin);
       url.searchParams.set("type", "lead");
       if (pageParam) url.searchParams.set("cursor", pageParam as string);
-      if (filterStatus !== "all") url.searchParams.set("status", filterStatus);
+      if (viewMode !== "kanban" && filterStatus !== "all") url.searchParams.set("status", filterStatus);
       if (searchQuery) url.searchParams.set("search", searchQuery);
       if (advancedFilters.assignedTo) url.searchParams.set("assignedTo", advancedFilters.assignedTo);
       if (advancedFilters.dateFrom) url.searchParams.set("dateFrom", advancedFilters.dateFrom.toISOString());
@@ -358,20 +359,24 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
           <ViewToggle viewMode={viewMode} onViewModeChange={setViewMode} />
         </div>
 
-        <StatusFilterBar
-          statuses={LEAD_STATUSES}
-          activeStatus={filterStatus}
-          counts={statusCounts}
-          onStatusChange={setFilterStatus}
-        />
+        {viewMode === "cards" && (
+          <>
+            <StatusFilterBar
+              statuses={LEAD_STATUSES}
+              activeStatus={filterStatus}
+              counts={statusCounts}
+              onStatusChange={setFilterStatus}
+            />
 
-        <FilterPanel
-          filters={advancedFilters}
-          onFiltersChange={setAdvancedFilters}
-          statusOptions={LEAD_STATUSES.map((s) => ({ value: s, label: formatStatusLabel(s) }))}
-          userOptions={usersData?.map((u) => ({ value: u.id, label: u.fullName })) || []}
-          dateLabel="Created Date"
-        />
+            <FilterPanel
+              filters={advancedFilters}
+              onFiltersChange={setAdvancedFilters}
+              statusOptions={LEAD_STATUSES.map((s) => ({ value: s, label: formatStatusLabel(s) }))}
+              userOptions={usersData?.map((u) => ({ value: u.id, label: u.fullName })) || []}
+              dateLabel="Created Date"
+            />
+          </>
+        )}
       </div>
 
       {leads.length > 0 && (
