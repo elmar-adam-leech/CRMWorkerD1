@@ -9,6 +9,19 @@ export class SyncScheduler {
   private timers: Map<string, NodeJS.Timeout> = new Map();
   private isRunning = false;
 
+  // In-memory lock set to prevent overlapping syncs for the same tenant+integration.
+  // Key format: "<tenantId>:<integrationName>"
+  //
+  // Without this, a slow sync (e.g., large HCP tenant taking >5 minutes) would be
+  // started again by checkDueSyncs() on the next tick, creating concurrent runs that
+  // can cause duplicate records and unique-constraint violations.
+  //
+  // The lock is released in a finally block so it is always cleared on both success
+  // and failure. It is NOT persisted — on server restart, all locks are cleared and
+  // any stale in-progress sync_schedule rows will be picked up naturally on the next
+  // checkDueSyncs() tick.
+  private activeSyncs = new Set<string>();
+
   /**
    * Start the scheduler
    */
@@ -134,7 +147,14 @@ export class SyncScheduler {
   }
 
   /**
-   * Check for syncs that are due to run
+   * Poll for syncs that are due to run based on their nextSyncAt timestamp.
+   *
+   * Called every 60 seconds by setInterval. Queries the database for all
+   * sync_schedules where nextSyncAt <= now, then delegates each to performSync().
+   *
+   * Each sync is protected by an in-memory lock (activeSyncs) so that a slow
+   * sync started on a previous tick cannot be started again if it's still running.
+   * On failure, the next attempt is scheduled 1 hour out to avoid rapid retry storms.
    */
   private async checkDueSyncs() {
     const now = new Date();
@@ -164,9 +184,22 @@ export class SyncScheduler {
   }
 
   /**
-   * Perform the actual sync operation — delegates to sync module functions
+   * Perform the actual sync operation — delegates to sync module functions.
+   *
+   * Uses an in-memory lock (activeSyncs) to prevent overlapping runs for the
+   * same tenant+integration combination. If a sync is already running, the new
+   * request is dropped with a warning instead of stacking up. The lock is always
+   * released in the finally block, even if the sync throws.
    */
   private async performSync(tenantId: string, integrationName: string): Promise<void> {
+    const lockKey = `${tenantId}:${integrationName}`;
+
+    if (this.activeSyncs.has(lockKey)) {
+      console.warn(`[sync-scheduler] Sync already in progress for ${integrationName} (tenant: ${tenantId}), skipping to prevent overlap`);
+      return;
+    }
+
+    this.activeSyncs.add(lockKey);
     console.log(`[sync-scheduler] Starting sync for ${integrationName} (tenant: ${tenantId})`);
 
     try {
@@ -189,6 +222,8 @@ export class SyncScheduler {
     } catch (error) {
       console.error(`[sync-scheduler] Sync failed for ${integrationName}:`, error);
       throw error;
+    } finally {
+      this.activeSyncs.delete(lockKey);
     }
   }
 

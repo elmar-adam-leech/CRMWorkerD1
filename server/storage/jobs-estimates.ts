@@ -17,8 +17,13 @@ type PaginatedEstimates = {
   pagination: { total: number; hasMore: boolean; nextCursor: string | null };
 };
 
+// Safety cap for the non-paginated getJobs call.
+// TODO: Replace callers with getJobsPaginated() for cursor-based pagination
+// when job list sizes regularly exceed this limit.
+const GET_JOBS_LIMIT = 500;
+
 async function getJobs(contractorId: string): Promise<Job[]> {
-  return await db.select().from(jobs).where(eq(jobs.contractorId, contractorId)).orderBy(desc(jobs.createdAt)).limit(500);
+  return await db.select().from(jobs).where(eq(jobs.contractorId, contractorId)).orderBy(desc(jobs.createdAt)).limit(GET_JOBS_LIMIT);
 }
 
 async function getJobsPaginated(contractorId: string, options: {

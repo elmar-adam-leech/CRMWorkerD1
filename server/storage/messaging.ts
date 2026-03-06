@@ -7,6 +7,16 @@ import { db } from "../db";
 import { eq, and, desc, inArray, like, sql } from "drizzle-orm";
 import type { UpdateCall } from "../storage-types";
 
+// Row limits for non-paginated queries. These prevent runaway memory usage on
+// large tenants and act as a safety valve. Each is accompanied by a note on
+// where to add cursor-based pagination if the limit becomes a bottleneck.
+//
+// TODO: Replace conversation/call queries with cursor-based pagination when
+// individual tenant call volumes reliably exceed these thresholds.
+const CONVERSATION_MESSAGE_LIMIT = 500;  // per conversation view
+const CALLS_LIMIT = 500;                 // safety cap on calls list
+const MESSAGES_BULK_LIMIT = 2000;        // bulk messaging inbox queries
+
 async function getMessages(contractorId: string, contactId?: string, estimateId?: string): Promise<Message[]> {
   const conditions = [eq(messages.contractorId, contractorId)];
   if (contactId) conditions.push(eq(messages.contactId, contactId));
@@ -106,7 +116,7 @@ async function getConversations(contractorId: string, options: {
   }
 
   const [smsMessages, emailActivities] = await Promise.all([
-    options.type === 'email' ? Promise.resolve([]) : db.select().from(messages).where(and(...smsConditions)).orderBy(desc(messages.createdAt)).limit(500),
+    options.type === 'email' ? Promise.resolve([]) : db.select().from(messages).where(and(...smsConditions)).orderBy(desc(messages.createdAt)).limit(CONVERSATION_MESSAGE_LIMIT),
     options.type === 'text' ? Promise.resolve([]) : db.select({
       id: activities.id,
       content: activities.content,
@@ -117,7 +127,7 @@ async function getConversations(contractorId: string, options: {
       createdAt: activities.createdAt,
       metadata: activities.metadata,
       userName: users.name,
-    }).from(activities).leftJoin(users, eq(activities.userId, users.id)).where(and(...emailConditions)).orderBy(desc(activities.createdAt)).limit(500)
+    }).from(activities).leftJoin(users, eq(activities.userId, users.id)).where(and(...emailConditions)).orderBy(desc(activities.createdAt)).limit(CONVERSATION_MESSAGE_LIMIT)
   ]);
 
   const emailMessages = emailActivities.map(emailActivityToMessage);
@@ -139,7 +149,7 @@ async function getConversations(contractorId: string, options: {
       db.select().from(messages)
         .where(and(eq(messages.contractorId, contractorId), inArray(messages.contactId, contactIds)))
         .orderBy(desc(messages.createdAt))
-        .limit(500),
+        .limit(CONVERSATION_MESSAGE_LIMIT),
       db.select({
         id: activities.id, content: activities.content, contactId: activities.contactId,
         estimateId: activities.estimateId, userId: activities.userId, contractorId: activities.contractorId,
@@ -151,14 +161,14 @@ async function getConversations(contractorId: string, options: {
           inArray(activities.contactId, contactIds)
         ))
         .orderBy(desc(activities.createdAt))
-        .limit(500)
+        .limit(CONVERSATION_MESSAGE_LIMIT)
     ]);
 
     const batchEmailMessages = batchEmails.map(emailActivityToMessage);
     allMessages = [...batchSms, ...batchEmailMessages as Message[]];
   } else {
     const [allSms, allEmailActivities] = await Promise.all([
-      db.select().from(messages).where(eq(messages.contractorId, contractorId)).orderBy(desc(messages.createdAt)).limit(2000),
+      db.select().from(messages).where(eq(messages.contractorId, contractorId)).orderBy(desc(messages.createdAt)).limit(MESSAGES_BULK_LIMIT),
       db.select({
         id: activities.id, content: activities.content, contactId: activities.contactId,
         estimateId: activities.estimateId, userId: activities.userId, contractorId: activities.contractorId,
@@ -166,7 +176,7 @@ async function getConversations(contractorId: string, options: {
       }).from(activities).leftJoin(users, eq(activities.userId, users.id))
         .where(and(eq(activities.contractorId, contractorId), eq(activities.type, 'email')))
         .orderBy(desc(activities.createdAt))
-        .limit(2000)
+        .limit(MESSAGES_BULK_LIMIT)
     ]);
 
     const allEmailMessages = allEmailActivities.map(emailActivityToMessage);
@@ -234,7 +244,7 @@ async function getConversationMessages(contractorId: string, contactId: string):
     }).from(messages).leftJoin(users, eq(messages.userId, users.id))
       .where(and(eq(messages.contractorId, contractorId), eq(messages.contactId, contactId)))
       .orderBy(desc(messages.createdAt))
-      .limit(500),
+      .limit(CONVERSATION_MESSAGE_LIMIT),
     db.select({
       id: activities.id, content: activities.content, contactId: activities.contactId,
       estimateId: activities.estimateId, userId: activities.userId, contractorId: activities.contractorId,
@@ -242,7 +252,7 @@ async function getConversationMessages(contractorId: string, contactId: string):
     }).from(activities).leftJoin(users, eq(activities.userId, users.id))
       .where(and(eq(activities.contractorId, contractorId), eq(activities.type, 'email'), eq(activities.contactId, contactId)))
       .orderBy(desc(activities.createdAt))
-      .limit(500),
+      .limit(CONVERSATION_MESSAGE_LIMIT),
   ]);
 
   console.log(`[getConversationMessages] Found ${smsMessages.length} SMS messages`);
@@ -268,7 +278,7 @@ async function getCalls(contractorId: string): Promise<Call[]> {
   return await db.select().from(calls)
     .where(eq(calls.contractorId, contractorId))
     .orderBy(desc(calls.createdAt))
-    .limit(500);  // safety cap — add pagination if call volume grows
+    .limit(CALLS_LIMIT);
 }
 
 async function getCall(id: string, contractorId: string): Promise<Call | undefined> {

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { EstimateCard } from "@/components/EstimateCard";
-import { EstimateCardSkeleton } from "@/components/EstimateCardSkeleton";
+import { CardSkeleton } from "@/components/CardSkeleton";
 import { TextingModal } from "@/components/TextingModal";
 import { EmailComposerModal } from "@/components/EmailComposerModal";
 import { Button } from "@/components/ui/button";
@@ -493,7 +493,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
       {estimatesLoading && allEstimates.length === 0 && (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {Array.from({ length: 6 }).map((_, index) => (
-            <EstimateCardSkeleton key={index} />
+            <CardSkeleton key={index} lines={4} showMultilineBlock showBadges />
           ))}
         </div>
       )}
@@ -501,7 +501,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
       {isFetchingNextPage && (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {Array.from({ length: 3 }).map((_, index) => (
-            <EstimateCardSkeleton key={`loading-${index}`} />
+            <CardSkeleton key={`loading-${index}`} lines={4} showMultilineBlock showBadges />
           ))}
         </div>
       )}

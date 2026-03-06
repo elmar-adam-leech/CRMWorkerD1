@@ -135,11 +135,20 @@ export async function syncHousecallPro(tenantId: string): Promise<void> {
     page_size: 100
   };
 
-  let allHousecallProEstimates: any[] = [];
+  // Page-by-page processing strategy:
+  // Instead of fetching ALL pages into one large array and then processing them,
+  // we process each page immediately after fetching it. This keeps peak memory
+  // proportional to (page_size + SYNC_BATCH_SIZE) rather than the total record
+  // count, which matters for tenants with thousands of historical estimates.
   let page = 1;
   let keepGoing = true;
   const maxRunTime = 5 * 60 * 1000;
   const startTime = Date.now();
+
+  let newEstimates = 0;
+  let updatedEstimates = 0;
+  let failedEstimates = 0;
+  let totalFetched = 0;
 
   while (keepGoing) {
     if (Date.now() - startTime > maxRunTime) {
@@ -163,7 +172,207 @@ export async function syncHousecallPro(tenantId: string): Promise<void> {
       break;
     }
 
-    allHousecallProEstimates = allHousecallProEstimates.concat(pageEstimates);
+    totalFetched += pageEstimates.length;
+
+    // Process this page immediately rather than accumulating all pages first.
+    const estimateBatches = splitIntoBatches(pageEstimates, SYNC_BATCH_SIZE);
+    console.log(`[sync-scheduler] Processing page ${page} (${pageEstimates.length} estimates) in ${estimateBatches.length} batches of up to ${SYNC_BATCH_SIZE}`);
+
+    for (let batchIndex = 0; batchIndex < estimateBatches.length; batchIndex++) {
+      const batch = estimateBatches[batchIndex];
+      console.log(`[sync-scheduler] Processing estimate batch ${batchIndex + 1}/${estimateBatches.length} (${batch.length} items)`);
+
+      const batchHcpIds = batch.map((e: any) => e.id);
+      const existingEstimatesMap = await storage.getEstimatesByHousecallProIds(batchHcpIds, tenantId);
+      console.log(`[sync-scheduler] Found ${existingEstimatesMap.size} existing estimates in batch`);
+
+      for (const hcpEstimate of batch) {
+        try {
+          const existingEstimate = existingEstimatesMap.get(hcpEstimate.id);
+
+          if (existingEstimate) {
+            console.log(`[sync-scheduler] Estimate ${hcpEstimate.id} - status: '${hcpEstimate.status}', work_status: '${hcpEstimate.work_status}'`);
+
+            const newStatus = mapHcpEstimateStatus(hcpEstimate);
+
+            console.log(`[sync-scheduler] Estimate ${hcpEstimate.id} - mapped status: '${newStatus}'`);
+
+            const updatedTitle =
+              hcpEstimate.number ||
+              hcpEstimate.estimate_number ||
+              hcpEstimate.name ||
+              (hcpEstimate.description && hcpEstimate.description !== '' ? hcpEstimate.description : null) ||
+              `Estimate #${hcpEstimate.id}` ||
+              'Estimate from Housecall Pro';
+
+            console.log(`[sync-scheduler] Update Estimate ${hcpEstimate.id} - title: '${updatedTitle}'`);
+
+            let amt = hcpEstimate.total ?? hcpEstimate.total_price ?? hcpEstimate.estimate_total ?? hcpEstimate.amount ?? null;
+            if (amt === null && Array.isArray(hcpEstimate.options)) {
+              amt = hcpEstimate.options.reduce((m: number, o: any) => Math.max(m, Number(o.total_amount) || 0), 0);
+            }
+            const amountInDollars = (typeof amt === 'number' && amt > 0) ? (amt / 100) : 0;
+
+            const updateData = {
+              title: updatedTitle,
+              status: newStatus,
+              amount: amountInDollars.toString(),
+              description: hcpEstimate.description || '',
+              scheduledStart: hcpEstimate.scheduled_start ? new Date(hcpEstimate.scheduled_start) : null,
+            };
+
+            await storage.updateEstimate(existingEstimate.id, updateData, tenantId);
+            updatedEstimates++;
+
+            if (newStatus === 'approved' && existingEstimate.status !== 'approved') {
+              await convertEstimateToJob(existingEstimate, hcpEstimate, tenantId);
+              console.log(`[sync-scheduler] Auto-converted approved estimate ${existingEstimate.id} to job`);
+            }
+          } else {
+            // Create new estimate
+            let amt = hcpEstimate.total ?? hcpEstimate.total_price ?? hcpEstimate.estimate_total ?? hcpEstimate.amount ?? null;
+            if (amt === null && Array.isArray(hcpEstimate.options)) {
+              amt = hcpEstimate.options.reduce((m: number, o: any) => Math.max(m, Number(o.total_amount) || 0), 0);
+            }
+            const amountInDollars = (typeof amt === 'number' && amt > 0) ? (amt / 100) : 0;
+
+            console.log(`[sync-scheduler] New Estimate ${hcpEstimate.id} - status: '${hcpEstimate.status}', work_status: '${hcpEstimate.work_status}'`);
+
+            const estimateStatus = mapHcpEstimateStatus(hcpEstimate);
+
+            console.log(`[sync-scheduler] New Estimate ${hcpEstimate.id} - mapped status: '${estimateStatus}'`);
+
+            const estimateTitle =
+              hcpEstimate.number ||
+              hcpEstimate.estimate_number ||
+              hcpEstimate.name ||
+              (hcpEstimate.description && hcpEstimate.description !== '' ? hcpEstimate.description : null) ||
+              `Estimate #${hcpEstimate.id}` ||
+              'Estimate from Housecall Pro';
+
+            console.log(`[sync-scheduler] New Estimate ${hcpEstimate.id} - title: '${estimateTitle}'`);
+
+            let contactId: string | null = null;
+            const hcpCustomerId = hcpEstimate.customer_id;
+            const hcpCustomer = hcpEstimate.customer;
+
+            if (hcpCustomerId) {
+              const existingContact = await storage.getContactByHousecallProCustomerId(hcpCustomerId, tenantId);
+              if (existingContact) {
+                contactId = existingContact.id;
+                console.log(`[sync-scheduler] Found existing contact ${contactId} for HCP customer ${hcpCustomerId}`);
+              }
+            }
+
+            if (!contactId && hcpCustomer) {
+              const customerPhone = hcpCustomer.mobile_number || hcpCustomer.home_number || hcpCustomer.work_number ||
+                (hcpCustomer.phone_numbers && hcpCustomer.phone_numbers[0]?.phone_number);
+              const customerEmail = hcpCustomer.email;
+
+              if (customerPhone) {
+                const phoneMatch = await storage.getContactByPhone(customerPhone, tenantId);
+                if (phoneMatch) {
+                  contactId = phoneMatch.id;
+                  if (hcpCustomerId) {
+                    await storage.updateContact(phoneMatch.id, { housecallProCustomerId: hcpCustomerId }, tenantId);
+                  }
+                  console.log(`[sync-scheduler] Found contact ${contactId} by phone match`);
+                }
+              }
+
+              if (!contactId && customerEmail) {
+                const emailMatch = await storage.findMatchingContact(tenantId, [customerEmail], undefined);
+                if (emailMatch) {
+                  contactId = emailMatch;
+                  if (hcpCustomerId) {
+                    await storage.updateContact(emailMatch, { housecallProCustomerId: hcpCustomerId }, tenantId);
+                  }
+                  console.log(`[sync-scheduler] Found contact ${contactId} by email match`);
+                }
+              }
+
+              if (!contactId) {
+                const customerName = [hcpCustomer.first_name, hcpCustomer.last_name].filter(Boolean).join(' ') ||
+                  hcpCustomer.company || 'Unknown Customer';
+                const phones = [hcpCustomer.mobile_number, hcpCustomer.home_number, hcpCustomer.work_number]
+                  .filter(Boolean) as string[];
+                const emails = customerEmail ? [customerEmail] : [];
+                const address = hcpCustomer.address ?
+                  [hcpCustomer.address.street, hcpCustomer.address.city, hcpCustomer.address.state, hcpCustomer.address.zip]
+                    .filter(Boolean).join(', ') : undefined;
+
+                const newContactId = randomUUID();
+                const newEstimateId = randomUUID();
+
+                await db.transaction(async (tx) => {
+                  await tx.insert(contacts).values({
+                    id: newContactId,
+                    name: customerName,
+                    emails,
+                    phones,
+                    address,
+                    type: 'customer',
+                    status: 'new',
+                    source: 'housecall-pro',
+                    housecallProCustomerId: hcpCustomerId || undefined,
+                    externalId: hcpCustomerId || undefined,
+                    externalSource: hcpCustomerId ? 'housecall-pro' : undefined,
+                    contractorId: tenantId,
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                  });
+
+                  await tx.insert(estimates).values({
+                    contactId: newContactId,
+                    title: estimateTitle,
+                    description: hcpEstimate.description || '',
+                    amount: amountInDollars.toString(),
+                    status: estimateStatus,
+                    contractorId: tenantId,
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                    scheduledStart: hcpEstimate.scheduled_start ? new Date(hcpEstimate.scheduled_start) : null,
+                    externalId: hcpEstimate.id,
+                    externalSource: 'housecall-pro',
+                  });
+                });
+
+                console.log(`[sync-scheduler] Created contact ${newContactId} and estimate ${newEstimateId} atomically from HCP data`);
+                newEstimates++;
+                continue;
+              }
+            }
+
+            if (!contactId) {
+              console.log(`[sync-scheduler] Skipping estimate ${hcpEstimate.id} - no customer data available to create contact`);
+              continue;
+            }
+
+            const estimateData = {
+              contactId,
+              title: estimateTitle,
+              description: hcpEstimate.description || '',
+              amount: amountInDollars.toString(),
+              status: estimateStatus,
+              contractorId: tenantId,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+              scheduledStart: hcpEstimate.scheduled_start ? new Date(hcpEstimate.scheduled_start) : null,
+              externalId: hcpEstimate.id,
+              externalSource: 'housecall-pro' as const,
+            };
+
+            await storage.createEstimate(estimateData, tenantId);
+            newEstimates++;
+          }
+        } catch (itemError) {
+          console.error(`[sync-scheduler] Failed to process estimate ${hcpEstimate.id}:`, itemError);
+          failedEstimates++;
+        }
+      }
+
+      console.log(`[sync-scheduler] Batch ${batchIndex + 1} complete - Running totals: ${newEstimates} new, ${updatedEstimates} updated, ${failedEstimates} failed`);
+    }
 
     if (pageEstimates.length < baseEstimatesParams.page_size) {
       console.log(`[sync-scheduler] Page ${page} returned ${pageEstimates.length} estimates (< ${baseEstimatesParams.page_size}), stopping pagination`);
@@ -173,213 +382,7 @@ export async function syncHousecallPro(tenantId: string): Promise<void> {
     }
   }
 
-  const housecallProEstimates = allHousecallProEstimates;
-  console.log(`[sync-scheduler] Fetched ${housecallProEstimates.length} total estimates from Housecall Pro across ${page} pages`);
-
-  let newEstimates = 0;
-  let updatedEstimates = 0;
-  let failedEstimates = 0;
-
-  const estimateBatches = splitIntoBatches(housecallProEstimates, SYNC_BATCH_SIZE);
-  console.log(`[sync-scheduler] Processing ${housecallProEstimates.length} estimates in ${estimateBatches.length} batches of up to ${SYNC_BATCH_SIZE}`);
-
-  for (let batchIndex = 0; batchIndex < estimateBatches.length; batchIndex++) {
-    const batch = estimateBatches[batchIndex];
-    console.log(`[sync-scheduler] Processing estimate batch ${batchIndex + 1}/${estimateBatches.length} (${batch.length} items)`);
-
-    const batchHcpIds = batch.map((e: any) => e.id);
-    const existingEstimatesMap = await storage.getEstimatesByHousecallProIds(batchHcpIds, tenantId);
-    console.log(`[sync-scheduler] Found ${existingEstimatesMap.size} existing estimates in batch`);
-
-    for (const hcpEstimate of batch) {
-      try {
-        const existingEstimate = existingEstimatesMap.get(hcpEstimate.id);
-
-        if (existingEstimate) {
-          console.log(`[sync-scheduler] Estimate ${hcpEstimate.id} - status: '${hcpEstimate.status}', work_status: '${hcpEstimate.work_status}'`);
-
-          const newStatus = mapHcpEstimateStatus(hcpEstimate);
-
-          console.log(`[sync-scheduler] Estimate ${hcpEstimate.id} - mapped status: '${newStatus}'`);
-
-          const updatedTitle =
-            hcpEstimate.number ||
-            hcpEstimate.estimate_number ||
-            hcpEstimate.name ||
-            (hcpEstimate.description && hcpEstimate.description !== '' ? hcpEstimate.description : null) ||
-            `Estimate #${hcpEstimate.id}` ||
-            'Estimate from Housecall Pro';
-
-          console.log(`[sync-scheduler] Update Estimate ${hcpEstimate.id} - title: '${updatedTitle}'`);
-
-          let amt = hcpEstimate.total ?? hcpEstimate.total_price ?? hcpEstimate.estimate_total ?? hcpEstimate.amount ?? null;
-          if (amt === null && Array.isArray(hcpEstimate.options)) {
-            amt = hcpEstimate.options.reduce((m: number, o: any) => Math.max(m, Number(o.total_amount) || 0), 0);
-          }
-          const amountInDollars = (typeof amt === 'number' && amt > 0) ? (amt / 100) : 0;
-
-          const updateData = {
-            title: updatedTitle,
-            status: newStatus,
-            amount: amountInDollars.toString(),
-            description: hcpEstimate.description || '',
-            scheduledStart: hcpEstimate.scheduled_start ? new Date(hcpEstimate.scheduled_start) : null,
-          };
-
-          await storage.updateEstimate(existingEstimate.id, updateData, tenantId);
-          updatedEstimates++;
-
-          if (newStatus === 'approved' && existingEstimate.status !== 'approved') {
-            await convertEstimateToJob(existingEstimate, hcpEstimate, tenantId);
-            console.log(`[sync-scheduler] Auto-converted approved estimate ${existingEstimate.id} to job`);
-          }
-        } else {
-          // Create new estimate
-          let amt = hcpEstimate.total ?? hcpEstimate.total_price ?? hcpEstimate.estimate_total ?? hcpEstimate.amount ?? null;
-          if (amt === null && Array.isArray(hcpEstimate.options)) {
-            amt = hcpEstimate.options.reduce((m: number, o: any) => Math.max(m, Number(o.total_amount) || 0), 0);
-          }
-          const amountInDollars = (typeof amt === 'number' && amt > 0) ? (amt / 100) : 0;
-
-          console.log(`[sync-scheduler] New Estimate ${hcpEstimate.id} - status: '${hcpEstimate.status}', work_status: '${hcpEstimate.work_status}'`);
-
-          const estimateStatus = mapHcpEstimateStatus(hcpEstimate);
-
-          console.log(`[sync-scheduler] New Estimate ${hcpEstimate.id} - mapped status: '${estimateStatus}'`);
-
-          const estimateTitle =
-            hcpEstimate.number ||
-            hcpEstimate.estimate_number ||
-            hcpEstimate.name ||
-            (hcpEstimate.description && hcpEstimate.description !== '' ? hcpEstimate.description : null) ||
-            `Estimate #${hcpEstimate.id}` ||
-            'Estimate from Housecall Pro';
-
-          console.log(`[sync-scheduler] New Estimate ${hcpEstimate.id} - title: '${estimateTitle}'`);
-
-          let contactId: string | null = null;
-          const hcpCustomerId = hcpEstimate.customer_id;
-          const hcpCustomer = hcpEstimate.customer;
-
-          if (hcpCustomerId) {
-            const existingContact = await storage.getContactByHousecallProCustomerId(hcpCustomerId, tenantId);
-            if (existingContact) {
-              contactId = existingContact.id;
-              console.log(`[sync-scheduler] Found existing contact ${contactId} for HCP customer ${hcpCustomerId}`);
-            }
-          }
-
-          if (!contactId && hcpCustomer) {
-            const customerPhone = hcpCustomer.mobile_number || hcpCustomer.home_number || hcpCustomer.work_number ||
-              (hcpCustomer.phone_numbers && hcpCustomer.phone_numbers[0]?.phone_number);
-            const customerEmail = hcpCustomer.email;
-
-            if (customerPhone) {
-              const phoneMatch = await storage.getContactByPhone(customerPhone, tenantId);
-              if (phoneMatch) {
-                contactId = phoneMatch.id;
-                if (hcpCustomerId) {
-                  await storage.updateContact(phoneMatch.id, { housecallProCustomerId: hcpCustomerId }, tenantId);
-                }
-                console.log(`[sync-scheduler] Found contact ${contactId} by phone match`);
-              }
-            }
-
-            if (!contactId && customerEmail) {
-              const emailMatch = await storage.findMatchingContact(tenantId, [customerEmail], undefined);
-              if (emailMatch) {
-                contactId = emailMatch;
-                if (hcpCustomerId) {
-                  await storage.updateContact(emailMatch, { housecallProCustomerId: hcpCustomerId }, tenantId);
-                }
-                console.log(`[sync-scheduler] Found contact ${contactId} by email match`);
-              }
-            }
-
-            if (!contactId) {
-              const customerName = [hcpCustomer.first_name, hcpCustomer.last_name].filter(Boolean).join(' ') ||
-                hcpCustomer.company || 'Unknown Customer';
-              const phones = [hcpCustomer.mobile_number, hcpCustomer.home_number, hcpCustomer.work_number]
-                .filter(Boolean) as string[];
-              const emails = customerEmail ? [customerEmail] : [];
-              const address = hcpCustomer.address ?
-                [hcpCustomer.address.street, hcpCustomer.address.city, hcpCustomer.address.state, hcpCustomer.address.zip]
-                  .filter(Boolean).join(', ') : undefined;
-
-              const newContactId = randomUUID();
-              const newEstimateId = randomUUID();
-
-              await db.transaction(async (tx) => {
-                await tx.insert(contacts).values({
-                  id: newContactId,
-                  name: customerName,
-                  emails,
-                  phones,
-                  address,
-                  type: 'customer',
-                  status: 'new',
-                  source: 'housecall-pro',
-                  housecallProCustomerId: hcpCustomerId || undefined,
-                  externalId: hcpCustomerId || undefined,
-                  externalSource: hcpCustomerId ? 'housecall-pro' : undefined,
-                  contractorId: tenantId,
-                  createdAt: new Date(),
-                  updatedAt: new Date(),
-                });
-
-                await tx.insert(estimates).values({
-                  contactId: newContactId,
-                  title: estimateTitle,
-                  description: hcpEstimate.description || '',
-                  amount: amountInDollars.toString(),
-                  status: estimateStatus,
-                  contractorId: tenantId,
-                  createdAt: new Date(),
-                  updatedAt: new Date(),
-                  scheduledStart: hcpEstimate.scheduled_start ? new Date(hcpEstimate.scheduled_start) : null,
-                  externalId: hcpEstimate.id,
-                  externalSource: 'housecall-pro',
-                });
-              });
-
-              console.log(`[sync-scheduler] Created contact ${newContactId} and estimate ${newEstimateId} atomically from HCP data`);
-              newEstimates++;
-              continue;
-            }
-          }
-
-          if (!contactId) {
-            console.log(`[sync-scheduler] Skipping estimate ${hcpEstimate.id} - no customer data available to create contact`);
-            continue;
-          }
-
-          const estimateData = {
-            contactId,
-            title: estimateTitle,
-            description: hcpEstimate.description || '',
-            amount: amountInDollars.toString(),
-            status: estimateStatus,
-            contractorId: tenantId,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-            scheduledStart: hcpEstimate.scheduled_start ? new Date(hcpEstimate.scheduled_start) : null,
-            externalId: hcpEstimate.id,
-            externalSource: 'housecall-pro' as const,
-          };
-
-          await storage.createEstimate(estimateData, tenantId);
-          newEstimates++;
-        }
-      } catch (itemError) {
-        console.error(`[sync-scheduler] Failed to process estimate ${hcpEstimate.id}:`, itemError);
-        failedEstimates++;
-      }
-    }
-
-    console.log(`[sync-scheduler] Batch ${batchIndex + 1} complete - Running totals: ${newEstimates} new, ${updatedEstimates} updated, ${failedEstimates} failed`);
-  }
-
-  console.log(`[sync-scheduler] Estimate sync completed - New: ${newEstimates}, Updated: ${updatedEstimates}, Failed: ${failedEstimates}`);
+  console.log(`[sync-scheduler] Estimate sync completed - Fetched: ${totalFetched} total, New: ${newEstimates}, Updated: ${updatedEstimates}, Failed: ${failedEstimates}`);
 
   await syncHousecallProJobs(tenantId);
 }

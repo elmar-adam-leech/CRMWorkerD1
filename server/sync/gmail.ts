@@ -3,6 +3,29 @@ import { db } from '../db';
 import { users, activities } from '@shared/schema';
 import { eq, and, inArray } from 'drizzle-orm';
 
+// Simple exponential-backoff retry for transient Gmail API failures (429, 503).
+// Mirrors the pattern used in server/housecall-pro-service.ts → makeRequest().
+// Cap: 3 attempts, base delay: 1s, max delay: 4s (2^2 * 1s).
+async function withRetry<T>(fn: () => Promise<T>, label: string, maxAttempts = 3): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      lastError = err;
+      const status = err?.status ?? err?.code;
+      const isRetryable = status === 429 || status === 503 || status === 'ECONNRESET';
+      if (!isRetryable || attempt === maxAttempts) {
+        throw err;
+      }
+      const delayMs = Math.min(1000 * Math.pow(2, attempt - 1), 4000);
+      console.warn(`[sync-scheduler] ${label} attempt ${attempt} failed (status ${status}), retrying in ${delayMs}ms...`);
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+  }
+  throw lastError;
+}
+
 export async function syncGmail(tenantId: string): Promise<void> {
   console.log(`[sync-scheduler] Syncing Gmail emails for tenant ${tenantId}`);
 
@@ -32,7 +55,10 @@ export async function syncGmail(tenantId: string): Promise<void> {
         const since = user.gmailLastSyncAt || undefined;
         console.log(`[sync-scheduler] Last sync at: ${since?.toISOString() || 'never'}`);
 
-        const result = await gmailService.fetchNewEmails(user.gmailRefreshToken, since);
+        const result = await withRetry(
+          () => gmailService.fetchNewEmails(user.gmailRefreshToken!, since),
+          `fetchNewEmails for ${user.name}`
+        );
 
         if (result.tokenExpired) {
           console.log(`[sync-scheduler] Gmail token expired for user ${user.name}, marking as disconnected and sending notification`);

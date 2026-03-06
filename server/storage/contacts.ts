@@ -13,10 +13,16 @@ type PaginatedContacts = {
   pagination: { total: number; hasMore: boolean; nextCursor: string | null };
 };
 
+// Safety cap for the non-paginated getContacts call.
+// This prevents runaway memory usage for large tenants.
+// TODO: Replace all callers of getContacts() with getContactsPaginated() when
+// tenant scale warrants cursor-based pagination across the entire app.
+const GET_CONTACTS_LIMIT = 2000;
+
 async function getContacts(contractorId: string, type?: 'lead' | 'customer' | 'inactive'): Promise<Contact[]> {
   const conditions = [eq(contacts.contractorId, contractorId)];
   if (type) conditions.push(eq(contacts.type, type));
-  return await db.select().from(contacts).where(and(...conditions)).orderBy(desc(contacts.createdAt)).limit(2000);
+  return await db.select().from(contacts).where(and(...conditions)).orderBy(desc(contacts.createdAt)).limit(GET_CONTACTS_LIMIT);
 }
 
 async function getLeadTrend(contractorId: string, since: Date): Promise<{ date: string; count: number }[]> {
@@ -34,6 +40,13 @@ async function getLeadTrend(contractorId: string, since: Date): Promise<{ date: 
     .orderBy(sql`DATE(${contacts.createdAt})`);
 }
 
+/**
+ * Fetch contacts for a contractor using cursor-based pagination.
+ *
+ * Prefer this over getContacts() for any UI that renders large lists. The
+ * cursor is the ISO timestamp of the last-seen record's createdAt field.
+ * Results are capped at 100 per page regardless of the `limit` option.
+ */
 async function getContactsPaginated(contractorId: string, options: {
   cursor?: string;
   limit?: number;
@@ -409,6 +422,24 @@ async function deleteLead(id: string, contractorId: string): Promise<boolean> {
   return (result.rowCount ?? 0) > 0;
 }
 
+/**
+ * Detect and merge duplicate contacts for a contractor using a Union-Find algorithm.
+ *
+ * Memory note: This function fetches ALL contacts for the contractor into memory.
+ * For contractors with tens of thousands of contacts this can be significant.
+ * If deduplication becomes a performance bottleneck, consider:
+ *   - Running it as an off-hours background job.
+ *   - Processing contacts in chunks by creation date.
+ *   - Moving the Union-Find logic into a stored procedure.
+ *
+ * The algorithm (Union-Find / Disjoint Set Union):
+ *   - Each contact starts as its own "root".
+ *   - Contacts that share a phone number or email address are unioned together.
+ *   - Unions are transitive: if A shares a phone with B and B shares an email
+ *     with C, all three end up in the same group.
+ *   - The oldest contact in each group becomes the merge target (primary record).
+ *   - Path compression keeps subsequent find() calls O(1) amortized.
+ */
 async function deduplicateContacts(contractorId: string): Promise<{ duplicatesFound: number; contactsMerged: number; contactsDeleted: number }> {
   console.log(`[deduplicateContacts] Starting deduplication for contractor: ${contractorId}`);
   const allContacts = await db.select().from(contacts).where(eq(contacts.contractorId, contractorId)).orderBy(contacts.createdAt);

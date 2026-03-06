@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useLocation } from "wouter";
 import { JobCard } from "@/components/JobCard";
-import { JobCardSkeleton } from "@/components/JobCardSkeleton";
+import { CardSkeleton } from "@/components/CardSkeleton";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -327,7 +327,7 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
       {viewMode === "cards" ? (
         <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
           {jobsLoading
-            ? Array.from({ length: 6 }).map((_, i) => <JobCardSkeleton key={`skeleton-${i}`} />)
+            ? Array.from({ length: 6 }).map((_, i) => <CardSkeleton key={`skeleton-${i}`} />)
             : allJobs.map((job) => (
                 <JobCard key={job.id} job={job} onStatusChange={handleStatusChange} onViewDetails={handleViewDetails} onDelete={handleDeleteJob} selectable />
               ))}
@@ -344,7 +344,7 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
               </div>
               <div className="space-y-3">
                 {jobsLoading
-                  ? Array.from({ length: 2 }).map((_, i) => <JobCardSkeleton key={`kanban-skeleton-${status}-${i}`} />)
+                  ? Array.from({ length: 2 }).map((_, i) => <CardSkeleton key={`kanban-skeleton-${status}-${i}`} />)
                   : jobsByStatus[status].map((job) => (
                       <JobCard key={job.id} job={job} onStatusChange={handleStatusChange} onViewDetails={handleViewDetails} onDelete={handleDeleteJob} selectable />
                     ))}

@@ -3,6 +3,7 @@ import type { WorkflowStep } from "@shared/schema";
 import { broadcastToContractor } from "./websocket";
 import { extractVariablesFromEntity } from "./utils/workflow/variable-extractor";
 import { replaceVariablesInObject } from "./utils/workflow/variable-replacer";
+import { getWorkflowStepsCached } from "./services/cache";
 
 import type { ExecutionContext, StepResult } from "./workflow-actions/types";
 import { handleSendEmail } from "./workflow-actions/send-email";
@@ -42,9 +43,23 @@ export class WorkflowEngine {
   }
 
   /**
-   * Execute a workflow by execution ID
-   * @param executionId - The workflow execution ID
-   * @param contractorId - The contractor ID for tenant isolation (required for security)
+   * Execute a workflow to completion given an already-created execution record.
+   *
+   * High-level flow:
+   *   1. Load the execution + parent workflow. Bail early if missing/inactive/unapproved.
+   *   2. Load workflow steps from cache (60s TTL) — avoids a DB hit on every trigger.
+   *   3. Group steps by `stepOrder` so steps at the same order run in parallel via
+   *      Promise.all, while sequential groups run one after another.
+   *   4. On any step failure, persist the partial execution log and mark the execution
+   *      `failed` without running remaining steps (fail-fast).
+   *   5. Merge step output data into context.variables so later steps can reference
+   *      results produced by earlier steps using `{{variable.name}}` syntax.
+   *
+   * Broadcasting: Sends WebSocket events to the contractor's browser for real-time
+   * workflow progress updates (workflow_started, workflow_completed, workflow_failed).
+   *
+   * @param executionId  - ID of the WorkflowExecution row created by the trigger.
+   * @param contractorId - Tenant identifier used for all storage calls (security boundary).
    */
   async executeWorkflow(executionId: string, contractorId: string): Promise<void> {
     try {
@@ -73,7 +88,7 @@ export class WorkflowEngine {
         return;
       }
 
-      const steps = await storage.getWorkflowSteps(workflow.id);
+      const steps = await getWorkflowStepsCached(workflow.id);
       if (!steps || steps.length === 0) {
         console.log(`[Workflow Engine] Workflow ${workflow.id} has no steps`);
         await this.updateExecutionStatus(executionId, contractorId, 'completed', 'No steps to execute');
@@ -189,7 +204,20 @@ export class WorkflowEngine {
   }
 
   /**
-   * Execute a single workflow step, dispatching to the appropriate handler module
+   * Execute a single workflow step, dispatching to the appropriate action handler.
+   *
+   * Each action type maps to a dedicated handler module under `server/workflow-actions/`.
+   * Handlers receive:
+   *   - `params`   — parsed action configuration from the step's `actionConfig` JSON column.
+   *   - `context`  — the full execution context including variables and contractor ID.
+   *   - Bound helper functions (`replaceVariables`, `updateEntityStatus`) for handlers
+   *     that need template interpolation or entity mutation.
+   *
+   * Unknown action types log a warning and return `{ success: true }` so a single
+   * mis-configured step doesn't abort the whole workflow silently.
+   *
+   * @param step    - The WorkflowStep row from the database.
+   * @param context - The live execution context (mutated across step groups to pass data forward).
    */
   private async executeStep(step: WorkflowStep, context: ExecutionContext): Promise<StepResult> {
     console.log(`[Workflow Engine] Executing step ${step.stepOrder}: ${step.actionType}`);
@@ -343,7 +371,17 @@ export class WorkflowEngine {
   }
 
   /**
-   * Trigger workflows based on entity events (contact_created, contact_updated, etc.)
+   * Trigger workflows that match a business event (e.g. contact_created, estimate_updated).
+   *
+   * Flow:
+   *   1. Map the eventType to its { entity, event } shape.
+   *   2. Fetch all active + approved workflows from the DB (single query).
+   *   3. Filter in-memory by trigger config (entity, event, status, tags).
+   *   4. Enrich the entity data with related records (contact, etc.) ONCE — before
+   *      the loop — so the enrichment DB call is O(1) regardless of how many
+   *      workflows match. (Previously it was inside the loop, causing N extra queries.)
+   *   5. Create an execution record for each matching workflow and fire them off
+   *      asynchronously (non-blocking).
    */
   async triggerWorkflowsForEvent(
     eventType: 'contact_created' | 'contact_updated' | 'contact_status_changed' | 'estimate_created' | 'estimate_updated' | 'estimate_status_changed' | 'job_created' | 'job_updated' | 'job_status_changed',
@@ -413,6 +451,9 @@ export class WorkflowEngine {
 
       console.log(`[Workflow Engine] Found ${matchingWorkflows.length} matching workflows for ${eventType}`);
 
+      // Enrich entity data with related records ONCE here, before the workflow loop.
+      // Each enrichment call is a DB query — doing it N times (once per matching workflow)
+      // is wasteful because the entity data is identical for all triggered workflows.
       let enrichedData: Record<string, unknown> = entityData;
       if (eventType.startsWith('estimate_') && entityData.id) {
         const enriched = await storage.getEstimateWithContact(String(entityData.id), contractorId);

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { LeadCard } from "@/components/LeadCard";
-import { LeadCardSkeleton } from "@/components/LeadCardSkeleton";
+import { CardSkeleton } from "@/components/CardSkeleton";
 import { TextingModal } from "@/components/TextingModal";
 import { EmailComposerModal } from "@/components/EmailComposerModal";
 import { LocalSchedulingModal } from "@/components/LocalSchedulingModal";
@@ -386,7 +386,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
           data-testid="leads-grid"
         >
           {leadsLoading && Array.from({ length: 6 }, (_, i) => (
-            <LeadCardSkeleton key={`skeleton-${i}`} />
+            <CardSkeleton key={`skeleton-${i}`} />
           ))}
 
           {!leadsLoading && leads.map((lead: Contact) => (

@@ -128,6 +128,48 @@ export const cacheInvalidation = {
   },
 };
 
+// Cache workflow steps for 60 seconds.
+// Workflow steps are fetched on every execution but rarely change mid-run.
+// The 60-second TTL is short enough that step edits take effect quickly
+// without hammering the DB on high-volume trigger events.
+export const getWorkflowStepsCached = memoizee(
+  async (workflowId: string) => {
+    return storage.getWorkflowSteps(workflowId);
+  },
+  {
+    promise: true,
+    maxAge: 60 * 1000, // 60 seconds
+    max: 500,
+    normalizer: (args) => args[0],
+  }
+);
+
+// Invalidate a workflow's step cache when steps are created, updated, or deleted.
+// Must be called from any route that modifies workflow steps.
+export const invalidateWorkflowStepsCache = (workflowId: string) => {
+  getWorkflowStepsCached.delete(workflowId);
+};
+
+// Cache isIntegrationEnabled for 30 seconds.
+// This check runs on every contact creation and sync tick but the underlying
+// setting almost never changes in the middle of a request cycle.
+export const isIntegrationEnabledCached = memoizee(
+  async (contractorId: string, integrationName: string) => {
+    return storage.isIntegrationEnabled(contractorId, integrationName);
+  },
+  {
+    promise: true,
+    maxAge: 30 * 1000, // 30 seconds
+    max: 500,
+    normalizer: (args) => `${args[0]}-${args[1]}`,
+  }
+);
+
+// Invalidate the integration-enabled cache when an integration is toggled on/off.
+export const invalidateIntegrationEnabledCache = (contractorId: string, integrationName: string) => {
+  isIntegrationEnabledCached.delete(contractorId, integrationName);
+};
+
 // Export cache statistics for monitoring
 export const getCacheStats = () => {
   return {

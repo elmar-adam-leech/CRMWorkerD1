@@ -1,6 +1,27 @@
 import type { WorkflowStep } from "@shared/schema";
 import type { ExecutionContext, StepResult } from "./types";
 
+// ────────────────────────────────────────────────────────────────────────────
+// IMPORTANT — In-memory delay limitation
+// ────────────────────────────────────────────────────────────────────────────
+// Delays are implemented using Node.js `setTimeout`, which means they live
+// entirely in the process memory of the running server.
+//
+// Known limitation:
+//   If the server restarts (deploy, crash, OOM) while a workflow is waiting
+//   inside a delay, that delay is silently lost. The execution row in the DB
+//   will remain in "running" status indefinitely (zombie execution).
+//
+// Recommended upgrade path when this becomes a problem:
+//   1. Add a `scheduled_tasks` table with columns:
+//        (id, execution_id, contractor_id, run_at, action_config, status)
+//   2. Have the delay action INSERT a row instead of calling setTimeout.
+//   3. Run a lightweight poller (or use BullMQ / pg-boss) to pick up and
+//      resume executions when `run_at` is reached.
+//   4. Add a server-startup recovery job that finds zombie "running"
+//      executions and either resumes or marks them failed.
+// ────────────────────────────────────────────────────────────────────────────
+
 export function parseDuration(duration: string): number {
   let match = duration.match(/^(\d+)([smhd])$/);
   if (match) {
