@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EmailHistory } from "@/components/EmailHistory";
 import { Mail, Send, X, FileText } from "lucide-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useTemplates } from "@/hooks/useTemplates";
 import { useToast } from "@/hooks/use-toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -51,16 +52,9 @@ export function EmailComposerModal({
   const derivedContactId = contactId || leadId || customerId || estimateId || null;
   const contactType = contactId ? null : (leadId ? 'lead' : customerId ? 'customer' : estimateId ? 'estimate' : null);
 
-  // Fetch email templates
-  const { data: templates = [] } = useQuery<Template[]>({
-    queryKey: ['/api/templates', 'email'],
-    queryFn: async () => {
-      const response = await fetch(`/api/templates?type=email`);
-      if (!response.ok) throw new Error('Failed to fetch templates');
-      return response.json();
-    },
-    enabled: isOpen,
-  });
+  // Shared templates hook — uses the global queryFn (credentials: 'include')
+  // and shares the cache with the Templates page to avoid duplicate network requests.
+  const { data: templates = [] } = useTemplates('email', isOpen);
 
   // Send email mutation
   const sendEmailMutation = useMutation({

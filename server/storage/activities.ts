@@ -51,6 +51,25 @@ async function createActivity(activity: Omit<InsertActivity, 'contractorId'>, co
   return result[0];
 }
 
+/**
+ * Bulk-insert multiple activity records in a single SQL INSERT statement.
+ *
+ * Use this instead of looping over `createActivity()` when you have several
+ * activities to persist at once (e.g., the Gmail sync loop). Reduces DB
+ * round-trips from O(n) to O(1) for the batch.
+ *
+ * Returns the inserted rows in insertion order.
+ */
+async function bulkCreateActivities(
+  activityList: Array<Omit<InsertActivity, 'contractorId'>>,
+  contractorId: string,
+): Promise<Activity[]> {
+  if (activityList.length === 0) return [];
+  const rows = activityList.map(a => ({ ...a, contractorId }));
+  const result = await db.insert(activities).values(rows).returning();
+  return result;
+}
+
 async function updateActivity(id: string, activity: UpdateActivity, contractorId: string): Promise<Activity | undefined> {
   const result = await db.update(activities)
     .set({ ...activity, updatedAt: new Date() })
@@ -68,6 +87,7 @@ export const activityMethods = {
   getActivities,
   getActivity,
   createActivity,
+  bulkCreateActivities,
   updateActivity,
   deleteActivity,
 };

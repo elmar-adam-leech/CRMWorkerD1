@@ -46,14 +46,9 @@ export default function WorkflowBuilder() {
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const isInitialized = useRef(false);
 
+  // Use the default global queryFn (handles credentials: 'include' and base URL automatically).
   const { data: workflow, isLoading: workflowLoading } = useQuery<Workflow>({
     queryKey: ['/api/workflows', workflowId],
-    queryFn: async () => {
-      if (!workflowId) throw new Error('No workflow ID');
-      const response = await fetch(`/api/workflows/${workflowId}`, { credentials: 'include' });
-      if (!response.ok) throw new Error(`${response.status}: ${response.statusText}`);
-      return await response.json();
-    },
     enabled: !!workflowId,
   });
 
@@ -61,23 +56,12 @@ export default function WorkflowBuilder() {
 
   const { data: workflowSteps, isLoading: stepsLoading } = useQuery<RawWorkflowStep[]>({
     queryKey: ['/api/workflows', workflowId, 'steps'],
-    queryFn: async () => {
-      if (!workflowId) return [];
-      const response = await fetch(`/api/workflows/${workflowId}/steps`, { credentials: 'include' });
-      if (!response.ok) throw new Error(`${response.status}: ${response.statusText}`);
-      return await response.json();
-    },
     enabled: !!workflowId,
   });
 
+  // Gate on workflow.createdBy so the query only fires once the parent data has loaded.
   const { data: creator } = useQuery<{ id: string; name: string; email: string }>({
     queryKey: ['/api/users', workflow?.createdBy],
-    queryFn: async () => {
-      if (!workflow?.createdBy) throw new Error('No creator ID');
-      const response = await fetch(`/api/users/${workflow.createdBy}`, { credentials: 'include' });
-      if (!response.ok) throw new Error(`${response.status}: ${response.statusText}`);
-      return await response.json();
-    },
     enabled: !!workflow?.createdBy,
   });
 

@@ -14,16 +14,14 @@ export function registerJobRoutes(app: Express): void {
     res.json(jobs);
   }));
 
-  app.get("/api/jobs/paginated", async (req: AuthenticatedRequest, res: any) => {
+  app.get("/api/jobs/paginated", async (req: AuthenticatedRequest, res: any, next: any) => {
     try {
+      // ZodError from .parse() propagates to next() → global ZodError middleware → 400 response
       const validatedQuery = jobsPaginationQuerySchema.parse(req.query);
       const paginatedJobs = await storage.getJobsPaginated(req.user!.contractorId, validatedQuery);
       res.json(paginatedJobs);
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        res.status(400).json({ message: "Invalid query parameters", errors: error.errors });
-        return;
-      }
+      if (error instanceof z.ZodError) return next(error);
       console.error('Paginated jobs error:', error);
       res.status(500).json({ message: "Failed to fetch paginated jobs" });
     }

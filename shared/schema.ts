@@ -117,6 +117,8 @@ export const userInvitations = pgTable("user_invitations", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
   contractorIdIdx: index("user_invitations_contractor_id_idx").on(table.contractorId),
+  // Index for "show all invitations sent by this user" queries
+  invitedByIdx: index("user_invitations_invited_by_idx").on(table.invitedBy),
 }));
 
 // Contractors table
@@ -275,6 +277,9 @@ export const jobs = pgTable("jobs", {
   externalIdIdx: index("jobs_external_id_idx").on(table.externalId).where(sql`external_id IS NOT NULL`),
   // Index for getJobByEstimateId() and joins from estimates → jobs
   estimateIdIdx: index("jobs_estimate_id_idx").on(table.estimateId),
+  // Composite index supporting paginated title search queries:
+  // WHERE contractor_id = ? AND title ILIKE ? ORDER BY created_at DESC
+  contractorTitleIdx: index("jobs_contractor_title_idx").on(table.contractorId, table.title),
 }));
 
 // Estimates table
@@ -314,6 +319,9 @@ export const estimates = pgTable("estimates", {
   followUpDateIdx: index("estimates_follow_up_date_idx").on(table.followUpDate),
   // Partial index for external ID + contractor lookups (HCP sync path)
   externalIdContractorIdx: index("estimates_external_id_contractor_idx").on(table.externalId, table.contractorId).where(sql`external_id IS NOT NULL`),
+  // Composite index supporting paginated title search queries:
+  // WHERE contractor_id = ? AND title ILIKE ? ORDER BY created_at DESC
+  contractorTitleIdx: index("estimates_contractor_title_idx").on(table.contractorId, table.title),
 }));
 
 // Messages table for texting functionality
@@ -506,6 +514,8 @@ export const contractorIntegrations = pgTable("contractor_integrations", {
   // Ensure one record per integration per contractor
 }, (table) => ({
   contractorIntegrationUnique: unique().on(table.contractorId, table.integrationName),
+  // Index for "who enabled this integration?" audit queries
+  enabledByIdx: index("contractor_integrations_enabled_by_idx").on(table.enabledBy),
 }));
 
 // Employee roles enum for internal role labeling
@@ -679,6 +689,11 @@ export const activities = pgTable("activities", {
   externalLookupIdx: index("activities_external_lookup_idx").on(table.externalSource, table.externalId),
   // Composite index for conversation-style email queries (type filter + contact lookup)
   contractorTypeContactIdx: index("activities_contractor_type_contact_idx").on(table.contractorId, table.type, table.contactId),
+  // Composite index for the most common getActivities() access pattern:
+  // contractorId + contactId filtered, then ordered by createdAt.
+  // Without this, Postgres intersects the separate contractorId and contactId indexes,
+  // which is slower than a single covering index scan.
+  contractorContactDateIdx: index("activities_contractor_contact_date_idx").on(table.contractorId, table.contactId, table.createdAt),
 }));
 
 // Insert schemas

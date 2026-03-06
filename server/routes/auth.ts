@@ -126,19 +126,12 @@ export function registerAuthRoutes(app: Express): void {
           return;
         }
       } else {
-        try {
-          insertUserSchema.parse({
-            ...userData,
-            contractorId: 'validation-only',
-            role: userRole,
-          });
-        } catch (error) {
-          if (error instanceof z.ZodError) {
-            res.status(400).json({ message: "Invalid user data", errors: error.errors });
-            return;
-          }
-          throw error;
-        }
+        // ZodError from .parse() bubbles up to the global error middleware → 400 response
+        insertUserSchema.parse({
+          ...userData,
+          contractorId: 'validation-only',
+          role: userRole,
+        });
       }
 
       const newContractor = await storage.createContractor({ name: contractorName, domain });
@@ -223,10 +216,10 @@ export function registerAuthRoutes(app: Express): void {
         message: existingUser ? "Successfully joined new company" : "User registered successfully"
       });
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        res.status(400).json({ message: "Invalid user data", errors: error.errors });
-        return;
-      }
+      // ZodError (e.g. from insertUserSchema.parse) will be re-thrown and caught
+      // by the global ZodError middleware in server/index.ts → 400 response.
+      // Only non-Zod errors need explicit handling here.
+      if (error instanceof z.ZodError) throw error;
       console.error('Registration error:', error);
       res.status(500).json({ message: "Registration failed" });
     }

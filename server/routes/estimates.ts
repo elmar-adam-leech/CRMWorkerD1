@@ -5,6 +5,7 @@ import { storage } from "../storage";
 import { insertEstimateSchema } from "@shared/schema";
 import { workflowEngine } from "../workflow-engine";
 import { broadcastToContractor } from "../websocket";
+import { createActivityAndBroadcast } from "../utils/activity";
 import { housecallProService } from "../housecall-pro-service";
 import { z } from "zod";
 
@@ -235,16 +236,11 @@ export function registerEstimateRoutes(app: Express): void {
         ? `Follow-up date set to ${new Date(followUpDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`
         : 'Follow-up date cleared';
 
-      const activity = await storage.createActivity({
-        type: 'follow_up',
-        title: 'Follow-up Date Updated',
-        content: activityContent,
-        estimateId: req.params.id,
-        userId: req.user!.userId,
-      }, req.user!.contractorId);
-
-      const { broadcastToContractor: bc } = await import('../websocket');
-      bc(req.user!.contractorId, { type: 'new_activity', estimateId: req.params.id });
+      await createActivityAndBroadcast(
+        req.user!.contractorId,
+        { type: 'follow_up', title: 'Follow-up Date Updated', content: activityContent, estimateId: req.params.id, userId: req.user!.userId },
+        { type: 'new_activity', estimateId: req.params.id }
+      );
     } catch (activityError) {
       console.error('[Follow-up] Error creating activity for estimate:', activityError);
     }

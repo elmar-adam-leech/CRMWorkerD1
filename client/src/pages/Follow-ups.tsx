@@ -1,3 +1,12 @@
+/**
+ * Follow-ups page.
+ *
+ * Data merge strategy: Fetches leads (/api/contacts/follow-ups) and estimates
+ * (/api/estimates/follow-ups) separately, then merges them into a single
+ * FollowUpItem[] array sorted by followUpDate ascending. This happens client-side
+ * via useMemo so that re-sorts are free and both queries remain independently
+ * cacheable. The EditLeadDialog component owns the lead-edit form and mutation.
+ */
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { Calendar, Clock, Filter } from "lucide-react";
@@ -5,28 +14,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { insertContactSchema } from "@shared/schema";
-import { z } from "zod";
+import { EditLeadDialog } from "@/components/EditLeadDialog";
 import {
   Select,
   SelectContent,
@@ -65,35 +54,6 @@ export default function FollowUps() {
     isOpen: boolean;
     item?: FollowUpItem;
   }>({ isOpen: false });
-
-  // Form schema for lead editing — emails/phones omitted and replaced with
-  // singular string fields so the UI can work with a single value at a time.
-  const leadFormSchema = insertContactSchema
-    .omit({ contractorId: true, type: true, emails: true, phones: true })
-    .extend({
-      email: z.string().optional(),
-      phone: z.string().optional(),
-    });
-
-  // Form for lead editing
-  const editForm = useForm<z.infer<typeof leadFormSchema>>({
-    resolver: zodResolver(leadFormSchema),
-    defaultValues: {
-      name: "",
-      email: "",
-      phone: "",
-      address: "",
-      source: "",
-      notes: "",
-      followUpDate: undefined,
-      utmSource: "",
-      utmMedium: "",
-      utmCampaign: "",
-      utmTerm: "",
-      utmContent: "",
-      pageUrl: "",
-    },
-  });
 
   const { data: leads = [], isLoading: leadsLoading } = useQuery<Contact[]>({
     queryKey: ['/api/contacts/follow-ups'],
@@ -296,32 +256,6 @@ export default function FollowUps() {
     },
   });
 
-  // Update lead mutation
-  const updateLeadMutation = useMutation({
-    mutationFn: async (data: { leadId: string; leadData: z.infer<typeof leadFormSchema> }) => {
-      const response = await apiRequest('PUT', `/api/contacts/${data.leadId}`, data.leadData);
-      return response;
-    },
-    onSuccess: () => {
-      toast({
-        title: "Lead Updated",
-        description: "Lead information has been successfully updated.",
-      });
-      queryClient.invalidateQueries({ queryKey: ['/api/contacts/paginated'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/contacts/follow-ups'] });
-      setEditLeadModal({ isOpen: false });
-      editForm.reset();
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Failed to Update Lead",
-        description: error.message || "Something went wrong.",
-        variant: "destructive",
-      });
-    },
-  });
-
   // Delete lead mutation
   const deleteLeadMutation = useMutation({
     mutationFn: async (leadId: string) => {
@@ -349,51 +283,13 @@ export default function FollowUps() {
 
   const handleEdit = (item: FollowUpItem) => {
     if (item.type === 'lead') {
-      // Find the full lead object
       const lead = leads.find(l => l.id === item.id);
       if (lead) {
-        // Populate the form with lead data
-        editForm.reset({
-          name: lead.name || "",
-          email: (lead.emails && lead.emails.length > 0) ? lead.emails[0] : "",
-          phone: (lead.phones && lead.phones.length > 0) ? lead.phones[0] : "",
-          address: lead.address || "",
-          source: lead.source || "",
-          notes: lead.notes || "",
-          followUpDate: lead.followUpDate ? new Date(lead.followUpDate) : undefined,
-          utmSource: lead.utmSource || "",
-          utmMedium: lead.utmMedium || "",
-          utmCampaign: lead.utmCampaign || "",
-          utmTerm: lead.utmTerm || "",
-          utmContent: lead.utmContent || "",
-          pageUrl: lead.pageUrl || "",
-        });
         setEditLeadModal({ isOpen: true, lead });
       }
     } else {
       window.location.href = `/estimates?edit=${item.id}`;
     }
-  };
-
-  const handleEditSubmit = (values: z.infer<typeof leadFormSchema>) => {
-    if (!editLeadModal.lead) return;
-    
-    // Convert empty strings to null for optional fields
-    const processedValues = {
-      ...values,
-      emails: values.email ? [values.email] : [],
-      phones: values.phone ? [values.phone] : [],
-      address: values.address || null,
-      source: values.source || null,
-      notes: values.notes || null,
-    };
-    delete (processedValues as Record<string, unknown>).email;
-    delete (processedValues as Record<string, unknown>).phone;
-    
-    updateLeadMutation.mutate({
-      leadId: editLeadModal.lead.id,
-      leadData: processedValues,
-    });
   };
 
   const handleSetFollowUp = (item: FollowUpItem) => {
@@ -545,131 +441,12 @@ export default function FollowUps() {
         />
       )}
 
-      {/* Edit Lead Modal */}
-      <Dialog open={editLeadModal.isOpen} onOpenChange={(open) => setEditLeadModal({ isOpen: open })}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto mx-4">
-          <DialogHeader>
-            <DialogTitle>Edit Lead - {editLeadModal.lead?.name}</DialogTitle>
-            <DialogDescription>
-              Update the lead's contact information and details.
-            </DialogDescription>
-          </DialogHeader>
-          
-          <Form {...editForm}>
-            <form onSubmit={editForm.handleSubmit(handleEditSubmit)} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <FormField
-                  control={editForm.control}
-                  name="name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Name *</FormLabel>
-                      <FormControl>
-                        <Input placeholder="Enter lead name" {...field} data-testid="input-edit-lead-name" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                
-                <FormField
-                  control={editForm.control}
-                  name="email"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Email</FormLabel>
-                      <FormControl>
-                        <Input type="email" placeholder="Enter email address" {...field} data-testid="input-edit-lead-email" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                
-                <FormField
-                  control={editForm.control}
-                  name="phone"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Phone</FormLabel>
-                      <FormControl>
-                        <Input placeholder="Enter phone number" {...field} data-testid="input-edit-lead-phone" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                
-                <FormField
-                  control={editForm.control}
-                  name="source"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Source</FormLabel>
-                      <FormControl>
-                        <Input placeholder="Where did this lead come from?" {...field} value={field.value ?? ""} data-testid="input-edit-lead-source" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              <FormField
-                control={editForm.control}
-                name="address"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Address</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Enter address" {...field} value={field.value ?? ""} data-testid="input-edit-lead-address" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={editForm.control}
-                name="notes"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Notes</FormLabel>
-                    <FormControl>
-                      <Textarea 
-                        placeholder="Add any additional notes..." 
-                        className="min-h-[100px]"
-                        {...field}
-                        value={field.value ?? ""}
-                        data-testid="input-edit-lead-notes"
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <div className="flex justify-end gap-2 pt-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setEditLeadModal({ isOpen: false })}
-                  data-testid="button-cancel-edit-lead"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={updateLeadMutation.isPending}
-                  data-testid="button-save-edit-lead"
-                >
-                  {updateLeadMutation.isPending ? "Saving..." : "Save Changes"}
-                </Button>
-              </div>
-            </form>
-          </Form>
-        </DialogContent>
-      </Dialog>
+      {/* Edit Lead Modal — logic extracted to EditLeadDialog for maintainability */}
+      <EditLeadDialog
+        lead={editLeadModal.lead}
+        open={editLeadModal.isOpen}
+        onClose={() => setEditLeadModal({ isOpen: false })}
+      />
 
       {/* Set Follow-Up Date Modal */}
       <FollowUpDateModal

@@ -90,6 +90,15 @@ function emailActivityToMessage(activity: {
   } as Message;
 }
 
+// SCALE NOTE: getConversations uses two separate queries (SMS messages and calls),
+// each capped at CONVERSATION_MESSAGE_LIMIT (500 rows), then merges and deduplicates
+// them in memory using a Map keyed by contactId. This works for most tenants but
+// has two scale risks:
+//   1. 500-row cap silently drops older messages for high-volume tenants.
+//   2. In-memory merge means node heap grows linearly with message volume.
+// Long-term path: replace with a single SQL UNION query ordered by created_at DESC
+// and paginated with LIMIT/OFFSET or a keyset cursor. This moves the sort and
+// deduplication into Postgres where it belongs.
 async function getConversations(contractorId: string, options: {
   search?: string;
   type?: 'text' | 'email';

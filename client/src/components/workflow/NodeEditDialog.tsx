@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Node } from 'reactflow';
 import { useQuery } from '@tanstack/react-query';
+import { useTerminology } from '@/hooks/useTerminology';
+import { useUsers } from '@/hooks/useUsers';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
@@ -47,14 +49,11 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
     enabled: isAdmin && open,
   });
 
-  const { data: teamUsers = [] } = useQuery<Array<{ id: string; name: string; email: string }>>({
-    queryKey: ['/api/users'],
-    enabled: isAdmin && open,
-  });
+  // Shared hooks — share cache entries across the whole app
+  const { data: usersData = [] } = useUsers();
+  const teamUsers = usersData.map(u => ({ id: u.id, name: u.fullName, email: '' }));
 
-  const { data: terminology } = useQuery<{ leadLabel?: string; estimateLabel?: string; jobLabel?: string }>({
-    queryKey: ['/api/terminology'],
-  });
+  const { data: terminology } = useTerminology();
 
   useEffect(() => {
     if (node) { setFormData(node.data || {}); }

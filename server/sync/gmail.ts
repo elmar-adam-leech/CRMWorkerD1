@@ -97,7 +97,12 @@ export async function syncGmail(tenantId: string): Promise<void> {
           knownEmailIds = new Set(existingRows.map(r => r.externalId!));
         }
 
-        let processedCount = 0;
+        // Collect all activity records for the emails, then insert them in one
+        // bulk INSERT instead of one INSERT per email. For a user with 100 new
+        // emails this reduces DB round-trips from 100 sequential INSERTs to 1.
+        type ActivityPayload = Parameters<typeof storage.createActivity>[0];
+        const activitiesToInsert: ActivityPayload[] = [];
+
         for (const email of emails) {
           if (knownEmailIds.has(email.id)) {
             continue;
@@ -127,7 +132,7 @@ export async function syncGmail(tenantId: string): Promise<void> {
             direction: isOutbound ? 'outbound' : 'inbound',
           };
 
-          await storage.createActivity({
+          activitiesToInsert.push({
             type: 'email',
             title: isOutbound ? `Email sent: ${email.subject}` : `Email received: ${email.subject}`,
             content: email.body,
@@ -137,10 +142,14 @@ export async function syncGmail(tenantId: string): Promise<void> {
             userId: user.id,
             externalId: email.id,
             externalSource: 'gmail',
-          }, tenantId);
-
-          processedCount++;
+          });
         }
+
+        // Single bulk INSERT for all new emails this sync run
+        if (activitiesToInsert.length > 0) {
+          await storage.bulkCreateActivities(activitiesToInsert, tenantId);
+        }
+        const processedCount = activitiesToInsert.length;
 
         await db.update(users)
           .set({ gmailLastSyncAt: new Date() })

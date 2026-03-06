@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -40,7 +40,7 @@ type JobCardProps = {
   selectable?: boolean;
 };
 
-export function JobCard({ job, onStatusChange, onViewDetails, onEdit, onEditStatus, onUpdateJob, onDelete, selectable = false }: JobCardProps) {
+export const JobCard = memo(function JobCard({ job, onStatusChange, onViewDetails, onEdit, onEditStatus, onUpdateJob, onDelete, selectable = false }: JobCardProps) {
   const { toggleItem, isSelected } = useBulkSelection();
   const { toast } = useToast();
   const [tagsDialogOpen, setTagsDialogOpen] = useState(false);
@@ -239,4 +239,4 @@ export function JobCard({ job, onStatusChange, onViewDetails, onEdit, onEditStat
       )}
     </Card>
   );
-}
+});

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -30,7 +30,7 @@ type LeadCardProps = {
   selectable?: boolean;
 };
 
-export function LeadCard({ lead, onContact, onSchedule, onSendText, onSendEmail, onEdit, onDelete, onEditStatus, onViewDetails, onSetFollowUp, onUpdateLead, selectable = false }: LeadCardProps) {
+export const LeadCard = memo(function LeadCard({ lead, onContact, onSchedule, onSendText, onSendEmail, onEdit, onDelete, onEditStatus, onViewDetails, onSetFollowUp, onUpdateLead, selectable = false }: LeadCardProps) {
   const { toggleItem, isSelected } = useBulkSelection();
   const [tagsDialogOpen, setTagsDialogOpen] = useState(false);
   
@@ -239,4 +239,4 @@ export function LeadCard({ lead, onContact, onSchedule, onSendText, onSendEmail,
     </Card>
     </div>
   );
-}
+});

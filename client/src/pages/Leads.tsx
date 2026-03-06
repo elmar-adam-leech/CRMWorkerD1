@@ -422,6 +422,10 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
         />
       )}
 
+      {/* SCALE NOTE: Each page appends card DOM nodes. At >200 items the rendered
+           DOM grows large and scrolling can slow down. If this becomes a problem,
+           replace the append-based pagination with react-virtual (or @tanstack/virtual)
+           for windowed rendering — only the visible cards would be in the DOM. */}
       {!leadsLoading && (
         <LoadMoreButton
           hasNextPage={hasNextPage}

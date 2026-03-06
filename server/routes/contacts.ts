@@ -7,6 +7,7 @@ import type { UpdateContact } from "../storage-types";
 import { requireAuth, requireManagerOrAdmin, type AuthenticatedRequest } from "../auth-service";
 import { workflowEngine } from "../workflow-engine";
 import { broadcastToContractor } from "../websocket";
+import { createActivityAndBroadcast } from "../utils/activity";
 import { housecallProService } from "../housecall-pro-service";
 import { z } from "zod";
 
@@ -275,15 +276,11 @@ export function registerContactRoutes(app: Express): void {
       };
       const activityContent = `Contact status changed to ${statusLabels[status]}`;
 
-      await storage.createActivity({
-        type: 'status_change',
-        title: 'Status Changed',
-        content: activityContent,
-        contactId: req.params.id,
-        userId: req.user!.userId,
-      }, req.user!.contractorId);
-
-      broadcastToContractor(req.user!.contractorId, { type: 'new_activity', contactId: req.params.id });
+      await createActivityAndBroadcast(
+        req.user!.contractorId,
+        { type: 'status_change', title: 'Status Changed', content: activityContent, contactId: req.params.id, userId: req.user!.userId },
+        { type: 'new_activity', contactId: req.params.id }
+      );
     } catch (activityError) {
       console.error('[Status Change] Failed to create activity:', activityError);
     }
@@ -328,15 +325,11 @@ export function registerContactRoutes(app: Express): void {
         ? `Follow-up date set to ${new Date(followUpDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`
         : 'Follow-up date cleared';
 
-      await storage.createActivity({
-        type: 'follow_up',
-        title: 'Follow-up Date Updated',
-        content: activityContent,
-        contactId: req.params.id,
-        userId: req.user!.userId,
-      }, req.user!.contractorId);
-
-      broadcastToContractor(req.user!.contractorId, { type: 'new_activity', contactId: req.params.id });
+      await createActivityAndBroadcast(
+        req.user!.contractorId,
+        { type: 'follow_up', title: 'Follow-up Date Updated', content: activityContent, contactId: req.params.id, userId: req.user!.userId },
+        { type: 'new_activity', contactId: req.params.id }
+      );
     } catch (activityError) {
       console.error('[Follow-up] Error creating activity:', activityError);
     }

@@ -442,6 +442,11 @@ async function deleteLead(id: string, contractorId: string): Promise<boolean> {
  *   - Path compression keeps subsequent find() calls O(1) amortized.
  */
 async function deduplicateContacts(contractorId: string): Promise<{ duplicatesFound: number; contactsMerged: number; contactsDeleted: number }> {
+  // SCALE NOTE: Loads ALL contacts for the contractor into memory.
+  // For contractors with >5k contacts this will produce large heap allocations and
+  // a full table scan. Migration path: chunk by creation-date ranges (e.g. 1k rows
+  // at a time) and call the Union-Find incrementally, or move to a DB-level
+  // stored procedure / SQL window-function approach.
   console.log(`[deduplicateContacts] Starting deduplication for contractor: ${contractorId}`);
   const allContacts = await db.select().from(contacts).where(eq(contacts.contractorId, contractorId)).orderBy(contacts.createdAt);
   console.log(`[deduplicateContacts] Found ${allContacts.length} total contacts`);

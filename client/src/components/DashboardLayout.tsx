@@ -3,7 +3,7 @@ import { AppSidebar } from "./AppSidebar";
 import { Header } from "./Header";
 import { ThemeProvider } from "./ThemeProvider";
 import { CommandPalette } from "./CommandPalette";
-import { useQuery } from "@tanstack/react-query";
+import { useTerminology } from "@/hooks/useTerminology";
 
 type DashboardLayoutProps = {
   children: React.ReactNode;
@@ -35,10 +35,8 @@ export function DashboardLayout({
     "--sidebar-width-icon": "3rem",
   };
 
-  // Fetch terminology settings for command palette
-  const { data: terminology } = useQuery<any>({
-    queryKey: ['/api/terminology'],
-  });
+  // Shared terminology hook — single cache entry for the whole app
+  const { data: terminology } = useTerminology();
 
   return (
     <ThemeProvider defaultTheme="light" storageKey="crm-theme">

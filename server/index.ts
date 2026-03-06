@@ -1,5 +1,6 @@
 import express, { type Request, Response, NextFunction } from "express";
 import helmet from "helmet";
+import { ZodError } from "zod";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { providerService } from "./providers/provider-service";
@@ -58,7 +59,16 @@ app.use((req, res, next) => {
   
   const server = await registerRoutes(app);
 
+  // Global error-handling contract:
+  //  - ZodError  → 400 with the first validation message (no need to catch in individual routes)
+  //  - Other errors with an explicit .status/.statusCode → that status
+  //  - Everything else → 500 Internal Server Error
+  // Route handlers should still catch non-Zod errors they want to handle differently.
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+    if (err instanceof ZodError) {
+      res.status(400).json({ message: err.issues[0]?.message ?? "Validation error", errors: err.issues });
+      return;
+    }
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
 

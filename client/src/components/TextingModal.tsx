@@ -10,6 +10,7 @@ import { PhoneNumberSelector } from "@/components/PhoneNumberSelector";
 import { SmsHistory } from "@/components/SmsHistory";
 import { MessageSquare, Send, X, FileText } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
+import { useTemplates } from "@/hooks/useTemplates";
 import { useToast } from "@/hooks/use-toast";
 import { useSendSms, formatForDialpad } from "@/hooks/useSendSms";
 import { useProviderStatus } from "@/hooks/use-provider-config";
@@ -58,16 +59,9 @@ export function TextingModal({
   const derivedContactId = contactId || leadId || customerId || estimateId || null;
   const contactType = contactId ? null : (leadId ? 'lead' : customerId ? 'customer' : estimateId ? 'estimate' : null);
 
-  // Fetch text message templates
-  const { data: templates = [] } = useQuery<Template[]>({
-    queryKey: ['/api/templates', 'text'],
-    queryFn: async () => {
-      const response = await fetch(`/api/templates?type=text`);
-      if (!response.ok) throw new Error('Failed to fetch templates');
-      return response.json();
-    },
-    enabled: isOpen,
-  });
+  // Shared templates hook — uses the global queryFn (credentials: 'include')
+  // and shares the cache with the Templates page to avoid duplicate network requests.
+  const { data: templates = [] } = useTemplates('text', isOpen);
 
   // Set default phone number when modal opens
   useEffect(() => {

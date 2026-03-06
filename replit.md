@@ -73,15 +73,28 @@ The backend is built with Node.js and Express.js, offering a RESTful API with co
 - **Dialpad storage limits**: `getDialpadPhoneNumbers` → 200, `getDialpadUsers` → 500, `getDialpadDepartments` → 200, `getDueSyncSchedules` → 100.
 - **Inline algorithm docs added**: Union-Find in `deduplicateContacts`, fuzzy phone SQL in `getContactByPhone` / `findMatchingContact`, HCP estimate status mapping rationale in `mapHcpEstimateStatus`, sliding-window slot search in `getUnifiedAvailability`.
 
+### Code Health Improvements (second pass)
+- **HCP jobs sync OOM fix**: Jobs sync loop now processes each page immediately (mirrors estimates pattern) — eliminates unbounded in-memory array accumulation. `totalJobsFetched` counter added.
+- **Gmail batch activity creation**: `bulkCreateActivities()` added to `server/storage/activities.ts`; Gmail sync now collects all activity payloads then does a single bulk INSERT instead of N sequential INSERTs. Added to `IStorage` interface.
+- **New DB indexes**: `user_invitations.invited_by`, `contractor_integrations.enabled_by`, composite `(contractor_id, contact_id, created_at)` on activities, composite `(contractor_id, title)` on jobs and estimates.
+- **React.memo**: `LeadCard`, `JobCard`, `EstimateCard` all wrapped with `React.memo` — parent state changes (filter input, modal open) no longer re-render all 50 card items.
+- **Shared hooks everywhere**: `AppSidebar.tsx`, `DashboardLayout.tsx`, `workflow/NodeEditDialog.tsx` now use `useTerminology()` instead of raw `useQuery`. `NodeEditDialog` uses `useUsers()`. `useTemplates.ts` hook created — used in `TextingModal` and `EmailComposerModal` instead of raw `fetch()` in `queryFn`.
+- **WorkflowBuilder no raw fetch()**: All three `queryFn` functions in `WorkflowBuilder.tsx` replaced with standard `useQuery` using the default global fetcher (handles credentials automatically).
+- **`createActivityAndBroadcast` utility**: `server/utils/activity.ts` — single function replaces the `storage.createActivity()` + `broadcastToContractor()` pair. Used in `contacts.ts` (status_change, follow_up) and `estimates.ts` (follow_up). JSDoc explains when to use vs. call each separately.
+- **Global ZodError middleware**: `server/index.ts` now catches `instanceof ZodError` → 400 before the generic 500 handler. Redundant manual ZodError catches removed from `server/routes/auth.ts` and `server/routes/jobs.ts`.
+- **EditLeadDialog extracted**: `client/src/components/EditLeadDialog.tsx` contains the ~130-line edit dialog from `Follow-ups.tsx`. `Follow-ups.tsx` dropped from 687 → 463 lines. File-level JSDoc added explaining the leads+estimates merge strategy.
+- **Scale notes added**: `deduplicateContacts` (contacts.ts), `getConversations` (messaging.ts), and `LoadMoreButton` (Leads/Jobs/Estimates pages) all have `// SCALE NOTE` comments describing the limits and migration paths.
+
 ### DB Indexes (current full set)
 The following indexes exist beyond Drizzle's default primary keys:
 - `contacts`: contractor_id, contractor+status, contractor+type, contractor+date, contractor+scheduled, external_lookup (contractor+source+external_id), **housecall_pro_customer_id (partial)**, follow_up_date, tags, created_at, status, type, contacted_at, is_scheduled, **emails GIN**, **phones GIN**
-- `jobs`: contractor_id, contractor+status, contractor+date, contact_id, status, created_at, scheduled_date, **external_id (partial)**, **estimate_id (partial, non-null)**
-- `estimates`: contractor_id, contractor+status, contractor+date, contact_id, status, created_at, follow_up_date, **external_id+contractor_id (partial)**
-- `activities`: contractor_id, contractor+type, contractor+type+contact, contractor+date, contact_id, estimate_id, job_id, external_lookup (source+external_id), user_id, type, created_at
+- `jobs`: contractor_id, contractor+status, contractor+date, contact_id, status, created_at, scheduled_date, **external_id (partial)**, **estimate_id (partial, non-null)**, **contractor+title**
+- `estimates`: contractor_id, contractor+status, contractor+date, contact_id, status, created_at, follow_up_date, **external_id+contractor_id (partial)**, **contractor+title**
+- `activities`: contractor_id, contractor+type, contractor+type+contact, contractor+date, contact_id, estimate_id, job_id, external_lookup (source+external_id), user_id, type, created_at, **contractor+contact+created_at**
 - `messages`: contractor_id, contractor+contact, contractor+contact+created, contractor+phone, contact_id, estimate_id, external_message_id, from_number, to_number, direction, created_at
 - `leads`: contractor_id, contractor+status, contact_id, status, assigned_to_user_id
-- `user_invitations`: contractor_id
+- `user_invitations`: contractor_id, **invited_by**
+- `contractor_integrations`: contractor+name (unique), **enabled_by**
 - `business_targets`: contractor_id
 - `password_reset_tokens`: **user_id**
 

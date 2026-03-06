@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -53,7 +53,7 @@ type EstimateCardProps = {
   selectable?: boolean;
 };
 
-export function EstimateCard({ estimate, onSend, onViewDetails, onConvertToJob, onEdit, onContact, onSendText, onSendEmail, onSetFollowUp, onDelete, onUpdateEstimate, selectable = false }: EstimateCardProps) {
+export const EstimateCard = memo(function EstimateCard({ estimate, onSend, onViewDetails, onConvertToJob, onEdit, onContact, onSendText, onSendEmail, onSetFollowUp, onDelete, onUpdateEstimate, selectable = false }: EstimateCardProps) {
   const { toggleItem, isSelected } = useBulkSelection();
   const { toast } = useToast();
   const [tagsDialogOpen, setTagsDialogOpen] = useState(false);
@@ -270,4 +270,4 @@ export function EstimateCard({ estimate, onSend, onViewDetails, onConvertToJob, 
     </Card>
     </div>
   );
-}
+});

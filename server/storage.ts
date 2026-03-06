@@ -327,6 +327,7 @@ export interface IStorage {
   }): Promise<Activity[]>;
   getActivity(id: string, contractorId: string): Promise<Activity | undefined>;
   createActivity(activity: Omit<InsertActivity, 'contractorId'>, contractorId: string): Promise<Activity>;
+  bulkCreateActivities(activities: Array<Omit<InsertActivity, 'contractorId'>>, contractorId: string): Promise<Activity[]>;
   updateActivity(id: string, activity: UpdateActivity, contractorId: string): Promise<Activity | undefined>;
   deleteActivity(id: string, contractorId: string): Promise<boolean>;
 

@@ -27,7 +27,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ContractorSwitcher } from "./TenantSwitcher";
 import { useLocation, Link } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useTerminology } from "@/hooks/useTerminology";
 
 // Default menu item structure (will be customized with terminology)
 const getMenuItems = (terminology?: any) => [
@@ -120,10 +120,8 @@ export function AppSidebar({
   const [location] = useLocation();
   const { setOpenMobile, isMobile } = useSidebar();
 
-  // Fetch terminology settings
-  const { data: terminology } = useQuery<any>({
-    queryKey: ['/api/terminology'],
-  });
+  // Shared terminology hook — single cache entry for the whole app
+  const { data: terminology } = useTerminology();
 
   // Get menu items with custom terminology
   const menuItems = getMenuItems(terminology);
