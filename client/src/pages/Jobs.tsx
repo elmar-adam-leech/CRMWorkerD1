@@ -1,10 +1,8 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState } from "react";
 import { useLocation } from "wouter";
 import { JobCard } from "@/components/JobCard";
 import { CardSkeleton } from "@/components/CardSkeleton";
-import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header-v2";
 import { PageLayout } from "@/components/ui/page-layout";
 import { Plus, Search, Briefcase, CalendarIcon } from "lucide-react";
@@ -31,7 +29,6 @@ import { CreateJobModal } from "@/components/CreateJobModal";
 import { DeleteConfirmDialog } from "@/components/DeleteConfirmDialog";
 import { StatusFilterBar } from "@/components/StatusFilterBar";
 import { LoadMoreButton } from "@/components/LoadMoreButton";
-import { ViewToggle } from "@/components/ViewToggle";
 
 const JOB_STATUSES = ["scheduled", "in_progress", "completed", "cancelled"] as const;
 type JobStatus = (typeof JOB_STATUSES)[number];
@@ -42,15 +39,13 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
   const { isHousecallProConfigured, syncStartDate } = useHousecallProIntegration();
 
   const {
-    viewMode,
-    setViewMode,
     filterStatus,
     setFilterStatus,
     advancedFilters,
     setAdvancedFilters,
   } = usePagePreferences({ pageKey: "jobs" });
 
-  const [searchQuery, setSearchQuery] = useState(externalSearch);
+  const searchQuery = externalSearch;
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [jobDetailsModal, setJobDetailsModal] = useState<{ isOpen: boolean; job?: JobListItem }>({ isOpen: false });
   const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; jobId?: string; jobTitle?: string }>({ isOpen: false });
@@ -67,11 +62,6 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
   useWebSocketInvalidation([
     { types: ["new_job", "job_created", "job_updated", "job_deleted"], queryKeys: ["/api/jobs/paginated", "/api/jobs/status-counts"] },
   ]);
-
-  // Sync global search bar into local state
-  useEffect(() => {
-    setSearchQuery(externalSearch);
-  }, [externalSearch]);
 
   useAddModalFromUrl(() => setAddModalOpen(true));
 
@@ -183,16 +173,6 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
 
   const totalJobs = jobsData?.pages[0]?.pagination.total ?? 0;
 
-  const jobsByStatus = useMemo(
-    () => ({
-      scheduled: allJobs.filter((j) => j.status === "scheduled"),
-      in_progress: allJobs.filter((j) => j.status === "in_progress"),
-      completed: allJobs.filter((j) => j.status === "completed"),
-      cancelled: allJobs.filter((j) => j.status === "cancelled"),
-    }),
-    [allJobs]
-  );
-
   // ----- Event handlers -----
 
   const handleStatusChange = (jobId: string, newStatus: string) => {
@@ -284,22 +264,8 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
         }
       />
 
-      {/* Search, view toggle, filters */}
+      {/* Filters */}
       <div className="flex flex-col gap-4">
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder={`Search ${jobsLabel.toLowerCase()} by title, customer, or type...`}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-8"
-              data-testid="input-job-search"
-            />
-          </div>
-          <ViewToggle viewMode={viewMode} onViewModeChange={setViewMode} />
-        </div>
-
         <StatusFilterBar
           statuses={JOB_STATUSES}
           activeStatus={filterStatus}
@@ -323,36 +289,14 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
         </div>
       )}
 
-      {/* Card / Kanban views */}
-      {viewMode === "cards" ? (
-        <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
-          {jobsLoading
-            ? Array.from({ length: 6 }).map((_, i) => <CardSkeleton key={`skeleton-${i}`} />)
-            : allJobs.map((job) => (
-                <JobCard key={job.id} job={job} onStatusChange={handleStatusChange} onViewDetails={handleViewDetails} onDelete={handleDeleteJob} selectable />
-              ))}
-        </div>
-      ) : (
-        <div className="grid gap-6 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-          {JOB_STATUSES.map((status) => (
-            <div key={status} className="space-y-4">
-              <div className="flex items-center gap-2">
-                <StatusBadge status={status} />
-                <span className="text-sm text-muted-foreground">
-                  ({jobsLoading ? 0 : jobsByStatus[status].length})
-                </span>
-              </div>
-              <div className="space-y-3">
-                {jobsLoading
-                  ? Array.from({ length: 2 }).map((_, i) => <CardSkeleton key={`kanban-skeleton-${status}-${i}`} />)
-                  : jobsByStatus[status].map((job) => (
-                      <JobCard key={job.id} job={job} onStatusChange={handleStatusChange} onViewDetails={handleViewDetails} onDelete={handleDeleteJob} selectable />
-                    ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      {/* Jobs list */}
+      <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
+        {jobsLoading
+          ? Array.from({ length: 6 }).map((_, i) => <CardSkeleton key={`skeleton-${i}`} />)
+          : allJobs.map((job) => (
+              <JobCard key={job.id} job={job} onStatusChange={handleStatusChange} onViewDetails={handleViewDetails} onDelete={handleDeleteJob} selectable />
+            ))}
+      </div>
 
       <LoadMoreButton
         hasNextPage={hasNextPage}
