@@ -132,7 +132,11 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
       const url = new URL("/api/contacts/paginated", window.location.origin);
       url.searchParams.set("type", "lead");
       if (pageParam) url.searchParams.set("cursor", pageParam as string);
-      if (viewMode !== "kanban" && filterStatus !== "all") url.searchParams.set("status", filterStatus);
+      if (viewMode === "kanban") {
+        url.searchParams.set("includeAll", "true");
+      } else if (filterStatus !== "all") {
+        url.searchParams.set("status", filterStatus);
+      }
       if (searchQuery) url.searchParams.set("search", searchQuery);
       if (advancedFilters.assignedTo) url.searchParams.set("assignedTo", advancedFilters.assignedTo);
       if (advancedFilters.dateFrom) url.searchParams.set("dateFrom", advancedFilters.dateFrom.toISOString());

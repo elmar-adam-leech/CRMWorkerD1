@@ -53,6 +53,7 @@ async function getContactsPaginated(contractorId: string, options: {
   type?: 'lead' | 'customer' | 'inactive';
   status?: string;
   search?: string;
+  includeAll?: boolean;
 } = {}): Promise<PaginatedContacts> {
   const limit = Math.min(options.limit || 50, 100);
   const conditions = [eq(contacts.contractorId, contractorId)];
@@ -63,11 +64,13 @@ async function getContactsPaginated(contractorId: string, options: {
   if (options.type) {
     conditions.push(eq(contacts.type, options.type));
   }
-  if (options.status && options.status !== 'all') {
-    conditions.push(eq(contacts.status, options.status as any));
-  } else if (!options.status || options.status === 'all') {
-    if (!options.type || options.type === 'lead') {
-      conditions.push(ne(contacts.status, 'disqualified'));
+  if (!options.includeAll) {
+    if (options.status && options.status !== 'all') {
+      conditions.push(eq(contacts.status, options.status as any));
+    } else if (!options.status || options.status === 'all') {
+      if (!options.type || options.type === 'lead') {
+        conditions.push(ne(contacts.status, 'disqualified'));
+      }
     }
   }
   if (options.search) {

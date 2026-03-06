@@ -105,6 +105,7 @@ export interface IStorage {
     type?: 'lead' | 'customer' | 'inactive';
     status?: string;
     search?: string;
+    includeAll?: boolean;
   }): Promise<PaginatedContacts>;
   getContactsCount(contractorId: string, options?: {
     type?: 'lead' | 'customer' | 'inactive';

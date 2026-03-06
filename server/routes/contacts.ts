@@ -19,13 +19,14 @@ export function registerContactRoutes(app: Express): void {
   }));
 
   app.get("/api/contacts/paginated", asyncHandler(async (req, res) => {
-    const { cursor, limit, type, status, search } = req.query;
+    const { cursor, limit, type, status, search, includeAll } = req.query;
     const options = {
       cursor: cursor as string | undefined,
       limit: limit ? parseInt(limit as string, 10) : 50,
       type: type as 'lead' | 'customer' | 'inactive' | undefined,
       status: status as string | undefined,
       search: search as string | undefined,
+      includeAll: includeAll === "true",
     };
     const paginatedContacts = await storage.getContactsPaginated(req.user!.contractorId, options);
     res.json(paginatedContacts);
