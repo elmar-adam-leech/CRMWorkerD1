@@ -186,9 +186,11 @@ export function LocalSchedulingModal({ lead, isOpen, onClose, onScheduled }: Loc
     queryKey: ['/api/housecall/employee-estimates', selectedSalesperson?.housecallProUserId, formattedDate],
     queryFn: async () => {
       if (!selectedSalesperson?.housecallProUserId || !selectedDate) return [];
-      const response = await fetch(`/api/housecall/employee-estimates?employeeId=${selectedSalesperson.housecallProUserId}&date=${formattedDate}`);
-      if (!response.ok) return [];
-      return response.json();
+      try {
+        return await (await apiRequest('GET', `/api/housecall/employee-estimates?employeeId=${selectedSalesperson.housecallProUserId}&date=${formattedDate}`)).json();
+      } catch {
+        return [];
+      }
     },
     enabled: isOpen && !!selectedSalesperson?.housecallProUserId && !!selectedDate,
     staleTime: 30000, // Cache for 30 seconds

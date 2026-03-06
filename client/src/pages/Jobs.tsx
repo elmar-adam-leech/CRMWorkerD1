@@ -10,7 +10,7 @@ import { useQuery, useMutation, useInfiniteQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { formatStatusLabel } from "@/lib/utils";
-import { downloadCsv } from "@/lib/csv";
+import { useBulkActions } from "@/hooks/useBulkActions";
 import type { PaginatedJobs, TerminologySettings } from "@shared/schema";
 import { useTerminology } from "@/hooks/useTerminology";
 import { useUsers } from "@/hooks/useUsers";
@@ -193,50 +193,23 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
 
   // ----- Bulk action handlers -----
 
-  const handleBulkDelete = async (ids: string[]) => {
-    try {
-      await Promise.all(ids.map((id) => apiRequest("DELETE", `/api/jobs/${id}`)));
-      queryClient.invalidateQueries({ queryKey: ["/api/jobs/paginated"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/jobs/status-counts"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/jobs"] });
-      toast({ title: `Deleted ${ids.length} job(s)` });
-    } catch (error: unknown) {
-      toast({
-        title: "Delete Failed",
-        description: error instanceof Error ? error.message : "Failed to delete one or more jobs.",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleBulkStatusChange = async (ids: string[], status: string) => {
-    try {
-      await Promise.all(ids.map((id) => apiRequest("PATCH", `/api/jobs/${id}/status`, { status })));
-      queryClient.invalidateQueries({ queryKey: ["/api/jobs/paginated"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/jobs/status-counts"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/jobs"] });
-      toast({ title: `Updated ${ids.length} job(s) to ${status}` });
-    } catch (error: unknown) {
-      toast({
-        title: "Status Update Failed",
-        description: error instanceof Error ? error.message : "Failed to update one or more jobs.",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleBulkExport = async (ids: string[]) => {
-    const selectedJobs = allJobs.filter((job) => ids.includes(job.id));
-    downloadCsv(
-      `jobs-export-${new Date().toISOString().split("T")[0]}.csv`,
-      ["Title", "Customer", "Status", "Value", "Scheduled Date", "Type", "Priority", "Estimated Hours"],
-      selectedJobs.map((job) => [
-        job.title, job.contactName, job.status, job.value,
-        job.scheduledDate, job.type, job.priority, job.estimatedHours ?? "",
-      ])
-    );
-    toast({ title: `Exported ${ids.length} job(s)` });
-  };
+  const { handleBulkDelete, handleBulkStatusChange, handleBulkExport } = useBulkActions({
+    entityType: "job",
+    deleteEndpoint: (id) => `/api/jobs/${id}`,
+    statusEndpoint: (id) => `/api/jobs/${id}/status`,
+    invalidateKeys: [
+      ["/api/jobs/paginated"],
+      ["/api/jobs/status-counts"],
+      ["/api/jobs"],
+    ],
+    exportFilename: `jobs-export-${new Date().toISOString().split("T")[0]}.csv`,
+    exportHeaders: ["Title", "Customer", "Status", "Value", "Scheduled Date", "Type", "Priority", "Estimated Hours"],
+    getExportRow: (job) => [
+      job.title, job.contactName, job.status, job.value,
+      job.scheduledDate, job.type, job.priority, job.estimatedHours ?? "",
+    ],
+    entities: allJobs,
+  });
 
   // ----- Render -----
 

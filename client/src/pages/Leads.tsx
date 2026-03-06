@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useLocation } from "wouter";
 import { LeadCard } from "@/components/LeadCard";
 import { CardSkeleton } from "@/components/CardSkeleton";
@@ -18,8 +18,8 @@ import type { Contact, PaginatedContacts, TerminologySettings } from "@shared/sc
 import { useTerminology } from "@/hooks/useTerminology";
 import { useUsers } from "@/hooks/useUsers";
 import { cn, formatStatusLabel } from "@/lib/utils";
-import { downloadCsv } from "@/lib/csv";
 import { useWebSocketInvalidation } from "@/hooks/useWebSocketInvalidation";
+import { useBulkActions } from "@/hooks/useBulkActions";
 import { useCommunicationActions } from "@/hooks/useCommunicationActions";
 import { useGlobalShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { BulkActionToolbar } from "@/components/BulkActionToolbar";
@@ -150,7 +150,10 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
     initialPageParam: undefined as string | undefined,
   });
 
-  const leads = (leadsData?.pages.flatMap((page: PaginatedContacts) => page.data) || []) as Contact[];
+  const leads = useMemo(
+    () => (leadsData?.pages.flatMap((page: PaginatedContacts) => page.data) || []) as Contact[],
+    [leadsData]
+  );
   const totalLeads = leadsData?.pages[0]?.pagination.total || 0;
 
   const updateStatusMutation = useMutation({
@@ -223,53 +226,53 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
     disqualified: statusCountsLoading ? undefined : 0,
   };
 
-  const handleContactById = (leadId: string, method: "phone" | "email") => {
+  const handleContactById = useCallback((leadId: string, method: "phone" | "email") => {
     const lead = leads.find((l: Contact) => l.id === leadId);
     if (lead) handleContact(lead, method);
-  };
+  }, [leads, handleContact]);
 
-  const handleScheduleById = (leadId: string) => {
+  const handleScheduleById = useCallback((leadId: string) => {
     const lead = leads.find((l: Contact) => l.id === leadId);
     if (lead) handleSchedule(lead);
-  };
+  }, [leads, handleSchedule]);
 
-  const handleSendTextByEntity = (lead: Contact) => handleSendText(lead, "lead");
-  const handleSendEmailByEntity = (lead: Contact) => handleSendEmail(lead, "lead");
+  const handleSendTextByEntity = useCallback((lead: Contact) => handleSendText(lead, "lead"), [handleSendText]);
+  const handleSendEmailByEntity = useCallback((lead: Contact) => handleSendEmail(lead, "lead"), [handleSendEmail]);
 
-  const handleEdit = (contactId: string) => {
+  const handleEdit = useCallback((contactId: string) => {
     const contact = leads.find((l: Contact) => l.id === contactId);
     if (contact) setEditContactModal({ isOpen: true, contact });
-  };
+  }, [leads]);
 
-  const handleDelete = (contactId: string) => {
+  const handleDelete = useCallback((contactId: string) => {
     const contact = leads.find((l: Contact) => l.id === contactId);
     if (!contact) return;
     setDeleteConfirmDialog({ isOpen: true, contactId, contactName: contact.name });
-  };
+  }, [leads]);
 
-  const handleViewDetails = (contactId: string) => {
+  const handleViewDetails = useCallback((contactId: string) => {
     const contact = leads.find((l: Contact) => l.id === contactId);
     if (contact) setContactDetailsModal({ isOpen: true, contact });
-  };
+  }, [leads]);
 
-  const handleEditStatus = (contactId: string) => {
+  const handleEditStatus = useCallback((contactId: string) => {
     const contact = leads.find((l: Contact) => l.id === contactId);
     if (contact) setEditStatusModal({ isOpen: true, contact });
-  };
+  }, [leads]);
 
-  const handleSetFollowUp = (contact: Contact) => setFollowUpModal({ isOpen: true, contact });
+  const handleSetFollowUp = useCallback((contact: Contact) => setFollowUpModal({ isOpen: true, contact }), []);
 
-  const handleFollowUpSubmit = (date: Date | undefined) => {
+  const handleFollowUpSubmit = useCallback((date: Date | undefined) => {
     if (!followUpModal.contact) return;
     updateFollowUpDateMutation.mutate(
       { contactId: followUpModal.contact.id, followUpDate: date || null },
       { onSuccess: () => setFollowUpModal({ isOpen: false }) }
     );
-  };
+  }, [followUpModal.contact, updateFollowUpDateMutation]);
 
-  const handleStatusChange = (contactId: string, newStatus: string) => {
+  const handleStatusChange = useCallback((contactId: string, newStatus: string) => {
     updateStatusMutation.mutate({ contactId, status: newStatus });
-  };
+  }, [updateStatusMutation]);
 
   const handleUpdateLead = async (contactId: string, updates: Partial<Contact>) => {
     try {
@@ -286,54 +289,27 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
     }
   };
 
-  const handleBulkDelete = async (ids: string[]) => {
-    try {
-      await Promise.all(ids.map((id) => apiRequest("DELETE", `/api/contacts/${id}`)));
-      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/contacts/paginated"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/contacts/status-counts"] });
-      toast({ title: `Deleted ${ids.length} lead(s)` });
-    } catch (error) {
-      toast({
-        title: "Bulk delete failed",
-        description: error instanceof Error ? error.message : "Some leads could not be deleted.",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleBulkStatusChange = async (ids: string[], status: string) => {
-    try {
-      await Promise.all(ids.map((id) => apiRequest("PATCH", `/api/contacts/${id}/status`, { status })));
-      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/contacts/paginated"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/contacts/status-counts"] });
-      toast({ title: `Updated ${ids.length} lead(s) to ${status}` });
-    } catch (error) {
-      toast({
-        title: "Bulk status update failed",
-        description: error instanceof Error ? error.message : "Some leads could not be updated.",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleBulkExport = async (ids: string[]) => {
-    const selectedContacts = leads.filter((contact: Contact) => ids.includes(contact.id));
-    downloadCsv(
-      `leads-export-${new Date().toISOString().split("T")[0]}.csv`,
-      ["Name", "Email", "Phone", "Address", "Source", "Status"],
-      selectedContacts.map((contact: Contact) => [
-        contact.name,
-        contact.emails && contact.emails.length > 0 ? contact.emails[0] : "",
-        contact.phones && contact.phones.length > 0 ? contact.phones[0] : "",
-        contact.address ?? "",
-        contact.source ?? "",
-        contact.status ?? "",
-      ])
-    );
-    toast({ title: `Exported ${ids.length} lead(s)` });
-  };
+  const { handleBulkDelete, handleBulkStatusChange, handleBulkExport } = useBulkActions({
+    entityType: "contact",
+    deleteEndpoint: (id) => `/api/contacts/${id}`,
+    statusEndpoint: (id) => `/api/contacts/${id}/status`,
+    invalidateKeys: [
+      ["/api/contacts"],
+      ["/api/contacts/paginated"],
+      ["/api/contacts/status-counts"],
+    ],
+    exportFilename: `leads-export-${new Date().toISOString().split("T")[0]}.csv`,
+    exportHeaders: ["Name", "Email", "Phone", "Address", "Source", "Status"],
+    getExportRow: (contact: Contact) => [
+      contact.name,
+      contact.emails && contact.emails.length > 0 ? contact.emails[0] : "",
+      contact.phones && contact.phones.length > 0 ? contact.phones[0] : "",
+      contact.address ?? undefined,
+      contact.source ?? undefined,
+      contact.status ?? undefined,
+    ],
+    entities: leads,
+  });
 
   return (
     <PageLayout className={cn(isSelectionMode && "pb-20")}>

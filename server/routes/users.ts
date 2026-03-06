@@ -48,11 +48,11 @@ export function registerUserRoutes(app: Express): void {
       return;
     }
 
-    // Check if username exists globally
-    const existingUsername = await storage.getUserByUsername(username);
-    
-    // Check if user with this email already exists globally
-    const existingGlobalUser = await storage.getUserByEmail(email);
+    // Check username and email globally in parallel — both are independent existence checks
+    const [existingUsername, existingGlobalUser] = await Promise.all([
+      storage.getUserByUsername(username),
+      storage.getUserByEmail(email),
+    ]);
     
     // Multi-contractor scenario: Username and email both exist and match the same user
     if (existingUsername && existingGlobalUser && existingUsername.id === existingGlobalUser.id) {

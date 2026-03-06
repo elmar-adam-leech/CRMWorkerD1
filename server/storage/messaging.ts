@@ -90,15 +90,32 @@ function emailActivityToMessage(activity: {
   } as Message;
 }
 
-// SCALE NOTE: getConversations uses two separate queries (SMS messages and calls),
-// each capped at CONVERSATION_MESSAGE_LIMIT (500 rows), then merges and deduplicates
-// them in memory using a Map keyed by contactId. This works for most tenants but
-// has two scale risks:
-//   1. 500-row cap silently drops older messages for high-volume tenants.
-//   2. In-memory merge means node heap grows linearly with message volume.
-// Long-term path: replace with a single SQL UNION query ordered by created_at DESC
-// and paginated with LIMIT/OFFSET or a keyset cursor. This moves the sort and
-// deduplication into Postgres where it belongs.
+// FUTURE (scale): getConversations performs two separate DB queries (SMS messages and
+// email activities), each capped at CONVERSATION_MESSAGE_LIMIT (500 rows), then merges
+// and deduplicates them in-memory using a Map keyed by contactId.
+//
+// Scale risks at high message volume:
+//   1. The 500-row cap silently drops older messages for high-volume tenants — the most
+//      recent conversation thread may be missing older activity.
+//   2. In-memory merge means Node.js heap grows linearly with message+activity volume
+//      across all contacts for a contractor, not just the page being shown.
+//
+// Concrete migration path:
+//   SHORT TERM: Replace the two queries with a single SQL UNION ALL query:
+//     SELECT contact_id, MAX(created_at) AS last_ts, ... FROM messages WHERE contractor_id = $1
+//       GROUP BY contact_id
+//     UNION ALL
+//     SELECT contact_id, MAX(created_at) AS last_ts, ... FROM activities WHERE contractor_id = $1 AND type = 'email'
+//       GROUP BY contact_id
+//     ORDER BY last_ts DESC LIMIT 50;
+//   This pushes sort+dedup into Postgres, uses the existing contractor_contact_created index,
+//   and supports cursor-based pagination (keyset on last_ts + contact_id).
+//
+//   LONG TERM: Introduce a denormalized `conversations` table updated by triggers or
+//   background jobs — one row per (contractor_id, contact_id) with last_message_at and
+//   unread_count. The conversations list page reads only this table (tiny scan), while the
+//   detail view still reads messages/activities. This is the approach used by most messaging
+//   platforms at scale (e.g. SendBird, Twilio Conversations).
 async function getConversations(contractorId: string, options: {
   search?: string;
   type?: 'text' | 'email';

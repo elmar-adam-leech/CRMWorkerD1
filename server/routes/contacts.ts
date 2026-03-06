@@ -2,7 +2,7 @@ import type { Express, Response } from "express";
 import { asyncHandler } from "../utils/async-handler";
 import { parseBody } from "../utils/validate-body";
 import { storage } from "../storage";
-import { insertContactSchema } from "@shared/schema";
+import { insertContactSchema, contactStatusEnum } from "@shared/schema";
 import type { UpdateContact } from "../storage-types";
 import { requireAuth, requireManagerOrAdmin, type AuthenticatedRequest } from "../auth-service";
 import { workflowEngine } from "../workflow-engine";
@@ -252,7 +252,7 @@ export function registerContactRoutes(app: Express): void {
 
   app.patch("/api/contacts/:id/status", asyncHandler(async (req, res) => {
     const statusSchema = z.object({
-      status: z.enum(['new', 'contacted', 'scheduled', 'active', 'disqualified', 'inactive'])
+      status: z.enum(contactStatusEnum.enumValues)
     });
     const parsed = parseBody(statusSchema, req, res);
     if (!parsed) return;
@@ -299,7 +299,8 @@ export function registerContactRoutes(app: Express): void {
   }));
 
   app.patch("/api/contacts/:id/follow-up", asyncHandler(async (req, res) => {
-    const followUpSchema = z.object({
+    // Derived from insertContactSchema — ensures followUpDate validation stays in sync with the schema
+    const followUpSchema = insertContactSchema.pick({ followUpDate: true }).extend({
       followUpDate: z.string().nullable().optional().transform((val, ctx) => {
         if (!val) return null;
         const date = new Date(val);

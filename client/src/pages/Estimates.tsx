@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useLocation } from "wouter";
 import { EstimateCard } from "@/components/EstimateCard";
 import { CardSkeleton } from "@/components/CardSkeleton";
@@ -13,7 +13,7 @@ import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from "@tansta
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { formatStatusLabel, cn } from "@/lib/utils";
-import { downloadCsv } from "@/lib/csv";
+import { useBulkActions } from "@/hooks/useBulkActions";
 import type { PaginatedEstimates, TerminologySettings, Contact, EstimateSummary } from "@shared/schema";
 import { useTerminology } from "@/hooks/useTerminology";
 import { useUsers } from "@/hooks/useUsers";
@@ -165,18 +165,21 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
     },
   ]);
 
-  const allEstimates: EstimateListItem[] = (estimates || []).map((e) => ({
-    id: e.id,
-    title: e.title,
-    contactId: e.contactId,
-    contactName: e.contactName,
-    status: e.status,
-    value: parseFloat(e.amount),
-    createdDate: new Date(e.createdAt).toLocaleDateString(),
-    expiryDate: e.validUntil ? new Date(e.validUntil).toLocaleDateString() : "No expiry",
-    description: "",
-    priority: "medium" as const,
-  }));
+  const allEstimates: EstimateListItem[] = useMemo(() =>
+    (estimates || []).map((e) => ({
+      id: e.id,
+      title: e.title,
+      contactId: e.contactId,
+      contactName: e.contactName,
+      status: e.status,
+      value: parseFloat(e.amount),
+      createdDate: new Date(e.createdAt).toLocaleDateString(),
+      expiryDate: e.validUntil ? new Date(e.validUntil).toLocaleDateString() : "No expiry",
+      description: "",
+      priority: "medium" as const,
+    })),
+    [estimates]
+  );
 
   const { data: statusCountsData } = useQuery<{
     all: number;
@@ -195,20 +198,20 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
 
   const statusCounts = statusCountsData || { all: 0, sent: 0, pending: 0, approved: 0, rejected: 0 };
 
-  const handleAddEstimate = () => setAddModal(true);
+  const handleAddEstimate = useCallback(() => setAddModal(true), []);
 
-  const handleImportFromHousecallPro = () => setImportDateOpen(true);
+  const handleImportFromHousecallPro = useCallback(() => setImportDateOpen(true), []);
 
-  const handleSend = (_estimateId: string) => {
+  const handleSend = useCallback((_estimateId: string) => {
     toast({ title: "Sending estimates is not yet available" });
-  };
+  }, [toast]);
 
-  const handleViewDetails = (estimateId: string) => {
+  const handleViewDetails = useCallback((estimateId: string) => {
     const estimate = (allEstimates || []).find((e) => e.id === estimateId);
     if (estimate) {
       setDetailsModal({ isOpen: true, estimate });
     }
-  };
+  }, [allEstimates]);
 
   const handleContactById = async (estimateId: string, method: "phone" | "email") => {
     const estimate = (allEstimates || []).find((e) => e.id === estimateId);
@@ -271,12 +274,12 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
     toast({ title: "Convert to job is not yet available" });
   };
 
-  const handleEditEstimate = (estimateId: string) => {
+  const handleEditEstimate = useCallback((estimateId: string) => {
     const estimate = (estimates || []).find((e) => e.id === estimateId);
     if (estimate) {
       setEditModal({ isOpen: true, estimate });
     }
-  };
+  }, [estimates]);
 
   const updateEstimateMutation = useMutation({
     mutationFn: async ({ estimateId, data }: { estimateId: string; data: EditEstimateFormValues }) => {
@@ -350,11 +353,11 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
     },
   });
 
-  const handleDelete = (estimateId: string) => {
+  const handleDelete = useCallback((estimateId: string) => {
     const estimate = (estimates || []).find((e) => e.id === estimateId);
     if (!estimate) return;
     setDeleteConfirm({ isOpen: true, estimateId, estimateTitle: estimate.title });
-  };
+  }, [estimates]);
 
   const handleEditSave = (values: EditEstimateFormValues) => {
     if (!editModal.estimate) return;
@@ -369,47 +372,20 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
     });
   };
 
-  const handleBulkDelete = async (ids: string[]) => {
-    try {
-      await Promise.all(ids.map((id) => apiRequest("DELETE", `/api/estimates/${id}`)));
-      queryClient.invalidateQueries({ queryKey: ["/api/estimates/paginated"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/estimates/status-counts"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/estimates"] });
-      toast({ title: `Deleted ${ids.length} estimate(s)` });
-    } catch (error) {
-      toast({
-        title: "Bulk delete failed",
-        description: error instanceof Error ? error.message : "Some estimates could not be deleted.",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleBulkStatusChange = async (ids: string[], status: string) => {
-    try {
-      await Promise.all(ids.map((id) => apiRequest("PATCH", `/api/estimates/${id}/status`, { status })));
-      queryClient.invalidateQueries({ queryKey: ["/api/estimates/paginated"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/estimates/status-counts"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/estimates"] });
-      toast({ title: `Updated ${ids.length} estimate(s) to ${status}` });
-    } catch (error) {
-      toast({
-        title: "Bulk status update failed",
-        description: error instanceof Error ? error.message : "Some estimates could not be updated.",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleBulkExport = async (ids: string[]) => {
-    const selectedEstimates = allEstimates.filter((est) => ids.includes(est.id));
-    downloadCsv(
-      `estimates-export-${new Date().toISOString().split("T")[0]}.csv`,
-      ["Title", "Customer", "Status", "Value", "Created Date", "Expiry Date"],
-      selectedEstimates.map((est) => [est.title, est.contactName, est.status, est.value, est.createdDate, est.expiryDate])
-    );
-    toast({ title: `Exported ${ids.length} estimate(s)` });
-  };
+  const { handleBulkDelete, handleBulkStatusChange, handleBulkExport } = useBulkActions({
+    entityType: "estimate",
+    deleteEndpoint: (id) => `/api/estimates/${id}`,
+    statusEndpoint: (id) => `/api/estimates/${id}/status`,
+    invalidateKeys: [
+      ["/api/estimates/paginated"],
+      ["/api/estimates/status-counts"],
+      ["/api/estimates"],
+    ],
+    exportFilename: `estimates-export-${new Date().toISOString().split("T")[0]}.csv`,
+    exportHeaders: ["Title", "Customer", "Status", "Value", "Created Date", "Expiry Date"],
+    getExportRow: (est) => [est.title, est.contactName ?? undefined, est.status, est.value ?? undefined, est.createdDate ?? undefined, est.expiryDate ?? undefined],
+    entities: allEstimates,
+  });
 
   return (
     <PageLayout className={cn(isSelectionMode && "pb-20")}>

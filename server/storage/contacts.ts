@@ -442,11 +442,19 @@ async function deleteLead(id: string, contractorId: string): Promise<boolean> {
  *   - Path compression keeps subsequent find() calls O(1) amortized.
  */
 async function deduplicateContacts(contractorId: string): Promise<{ duplicatesFound: number; contactsMerged: number; contactsDeleted: number }> {
-  // SCALE NOTE: Loads ALL contacts for the contractor into memory.
-  // For contractors with >5k contacts this will produce large heap allocations and
-  // a full table scan. Migration path: chunk by creation-date ranges (e.g. 1k rows
-  // at a time) and call the Union-Find incrementally, or move to a DB-level
-  // stored procedure / SQL window-function approach.
+  // FUTURE (scale): Loads ALL contacts for the contractor into memory at once.
+  // For contractors with >10k contacts this causes:
+  //   a) Large Node.js heap allocations that can OOM the process.
+  //   b) A full table scan on contacts even with indexes (index scan still reads every row).
+  //
+  // Concrete migration path:
+  //   1. SHORT TERM: Add a pagination loop here — fetch contacts in chunks of 1k ordered
+  //      by created_at, build the Union-Find state incrementally, then finalize.
+  //   2. MEDIUM TERM: Replace Union-Find with a SQL approach — use a temporary table to
+  //      store (contact_id, canonical_id) pairs. A single UPDATE query can then merge all
+  //      duplicates without loading them into JS heap. See PostgreSQL's MERGE statement.
+  //   3. LONG TERM: Run deduplication as a nightly background job (BullMQ) scoped to
+  //      only contacts created/updated in the last 24 hours, avoiding a full re-scan.
   console.log(`[deduplicateContacts] Starting deduplication for contractor: ${contractorId}`);
   const allContacts = await db.select().from(contacts).where(eq(contacts.contractorId, contractorId)).orderBy(contacts.createdAt);
   console.log(`[deduplicateContacts] Found ${allContacts.length} total contacts`);

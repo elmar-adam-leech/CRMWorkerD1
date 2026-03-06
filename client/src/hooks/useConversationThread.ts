@@ -55,7 +55,7 @@ export function useConversationThread({
   const { data: messages = [], isLoading, error, refetch } = useQuery<Message[]>({
     queryKey,
     queryFn: async () => {
-      const response = await fetch(endpoint);
+      const response = await fetch(endpoint, { credentials: 'include' });
       if (!response.ok) throw new Error('Failed to fetch messages');
       return response.json();
     },

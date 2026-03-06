@@ -329,6 +329,22 @@ export function registerLeadWebhookRoutes(app: Express): void {
       
       const hcpIntegrationEnabled = await storage.isIntegrationEnabled(contractorId, 'housecall-pro');
       if (hcpIntegrationEnabled) {
+        // FUTURE (scale): The following HCP API calls (searchCustomers → createCustomer → createLead)
+        // are executed synchronously inside the webhook HTTP handler. Each call to housecallProService
+        // adds ~300–800ms of network latency, so a worst-case new-lead flow can add 1.5–3s to the
+        // webhook response time. Most webhook senders (e.g. Zapier, Typeform) have short timeouts
+        // (typically 10–30s) so this is safe today, but will become fragile under load.
+        //
+        // Concrete migration path:
+        //   1. SHORT TERM: Return 200 immediately after `storage.createLead()` above. Move the
+        //      HCP sync block below into a `setImmediate()` or `process.nextTick()` callback so
+        //      it runs after the HTTP response is sent. This eliminates response-time coupling.
+        //   2. MEDIUM TERM: Move HCP sync into a durable background job queue (BullMQ + Redis).
+        //      Enqueue a job with the newLead.id, and let a worker process pick it up. This gives
+        //      you retries, dead-letter queues, and decoupled horizontal scaling of the sync worker.
+        //   3. LONG TERM: Implement a webhook-to-event bus pattern — the handler writes a raw event
+        //      to a stream (Redis Streams or SQS) and returns immediately. Downstream consumers
+        //      (HCP sync, email notification, CRM enrichment) each process the event independently.
         try {
           const contact = await storage.getContact(contactId, contractorId);
           if (contact && !contact.housecallProCustomerId) {

@@ -53,9 +53,7 @@ export function ContactCombobox({ value, onChange, error }: ContactComboboxProps
     queryFn: async () => {
       const params = new URLSearchParams({ limit: '20' });
       if (debouncedSearch) params.set('search', debouncedSearch);
-      const response = await fetch(`/api/contacts/paginated?${params}`, { credentials: 'include' });
-      if (!response.ok) throw new Error('Failed to fetch contacts');
-      const result = await response.json();
+      const result = await (await apiRequest('GET', `/api/contacts/paginated?${params}`)).json();
       return result.data ?? [];
     },
     enabled: open,
@@ -64,9 +62,11 @@ export function ContactCombobox({ value, onChange, error }: ContactComboboxProps
   const { data: selectedContact } = useQuery<Contact | null>({
     queryKey: ['/api/contacts', value],
     queryFn: async () => {
-      const response = await fetch(`/api/contacts/${value}`, { credentials: 'include' });
-      if (!response.ok) return null;
-      return response.json();
+      try {
+        return await (await apiRequest('GET', `/api/contacts/${value}`)).json();
+      } catch {
+        return null;
+      }
     },
     enabled: !!value,
   });

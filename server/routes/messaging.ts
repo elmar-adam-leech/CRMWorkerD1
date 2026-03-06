@@ -54,19 +54,20 @@ export function registerMessagingRoutes(app: Express): void {
         externalMessageId: smsResponse.messageId || null,
       }, req.user!.contractorId);
 
-      if (resolvedContactId) {
-        await storage.markContactContacted(resolvedContactId, req.user!.contractorId, req.user!.userId);
-      }
-
-      await storage.createActivity({
-        type: 'sms',
-        title: 'SMS sent',
-        content: messageData.content,
-        contactId: resolvedContactId || null,
-        userId: req.user!.userId,
-        externalId: smsResponse.messageId || null,
-        externalSource: 'dialpad',
-      }, req.user!.contractorId);
+      await Promise.all([
+        resolvedContactId
+          ? storage.markContactContacted(resolvedContactId, req.user!.contractorId, req.user!.userId)
+          : Promise.resolve(),
+        storage.createActivity({
+          type: 'sms',
+          title: 'SMS sent',
+          content: messageData.content,
+          contactId: resolvedContactId || null,
+          userId: req.user!.userId,
+          externalId: smsResponse.messageId || null,
+          externalSource: 'dialpad',
+        }, req.user!.contractorId),
+      ]);
 
       broadcastToContractor(req.user!.contractorId, {
         type: 'new_message',

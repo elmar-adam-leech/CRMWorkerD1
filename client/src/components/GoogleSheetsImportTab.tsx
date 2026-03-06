@@ -60,15 +60,8 @@ export function GoogleSheetsImportTab({ onImportSuccess, onCancel }: GoogleSheet
   const [showCredentialsForm, setShowCredentialsForm] = useState(false);
   const [previewData, setPreviewData] = useState<PreviewData | null>(null);
 
-  const { data: credentialStatus } = useQuery({
+  const { data: credentialStatus } = useQuery<{ configured: boolean }>({
     queryKey: ["/api/leads/google-sheets/credentials/status"],
-    queryFn: async () => {
-      const response = await fetch("/api/leads/google-sheets/credentials/status", {
-        credentials: "include",
-      });
-      if (!response.ok) throw new Error("Failed to check credential status");
-      return response.json() as Promise<{ configured: boolean }>;
-    },
   });
 
   const hasStoredCredentials = credentialStatus?.configured ?? false;

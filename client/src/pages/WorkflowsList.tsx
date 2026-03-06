@@ -41,11 +41,7 @@ export default function WorkflowsList() {
         params.append('approvalStatus', statusFilter);
       }
       const url = `/api/workflows${params.toString() ? `?${params.toString()}` : ''}`;
-      const response = await fetch(url, { credentials: 'include' });
-      if (!response.ok) {
-        throw new Error(`${response.status}: ${response.statusText}`);
-      }
-      return await response.json();
+      return (await apiRequest('GET', url)).json();
     },
   });
 

@@ -73,6 +73,21 @@ The backend is built with Node.js and Express.js, offering a RESTful API with co
 - **Dialpad storage limits**: `getDialpadPhoneNumbers` → 200, `getDialpadUsers` → 500, `getDialpadDepartments` → 200, `getDueSyncSchedules` → 100.
 - **Inline algorithm docs added**: Union-Find in `deduplicateContacts`, fuzzy phone SQL in `getContactByPhone` / `findMatchingContact`, HCP estimate status mapping rationale in `mapHcpEstimateStatus`, sliding-window slot search in `getUnifiedAvailability`.
 
+### Code Health Improvements (third pass)
+- **`useBulkActions` hook** (`client/src/hooks/useBulkActions.ts`): Shared hook for bulk delete/status/export used by `Leads.tsx`, `Jobs.tsx`, `Estimates.tsx` — removes ~75 lines of duplicated mutation+toast logic from each page.
+- **`server/utils/retry.ts`**: Canonical `withRetry<T>()` helper extracted from `server/sync/gmail.ts` local copy. Handles exponential backoff with configurable max attempts. `gmail.ts` now imports from here.
+- **`server/utils/batch.ts`**: Canonical `splitIntoBatches<T>()` helper extracted from `server/sync/housecall-pro.ts`. `housecall-pro.ts` now imports from here.
+- **`resolveHcpContact` private function**: Extracted from the HCP estimate sync loop in `housecall-pro.ts` — handles the 3-step contact lookup (ID → phone → email) with a JSDoc explaining each step. Removes ~30 lines of duplicated inline logic.
+- **File-level JSDoc in `housecall-pro.ts`**: Explains the page-by-page loop, batch processing, and contact-matching strategy at the top of the file.
+- **Parallelized server writes**: `messaging.ts` send-text handler now runs `markContactContacted` + `createActivity` in `Promise.all` (both depend on `savedMessage` but not each other). `users.ts` create-user handler parallelizes `getUserByUsername` + `getUserByEmail` checks.
+- **Schema re-use in `contacts.ts`**: Inline `z.enum(['new','contacted',...])` in the status route replaced with `z.enum(contactStatusEnum.enumValues)`. `followUpSchema` now uses `insertContactSchema.pick().extend()`.
+- **`FUTURE (scale):` annotations**: Three detailed `// FUTURE (scale):` blocks added with concrete migration steps:
+  - `deduplicateContacts` (contacts.ts) — chunked Union-Find / SQL MERGE path for >10k contacts.
+  - `getConversations` (messaging.ts) — SQL UNION ALL + keyset cursor path / denormalized conversations table.
+  - HCP sync in webhook handler (webhooks/leads.ts) — setImmediate / BullMQ / event-bus path.
+- **GoogleSheetsImportTab TS error fixed**: `useQuery` now typed as `useQuery<{ configured: boolean }>` to resolve the `credentialStatus.configured` type error.
+- **New DB index**: `contacts(contractor_id, follow_up_date)` composite partial index (WHERE follow_up_date IS NOT NULL) — covers multi-tenant Follow-ups page queries.
+
 ### Code Health Improvements (second pass)
 - **HCP jobs sync OOM fix**: Jobs sync loop now processes each page immediately (mirrors estimates pattern) — eliminates unbounded in-memory array accumulation. `totalJobsFetched` counter added.
 - **Gmail batch activity creation**: `bulkCreateActivities()` added to `server/storage/activities.ts`; Gmail sync now collects all activity payloads then does a single bulk INSERT instead of N sequential INSERTs. Added to `IStorage` interface.
@@ -87,7 +102,7 @@ The backend is built with Node.js and Express.js, offering a RESTful API with co
 
 ### DB Indexes (current full set)
 The following indexes exist beyond Drizzle's default primary keys:
-- `contacts`: contractor_id, contractor+status, contractor+type, contractor+date, contractor+scheduled, external_lookup (contractor+source+external_id), **housecall_pro_customer_id (partial)**, follow_up_date, tags, created_at, status, type, contacted_at, is_scheduled, **emails GIN**, **phones GIN**
+- `contacts`: contractor_id, contractor+status, contractor+type, contractor+date, contractor+scheduled, external_lookup (contractor+source+external_id), **housecall_pro_customer_id (partial)**, follow_up_date, **contractor+follow_up_date (composite partial, IS NOT NULL)**, tags, created_at, status, type, contacted_at, is_scheduled, **emails GIN**, **phones GIN**
 - `jobs`: contractor_id, contractor+status, contractor+date, contact_id, status, created_at, scheduled_date, **external_id (partial)**, **estimate_id (partial, non-null)**, **contractor+title**
 - `estimates`: contractor_id, contractor+status, contractor+date, contact_id, status, created_at, follow_up_date, **external_id+contractor_id (partial)**, **contractor+title**
 - `activities`: contractor_id, contractor+type, contractor+type+contact, contractor+date, contact_id, estimate_id, job_id, external_lookup (source+external_id), user_id, type, created_at, **contractor+contact+created_at**

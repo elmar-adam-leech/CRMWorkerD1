@@ -195,6 +195,9 @@ export const contacts = pgTable("contacts", {
   // Partial index for follow-up date queries — only rows that actually have a date set
   // (Follow-ups page never queries contacts where follow_up_date IS NULL)
   followUpDateIdx: index("contacts_follow_up_date_idx").on(table.followUpDate).where(sql`follow_up_date IS NOT NULL`),
+  // Composite partial index for Follow-ups page: always filters by contractor first, then by date.
+  // Supersedes the single-column followUpDateIdx for multi-tenant queries but we keep both.
+  contractorFollowUpIdx: index("contacts_contractor_follow_up_idx").on(table.contractorId, table.followUpDate).where(sql`follow_up_date IS NOT NULL`),
   // Partial index for HCP customer ID lookups (sync path)
   housecallProCustomerIdIdx: index("contacts_housecall_pro_customer_id_idx").on(table.housecallProCustomerId).where(sql`housecall_pro_customer_id IS NOT NULL`),
   // GIN indexes for array-contains queries on email and phone arrays.

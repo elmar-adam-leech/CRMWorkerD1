@@ -74,38 +74,16 @@ export default function UserManagement() {
   // Fetch all users
   const { data: users = [], isLoading } = useQuery<User[]>({
     queryKey: ['/api/users'],
-    queryFn: async () => {
-      const response = await fetch('/api/users', {
-        credentials: 'include',
-      });
-      if (!response.ok) throw new Error('Failed to fetch users');
-      return response.json();
-    },
   });
 
   // Fetch available Dialpad phone numbers
   const { data: dialpadPhoneNumbers = [] } = useQuery<Array<{ id: string; phoneNumber: string; displayName?: string }>>({
     queryKey: ['/api/dialpad/phone-numbers'],
-    queryFn: async () => {
-      const response = await fetch('/api/dialpad/phone-numbers', {
-        credentials: 'include',
-      });
-      if (!response.ok) throw new Error('Failed to fetch phone numbers');
-      return response.json();
-    },
   });
 
   // Fetch user phone permissions
   const { data: userPermissions = [], refetch: refetchPermissions } = useQuery<PhonePermission[]>({
     queryKey: ['/api/users', selectedUser?.id, 'phone-permissions'],
-    queryFn: async () => {
-      if (!selectedUser) return [];
-      const response = await fetch(`/api/users/${selectedUser.id}/phone-permissions`, {
-        credentials: 'include',
-      });
-      if (!response.ok) throw new Error('Failed to fetch permissions');
-      return response.json();
-    },
     enabled: !!selectedUser && isPermissionsDialogOpen,
   });
 

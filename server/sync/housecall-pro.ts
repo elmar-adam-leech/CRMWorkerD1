@@ -1,8 +1,35 @@
+/**
+ * server/sync/housecall-pro.ts — Housecall Pro full sync logic.
+ *
+ * Architecture:
+ *   - `syncHousecallPro(tenantId)` is the top-level entry point called by the
+ *     sync scheduler. It runs employees → estimates → jobs in sequence.
+ *   - Both estimates and jobs use the same page-by-page pattern:
+ *       1. Fetch page N from the HCP API.
+ *       2. Split the page into batches of SYNC_BATCH_SIZE.
+ *       3. Bulk-fetch existing records for the batch (one `inArray` query).
+ *       4. For each item, call the private `upsertHcpEstimate` / `upsertHcpJob`
+ *          helper to either update or create the record atomically.
+ *       5. Advance to page N+1 or stop if the page is short (last page).
+ *
+ * Contact-matching strategy (used when a new estimate/job arrives):
+ *   1. Look up by `housecall_pro_customer_id` (fastest — indexed).
+ *   2. Fall back to phone-number fuzzy match (`getContactByPhone`).
+ *   3. Fall back to email match (`findMatchingContact`).
+ *   4. If still no match, create a new contact + estimate/job in a single DB
+ *      transaction so the two records are always consistent.
+ *
+ * Max runtime guard:
+ *   Each sync loop checks wall-clock elapsed time and aborts if it exceeds
+ *   HCP_SYNC_MAX_RUNTIME_MS (5 min) to prevent runaway syncs from holding the
+ *   in-memory lock indefinitely.
+ */
 import { housecallProService } from '../housecall-pro-service';
 import { storage } from '../storage';
 import { db } from '../db';
 import { contacts, estimates, jobs } from '@shared/schema';
 import { randomUUID } from 'crypto';
+import { splitIntoBatches } from '../utils/batch';
 
 const SYNC_BATCH_SIZE = 25;
 
@@ -47,12 +74,58 @@ export function mapHcpJobStatus(workStatus: string): 'completed' | 'cancelled' |
   }
 }
 
-function splitIntoBatches<T>(items: T[], batchSize: number): T[][] {
-  const batches: T[][] = [];
-  for (let i = 0; i < items.length; i += batchSize) {
-    batches.push(items.slice(i, i + batchSize));
+
+/**
+ * resolveHcpContact — finds (or creates) the local contact for an HCP customer.
+ *
+ * Matching strategy (in priority order):
+ *   1. By `housecall_pro_customer_id` (indexed — fastest path).
+ *   2. By phone number fuzzy match.
+ *   3. By email match.
+ *   4. If no match, returns `null` — the caller decides whether to create a
+ *      new contact (estimates/jobs do; employees do not).
+ *
+ * This function intentionally does NOT create the contact itself; creation is
+ * handled by the caller inside a DB transaction paired with the estimate/job.
+ */
+async function resolveHcpContact(
+  hcpCustomerId: string | undefined,
+  hcpCustomer: any,
+  tenantId: string,
+): Promise<string | null> {
+  if (hcpCustomerId) {
+    const existing = await storage.getContactByHousecallProCustomerId(hcpCustomerId, tenantId);
+    if (existing) return existing.id;
   }
-  return batches;
+
+  if (!hcpCustomer) return null;
+
+  const customerPhone =
+    hcpCustomer.mobile_number || hcpCustomer.home_number || hcpCustomer.work_number ||
+    (hcpCustomer.phone_numbers?.[0]?.phone_number);
+  const customerEmail = hcpCustomer.email;
+
+  if (customerPhone) {
+    const phoneMatch = await storage.getContactByPhone(customerPhone, tenantId);
+    if (phoneMatch) {
+      if (hcpCustomerId) {
+        await storage.updateContact(phoneMatch.id, { housecallProCustomerId: hcpCustomerId }, tenantId);
+      }
+      return phoneMatch.id;
+    }
+  }
+
+  if (customerEmail) {
+    const emailMatch = await storage.findMatchingContact(tenantId, [customerEmail], undefined);
+    if (emailMatch) {
+      if (hcpCustomerId) {
+        await storage.updateContact(emailMatch, { housecallProCustomerId: hcpCustomerId }, tenantId);
+      }
+      return emailMatch;
+    }
+  }
+
+  return null;
 }
 
 async function convertEstimateToJob(estimate: any, hcpEstimate: any, tenantId: string): Promise<void> {
@@ -258,44 +331,21 @@ export async function syncHousecallPro(tenantId: string): Promise<void> {
 
             console.log(`[sync-scheduler] New Estimate ${hcpEstimate.id} - title: '${estimateTitle}'`);
 
-            let contactId: string | null = null;
             const hcpCustomerId = hcpEstimate.customer_id;
             const hcpCustomer = hcpEstimate.customer;
 
-            if (hcpCustomerId) {
-              const existingContact = await storage.getContactByHousecallProCustomerId(hcpCustomerId, tenantId);
-              if (existingContact) {
-                contactId = existingContact.id;
-                console.log(`[sync-scheduler] Found existing contact ${contactId} for HCP customer ${hcpCustomerId}`);
-              }
+            // resolveHcpContact handles the 3-step lookup (ID → phone → email).
+            // If it returns null and we have customer data, we create a new contact
+            // atomically inside a transaction together with the estimate below.
+            let contactId = await resolveHcpContact(hcpCustomerId, hcpCustomer, tenantId);
+            if (contactId) {
+              console.log(`[sync-scheduler] Resolved contact ${contactId} for HCP customer ${hcpCustomerId}`);
             }
 
             if (!contactId && hcpCustomer) {
-              const customerPhone = hcpCustomer.mobile_number || hcpCustomer.home_number || hcpCustomer.work_number ||
-                (hcpCustomer.phone_numbers && hcpCustomer.phone_numbers[0]?.phone_number);
               const customerEmail = hcpCustomer.email;
-
-              if (customerPhone) {
-                const phoneMatch = await storage.getContactByPhone(customerPhone, tenantId);
-                if (phoneMatch) {
-                  contactId = phoneMatch.id;
-                  if (hcpCustomerId) {
-                    await storage.updateContact(phoneMatch.id, { housecallProCustomerId: hcpCustomerId }, tenantId);
-                  }
-                  console.log(`[sync-scheduler] Found contact ${contactId} by phone match`);
-                }
-              }
-
-              if (!contactId && customerEmail) {
-                const emailMatch = await storage.findMatchingContact(tenantId, [customerEmail], undefined);
-                if (emailMatch) {
-                  contactId = emailMatch;
-                  if (hcpCustomerId) {
-                    await storage.updateContact(emailMatch, { housecallProCustomerId: hcpCustomerId }, tenantId);
-                  }
-                  console.log(`[sync-scheduler] Found contact ${contactId} by email match`);
-                }
-              }
+              const customerPhone = hcpCustomer.mobile_number || hcpCustomer.home_number || hcpCustomer.work_number ||
+                (hcpCustomer.phone_numbers?.[0]?.phone_number);
 
               if (!contactId) {
                 const customerName = [hcpCustomer.first_name, hcpCustomer.last_name].filter(Boolean).join(' ') ||
