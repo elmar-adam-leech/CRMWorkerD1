@@ -2,7 +2,7 @@ import type { WorkflowStep } from "@shared/schema";
 import type { ExecutionContext, StepResult } from "./types";
 
 export async function handleEvaluateCondition(
-  step: WorkflowStep,
+  _step: WorkflowStep,
   config: Record<string, unknown>,
   context: ExecutionContext,
   getFieldValue: (field: string, ctx: ExecutionContext) => unknown

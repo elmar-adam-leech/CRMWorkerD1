@@ -23,8 +23,6 @@ export function CommunicationActionButtons({
   onSendText,
   leadId,
   estimateId,
-  jobId,
-  customerId,
 }: CommunicationActionButtonsProps) {
   return (
     <div className="flex flex-wrap gap-2">

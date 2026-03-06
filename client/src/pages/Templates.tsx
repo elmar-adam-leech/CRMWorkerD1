@@ -8,7 +8,7 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Plus, Search, Filter, Edit2, Trash2, MessageSquare, Mail, FileText, CheckCircle, XCircle, Clock, AlertTriangle } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, MessageSquare, Mail, FileText, CheckCircle, XCircle, Clock, AlertTriangle } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header-v2";
 import { PageLayout } from "@/components/ui/page-layout";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -66,7 +66,7 @@ export default function Templates() {
         description: "Your template has been created successfully.",
       });
     },
-    onError: (error) => {
+    onError: () => {
       toast({
         title: "Error",
         description: "Failed to create template. Please try again.",
@@ -88,7 +88,7 @@ export default function Templates() {
         description: "Your template has been updated successfully.",
       });
     },
-    onError: (error) => {
+    onError: () => {
       toast({
         title: "Error",
         description: "Failed to update template. Please try again.",
@@ -108,7 +108,7 @@ export default function Templates() {
         description: "Your template has been deleted successfully.",
       });
     },
-    onError: (error) => {
+    onError: () => {
       toast({
         title: "Error",
         description: "Failed to delete template. Please try again.",
@@ -128,7 +128,7 @@ export default function Templates() {
         description: "Template is now available company-wide.",
       });
     },
-    onError: (error) => {
+    onError: () => {
       toast({
         title: "Error",
         description: "Failed to approve template. Please try again.",
@@ -148,7 +148,7 @@ export default function Templates() {
         description: "Template creator has been notified.",
       });
     },
-    onError: (error) => {
+    onError: () => {
       toast({
         title: "Error",
         description: "Failed to reject template. Please try again.",

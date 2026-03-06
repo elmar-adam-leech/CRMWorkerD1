@@ -1,12 +1,11 @@
-import type { Express, Response } from "express";
+import type { Express } from "express";
 import { asyncHandler } from "../utils/async-handler";
 import { storage } from "../storage";
-import { insertUserSchema, users, userContractors, dialpadPhoneNumbers, contractors } from "@shared/schema";
+import { users, userContractors, contractors } from "@shared/schema";
 import { db } from "../db";
 import { eq, and, isNotNull } from "drizzle-orm";
 
-import { AuthService, requireAuth, requireManagerOrAdmin, requireAdmin, type AuthenticatedRequest } from "../auth-service";
-import { CredentialService } from "../credential-service";
+import { requireAuth, requireManagerOrAdmin, requireAdmin } from "../auth-service";
 import bcrypt from "bcrypt";
 
 export function registerUserRoutes(app: Express): void {
@@ -314,8 +313,6 @@ export function registerUserRoutes(app: Express): void {
     });
   }));
 
-  // Add build version endpoint for cache-busting
-  const BUILD_VERSION = process.env.REPLIT_DEPLOYMENT_ID || process.env.REPL_ID || Date.now().toString();
   app.get("/api/users/me/dialpad-default-number", requireAuth, asyncHandler(async (req, res) => {
     const user = await db.select().from(users).where(eq(users.id, req.user!.userId)).limit(1);
     if (!user[0]) {

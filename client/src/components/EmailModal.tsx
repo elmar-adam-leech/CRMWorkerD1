@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +10,6 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Mail, Send } from "lucide-react";
-import type { Estimate } from "@shared/schema";
 
 const emailSchema = z.object({
   toEmail: z.string().email("Please enter a valid email address"),
@@ -57,7 +55,7 @@ export function EmailModal({ isOpen, onOpenChange, recipient, defaultSubject }: 
       const response = await apiRequest('POST', '/api/messages/send-email', data);
       return response.json();
     },
-    onSuccess: (data) => {
+    onSuccess: () => {
       toast({
         title: "Email Sent Successfully",
         description: `Your email has been sent to ${form.getValues('toEmail')}`,

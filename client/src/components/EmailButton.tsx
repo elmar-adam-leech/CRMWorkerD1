@@ -16,7 +16,7 @@ interface EmailButtonProps {
 }
 
 export function EmailButton({ 
-  recipientName, 
+  recipientName: _recipientName, 
   recipientEmail,
   variant = "outline",
   size = "default",

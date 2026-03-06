@@ -111,7 +111,7 @@ type AppSidebarProps = {
 };
 
 export function AppSidebar({
-  user,
+  user: _user,
   contractors,
   currentContractor,
   onContractorChange,

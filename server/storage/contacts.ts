@@ -1,10 +1,10 @@
 import {
   type Contact, type InsertContact,
   type Lead, type InsertLead,
-  contacts, leads, messages, activities, estimates, jobs, users,
+  contacts, leads, messages, activities, estimates, jobs,
 } from "@shared/schema";
 import { db } from "../db";
-import { eq, and, or, desc, ne, gt, lte, gte, lt, ilike, isNotNull, notInArray, inArray, sql, count } from "drizzle-orm";
+import { eq, and, or, desc, ne, gt, lte, gte, ilike, isNotNull, notInArray, inArray, sql, count } from "drizzle-orm";
 import { normalizePhoneArrayForStorage } from "../utils/phone-normalizer";
 import type { UpdateContact } from "../storage-types";
 

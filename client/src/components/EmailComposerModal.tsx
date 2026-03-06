@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useLocation } from "wouter";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -8,12 +8,11 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EmailHistory } from "@/components/EmailHistory";
 import { Mail, Send, X, FileText } from "lucide-react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { useTemplates } from "@/hooks/useTemplates";
 import { useToast } from "@/hooks/use-toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import type { Template } from "@shared/schema";
 
 interface EmailComposerModalProps {
   isOpen: boolean;
@@ -38,7 +37,7 @@ export function EmailComposerModal({
   customerId,
   estimateId
 }: EmailComposerModalProps) {
-  const [location, navigate] = useLocation();
+  const [, navigate] = useLocation();
   const [subject, setSubject] = useState("");
   const [content, setContent] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState<string>("");

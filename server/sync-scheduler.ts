@@ -27,9 +27,6 @@ const SCHEDULER_POLL_INTERVAL_MS = 60_000; // 1 minute
 // How long to wait before retrying a failed sync (milliseconds)
 const SYNC_RETRY_DELAY_MS = 60 * 60_000; // 1 hour
 
-// Batch size for transaction processing
-const SYNC_BATCH_SIZE = 25;
-
 export class SyncScheduler {
   private timers: Map<string, NodeJS.Timeout> = new Map();
   private isRunning = false;
@@ -119,56 +116,6 @@ export class SyncScheduler {
   async triggerSync(tenantId: string, integrationName: string): Promise<void> {
     console.log(`[sync-scheduler] Manual sync triggered for ${integrationName} (tenant: ${tenantId})`);
     await this.performSync(tenantId, integrationName);
-  }
-
-  /**
-   * Helper to split array into batches
-   */
-  private splitIntoBatches<T>(items: T[], batchSize: number): T[][] {
-    const batches: T[][] = [];
-    for (let i = 0; i < items.length; i += batchSize) {
-      batches.push(items.slice(i, i + batchSize));
-    }
-    return batches;
-  }
-
-  /**
-   * Process a batch of items within a transaction
-   */
-  private async processBatchInTransaction<T>(
-    batch: T[],
-    processor: (item: T, tx: any) => Promise<{ success: boolean; isNew: boolean }>,
-    batchIndex: number
-  ): Promise<{ newCount: number; updatedCount: number; failedCount: number }> {
-    const result = { newCount: 0, updatedCount: 0, failedCount: 0 };
-    const { db } = await import('./db');
-
-    try {
-      await db.transaction(async (tx) => {
-        for (const item of batch) {
-          try {
-            const opResult = await processor(item, tx);
-            if (opResult.success) {
-              if (opResult.isNew) result.newCount++;
-              else result.updatedCount++;
-            } else {
-              result.failedCount++;
-            }
-          } catch (itemError) {
-            console.error(`[sync-scheduler] Failed to process item in batch ${batchIndex}:`, itemError);
-            result.failedCount++;
-          }
-        }
-      });
-      console.log(`[sync-scheduler] Batch ${batchIndex} committed: ${result.newCount} new, ${result.updatedCount} updated, ${result.failedCount} failed`);
-    } catch (txError) {
-      console.error(`[sync-scheduler] Transaction failed for batch ${batchIndex}, rolling back:`, txError);
-      result.failedCount = batch.length;
-      result.newCount = 0;
-      result.updatedCount = 0;
-    }
-
-    return result;
   }
 
   /**

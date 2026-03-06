@@ -13,7 +13,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
 import { Separator } from "@/components/ui/separator";
-import { Badge } from "@/components/ui/badge";
 import { Calendar as CalendarIcon, Clock, User, Mail, Phone, MapPin, CheckCircle, Loader2, AlertCircle } from "lucide-react";
 import { AddressAutocomplete, AddressComponents } from "@/components/ui/AddressAutocomplete";
 
@@ -168,7 +167,7 @@ export default function PublicBooking() {
 
       return response.json();
     },
-    onSuccess: (data) => {
+    onSuccess: (_data) => {
       setBookingDetails({ startTime: form.getValues('timeSlot') });
       setBookingComplete(true);
     },

@@ -1,18 +1,12 @@
-import type { Response, NextFunction } from "express";
+import type { Request, Response, NextFunction } from "express";
 import type { AuthenticatedRequest } from "../auth-service";
 
-type AsyncRouteHandler = (
-  req: AuthenticatedRequest,
-  res: Response,
-  next: NextFunction
-) => Promise<void>;
+type AnyRequest = Request | AuthenticatedRequest;
 
-export function asyncHandler(fn: AsyncRouteHandler): AsyncRouteHandler {
-  return async (req, res, next) => {
-    try {
-      await fn(req, res, next);
-    } catch (error) {
-      next(error);
-    }
+export function asyncHandler<T extends AnyRequest = AuthenticatedRequest>(
+  fn: (req: T, res: Response, next: NextFunction) => Promise<void>
+): (req: Request, res: Response, next: NextFunction) => void {
+  return (req, res, next) => {
+    fn(req as T, res, next).catch(next);
   };
 }

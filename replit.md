@@ -139,7 +139,8 @@ The following indexes exist beyond Drizzle's default primary keys:
 
 ### Development Tools
 - **Build Tools**: Vite, ESBuild
-- **Type Safety**: TypeScript
+- **Type Safety**: TypeScript with `noUnusedLocals` and `noUnusedParameters` enforced in tsconfig.json
+- **Linting**: ESLint with `@typescript-eslint/no-floating-promises` (error) and `@typescript-eslint/no-explicit-any` (warn) — config in `.eslintrc.json`
 
 ### Integrations
 - **Zapier**: For SMS message ingestion.

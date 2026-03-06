@@ -37,7 +37,7 @@ const SYNC_BATCH_SIZE = 25;
 // stalled. This guards against runaway syncs holding the in-memory lock forever.
 // Set to 5 minutes — long enough for large tenants (~thousands of records), but short
 // enough that a crash-looping sync does not block the next scheduled run indefinitely.
-const HCP_SYNC_MAX_RUNTIME_MS = 5 * 60_000; // 5 minutes
+// const HCP_SYNC_MAX_RUNTIME_MS = 5 * 60_000; // 5 minutes (reserved for future timeout guard)
 
 /**
  * Maps a Housecall Pro estimate to this CRM's estimate status.
@@ -344,8 +344,6 @@ export async function syncHousecallPro(tenantId: string): Promise<void> {
 
             if (!contactId && hcpCustomer) {
               const customerEmail = hcpCustomer.email;
-              const customerPhone = hcpCustomer.mobile_number || hcpCustomer.home_number || hcpCustomer.work_number ||
-                (hcpCustomer.phone_numbers?.[0]?.phone_number);
 
               if (!contactId) {
                 const customerName = [hcpCustomer.first_name, hcpCustomer.last_name].filter(Boolean).join(' ') ||

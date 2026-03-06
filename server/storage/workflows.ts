@@ -2,9 +2,6 @@ import {
   type Workflow, type InsertWorkflow,
   type WorkflowStep, type InsertWorkflowStep,
   type WorkflowExecution, type InsertWorkflowExecution,
-  type Contact,
-  type Estimate,
-  type Job,
   workflows, workflowSteps, workflowExecutions, contacts, estimates, jobs, userContractors,
 } from "@shared/schema";
 import { db } from "../db";

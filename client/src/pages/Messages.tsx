@@ -5,10 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TextingModal } from "@/components/TextingModal";
 import { EmailComposerModal } from "@/components/EmailComposerModal";
 import { ConversationModal } from "@/components/ConversationModal";
@@ -16,14 +14,9 @@ import { PageHeader } from "@/components/ui/page-header-v2";
 import { PageLayout } from "@/components/ui/page-layout";
 import { 
   Search, 
-  Filter, 
   MessageSquare, 
   Mail, 
-  Phone, 
   User, 
-  Clock,
-  Send,
-  MoreVertical,
   CalendarIcon
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
@@ -157,7 +150,7 @@ export default function Messages() {
   }>({ isOpen: false });
 
   // Subscribe to WebSocket for real-time message updates
-  const { isConnected, subscribe } = useWebSocketContext();
+  const { subscribe } = useWebSocketContext();
 
   useEffect(() => {
     // Subscribe to WebSocket messages
@@ -208,10 +201,6 @@ export default function Messages() {
 
   const handleStartConversation = (conversation: Conversation) => {
     setTextingModal({ isOpen: true, conversation });
-  };
-
-  const handleStartEmailConversation = (conversation: Conversation) => {
-    setEmailModal({ isOpen: true, conversation });
   };
 
   return (

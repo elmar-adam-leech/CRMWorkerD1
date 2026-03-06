@@ -4,8 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "./StatusBadge";
 import { CustomerBadge } from "./CustomerBadge";
-import { Calendar, User, FileText, MoreHorizontal, Send, Edit, Briefcase, ExternalLink, Phone, Mail, MessageSquare, CalendarClock, Trash2, Tag } from "lucide-react";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Calendar, FileText, MoreHorizontal, Edit, ExternalLink, Phone, Mail, CalendarClock, Trash2, Tag } from "lucide-react";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { CommunicationActionButtons } from "./CommunicationActionButtons";
 import { ViewDetailsButton } from "./ViewDetailsButton";
@@ -53,7 +53,7 @@ type EstimateCardProps = {
   selectable?: boolean;
 };
 
-export const EstimateCard = memo(function EstimateCard({ estimate, onSend, onViewDetails, onConvertToJob, onEdit, onContact, onSendText, onSendEmail, onSetFollowUp, onDelete, onUpdateEstimate, selectable = false }: EstimateCardProps) {
+export const EstimateCard = memo(function EstimateCard({ estimate, onSend: _onSend, onViewDetails, onConvertToJob: _onConvertToJob, onEdit, onContact: _onContact, onSendText, onSendEmail, onSetFollowUp, onDelete, onUpdateEstimate, selectable = false }: EstimateCardProps) {
   const { toggleItem, isSelected } = useBulkSelection();
   const { toast } = useToast();
   const [tagsDialogOpen, setTagsDialogOpen] = useState(false);

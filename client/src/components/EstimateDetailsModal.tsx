@@ -43,7 +43,7 @@ export function EstimateDetailsModal({
   detailsContact,
   onContact,
   onSendText,
-  onSendEmail,
+  onSendEmail: _onSendEmail,
 }: EstimateDetailsModalProps) {
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>

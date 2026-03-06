@@ -14,7 +14,7 @@ import { LeadKanbanBoard } from "@/components/LeadKanbanBoard";
 import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Contact, PaginatedContacts, TerminologySettings } from "@shared/schema";
+import type { Contact, PaginatedContacts } from "@shared/schema";
 import { useTerminology } from "@/hooks/useTerminology";
 import { useUsers } from "@/hooks/useUsers";
 import { cn, formatStatusLabel } from "@/lib/utils";
@@ -27,7 +27,7 @@ import { StatusFilterBar } from "@/components/StatusFilterBar";
 import { LoadMoreButton } from "@/components/LoadMoreButton";
 import { ViewToggle } from "@/components/ViewToggle";
 import { useBulkSelection } from "@/contexts/BulkSelectionContext";
-import { FilterPanel, type FilterState } from "@/components/FilterPanel";
+import { FilterPanel } from "@/components/FilterPanel";
 import { EmptyState } from "@/components/EmptyState";
 import { CreateLeadModal } from "@/components/CreateLeadModal";
 import { EditLeadModal } from "@/components/EditLeadModal";
@@ -40,7 +40,7 @@ import { useAddModalFromUrl } from "@/hooks/use-add-modal-from-url";
 const LEAD_STATUSES = ["new", "contacted", "scheduled", "disqualified"] as const;
 
 export default function Leads({ externalSearch = "" }: { externalSearch?: string }) {
-  const [location] = useLocation();
+  useLocation();
   const [searchQuery, setSearchQuery] = useState(externalSearch);
 
   useEffect(() => {

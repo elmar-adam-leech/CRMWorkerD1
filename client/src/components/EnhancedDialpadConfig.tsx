@@ -8,7 +8,7 @@ import { CheckCircle } from 'lucide-react';
 import { CredentialsStep } from './dialpad/CredentialsStep';
 import { PhoneNumberSyncStep } from './dialpad/PhoneNumberSyncStep';
 import { FinalSetupStep } from './dialpad/FinalSetupStep';
-import type { DialpadPhoneNumber, DialpadUser, UserPermission } from './dialpad/types';
+import type { DialpadPhoneNumber, DialpadUser } from './dialpad/types';
 
 interface EnhancedDialpadConfigProps {
   onComplete?: () => void;

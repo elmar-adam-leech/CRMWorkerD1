@@ -15,7 +15,7 @@ interface TextButtonProps {
 }
 
 export function TextButton({ 
-  recipientName, 
+  recipientName: _recipientName, 
   recipientPhone,
   variant = "outline",
   size = "default",

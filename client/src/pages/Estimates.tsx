@@ -14,7 +14,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { formatStatusLabel, cn } from "@/lib/utils";
 import { useBulkActions } from "@/hooks/useBulkActions";
-import type { PaginatedEstimates, TerminologySettings, Contact, EstimateSummary } from "@shared/schema";
+import type { PaginatedEstimates, Contact, EstimateSummary } from "@shared/schema";
 import { useTerminology } from "@/hooks/useTerminology";
 import { useUsers } from "@/hooks/useUsers";
 import { useCommunicationActions } from "@/hooks/useCommunicationActions";
@@ -26,7 +26,7 @@ import { useWebSocketInvalidation } from "@/hooks/useWebSocketInvalidation";
 import { BulkActionToolbar } from "@/components/BulkActionToolbar";
 import { StatusFilterBar } from "@/components/StatusFilterBar";
 import { LoadMoreButton } from "@/components/LoadMoreButton";
-import { FilterPanel, type FilterState } from "@/components/FilterPanel";
+import { FilterPanel } from "@/components/FilterPanel";
 import { useBulkSelection } from "@/contexts/BulkSelectionContext";
 import { usePagePreferences } from "@/hooks/use-page-preferences";
 import { useAddModalFromUrl } from "@/hooks/use-add-modal-from-url";
@@ -49,7 +49,7 @@ const ESTIMATE_BULK_STATUSES = [
 ];
 
 export default function Estimates({ externalSearch = "" }: { externalSearch?: string }) {
-  const [location] = useLocation();
+  useLocation();
   const { fetchContact } = useFetchContact();
   const [searchQuery, setSearchQuery] = useState(externalSearch);
 

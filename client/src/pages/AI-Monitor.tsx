@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertTriangle, Brain, Timer, Target, TrendingUp, FileText, RefreshCw, XCircle, Shield } from "lucide-react";
+import { AlertTriangle, Brain, Timer, TrendingUp, FileText, RefreshCw, XCircle, Shield } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header-v2";
 import { PageLayout } from "@/components/ui/page-layout";
 import { useCurrentUser, isAdminUser } from "@/hooks/useCurrentUser";
@@ -25,7 +25,7 @@ export default function AIMonitor() {
     enabled: isAuthorized
   });
 
-  const { data: errorLogs, isLoading: errorLogsLoading, refetch: refetchErrorLogs } = useQuery<unknown[]>({
+  const { isLoading: errorLogsLoading, refetch: refetchErrorLogs } = useQuery<unknown[]>({
     queryKey: ['/api/ai/error-logs'],
     enabled: isAuthorized
   });
@@ -46,7 +46,7 @@ export default function AIMonitor() {
     enabled: isAuthorized && userRole !== 'super_admin'
   });
 
-  const { data: businessInsights, isLoading: businessInsightsLoading, refetch: refetchBusinessInsights } = useQuery<unknown>({
+  const { isLoading: businessInsightsLoading, refetch: refetchBusinessInsights } = useQuery<unknown>({
     queryKey: ['/api/ai/business-insights'],
     enabled: isAuthorized && userRole !== 'super_admin'
   });

@@ -6,9 +6,10 @@ import { webhookRateLimiter } from "../../middleware/rate-limiter";
 import crypto from "crypto";
 import { normalizePhoneForStorage } from "../../utils/phone-normalizer";
 import { parseWebhookDate } from "../../utils/parse-webhook-date";
+import { asyncHandler } from "../../utils/async-handler";
 
 export function registerEstimateWebhookRoutes(app: Express): void {
-  app.post("/api/webhooks/:contractorId/estimates", webhookRateLimiter, async (req: Request, res: Response) => {
+  app.post("/api/webhooks/:contractorId/estimates", webhookRateLimiter, asyncHandler(async (req: Request, res: Response) => {
     console.log('[webhook-estimate] === WEBHOOK CALLED ===');
     try {
       const { contractorId } = req.params;
@@ -224,5 +225,5 @@ export function registerEstimateWebhookRoutes(app: Express): void {
         details: error instanceof Error ? error.message : 'Unknown error'
       });
     }
-  });
+  }));
 }

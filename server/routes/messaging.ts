@@ -2,16 +2,14 @@ import type { Express, Response } from "express";
 import { asyncHandler } from "../utils/async-handler";
 import { parseBody } from "../utils/validate-body";
 import { storage } from "../storage";
-import { insertMessageSchema, insertCallSchema, messages, activities, users, contractors } from "@shared/schema";
+import { insertMessageSchema, users, contractors } from "@shared/schema";
 import { z } from "zod";
 import { db } from "../db";
-import { eq, desc, and, inArray } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { dialpadService } from "../dialpad-service";
 import { gmailService } from "../gmail-service";
-import { requireAuth, type AuthenticatedRequest } from "../auth-service";
-import { workflowEngine } from "../workflow-engine";
+import { type AuthenticatedRequest } from "../auth-service";
 import { broadcastToContractor } from "../websocket";
-import { sendGridService } from "../sendgrid-service";
 import { providerService } from "../providers/provider-service";
 
 export function registerMessagingRoutes(app: Express): void {

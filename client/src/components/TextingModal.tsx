@@ -9,14 +9,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { PhoneNumberSelector } from "@/components/PhoneNumberSelector";
 import { SmsHistory } from "@/components/SmsHistory";
 import { MessageSquare, Send, X, FileText } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
 import { useTemplates } from "@/hooks/useTemplates";
 import { useToast } from "@/hooks/use-toast";
 import { useSendSms, formatForDialpad } from "@/hooks/useSendSms";
 import { useProviderStatus } from "@/hooks/use-provider-config";
 import { ProviderIntegrationPrompt } from "./ProviderIntegrationPrompt";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import type { Template } from "@shared/schema";
 
 interface TextingModalProps {
   isOpen: boolean;
@@ -36,20 +34,20 @@ export function TextingModal({
   onClose,
   recipientName,
   recipientPhone,
-  recipientEmail,
+  recipientEmail: _recipientEmail,
   companyName = "Our Company",
   contactId,
   leadId,
   customerId,
   estimateId
 }: TextingModalProps) {
-  const [location, navigate] = useLocation();
+  const [, navigate] = useLocation();
   const [message, setMessage] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState<string>("");
   const [selectedFromNumber, setSelectedFromNumber] = useState<string>("");
   const { toast } = useToast();
   const providerStatus = useProviderStatus();
-  const { sendSms, sendSmsAsync, isLoading: isSendingSms } = useSendSms();
+  const { sendSmsAsync, isLoading: isSendingSms } = useSendSms();
 
   // Get current user data (cached and shared across the app)
   const { data: currentUser } = useCurrentUser();
@@ -153,10 +151,6 @@ export function TextingModal({
     }
 
     return phone;
-  };
-
-  const formatTimestamp = (timestamp: string) => {
-    return new Date(timestamp).toLocaleString();
   };
 
   // Centralized template variable substitution helper

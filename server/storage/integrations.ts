@@ -1,8 +1,8 @@
 import {
-  type Contact, type InsertContact,
-  type Estimate, type InsertEstimate,
+  type Contact,
+  type Estimate,
   type Job,
-  type ContractorCredential, type InsertContractorCredential,
+  type ContractorCredential,
   type ContractorProvider,
   type ContractorIntegration,
   type BusinessTargets, type InsertBusinessTargets,

@@ -1,10 +1,9 @@
-import type { Express } from "express";
+import type { Express, Response } from "express";
 import { asyncHandler } from "../utils/async-handler";
 import { parseBody } from "../utils/validate-body";
 import { storage } from "../storage";
 import { insertJobSchema, jobsPaginationQuerySchema } from "@shared/schema";
 import { requireManagerOrAdmin, type AuthenticatedRequest } from "../auth-service";
-import { z } from "zod";
 import { workflowEngine } from "../workflow-engine";
 import { broadcastToContractor } from "../websocket";
 
@@ -14,18 +13,12 @@ export function registerJobRoutes(app: Express): void {
     res.json(jobs);
   }));
 
-  app.get("/api/jobs/paginated", async (req: AuthenticatedRequest, res: any, next: any) => {
-    try {
-      // ZodError from .parse() propagates to next() → global ZodError middleware → 400 response
-      const validatedQuery = jobsPaginationQuerySchema.parse(req.query);
-      const paginatedJobs = await storage.getJobsPaginated(req.user!.contractorId, validatedQuery);
-      res.json(paginatedJobs);
-    } catch (error) {
-      if (error instanceof z.ZodError) return next(error);
-      console.error('Paginated jobs error:', error);
-      res.status(500).json({ message: "Failed to fetch paginated jobs" });
-    }
-  });
+  app.get("/api/jobs/paginated", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    // ZodError from .parse() propagates → global ZodError middleware → 400 response
+    const validatedQuery = jobsPaginationQuerySchema.parse(req.query);
+    const paginatedJobs = await storage.getJobsPaginated(req.user!.contractorId, validatedQuery);
+    res.json(paginatedJobs);
+  }));
 
   app.get("/api/jobs/status-counts", asyncHandler(async (req, res) => {
     const search = req.query.search as string;

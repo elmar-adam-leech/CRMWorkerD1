@@ -1,6 +1,6 @@
 import { db, pool } from '../db.js';
 import { users, contractors, userContractors } from '../../shared/schema.js';
-import { eq, isNull } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import bcrypt from 'bcrypt';
 
 async function seed() {

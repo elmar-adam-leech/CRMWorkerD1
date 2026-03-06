@@ -1,6 +1,5 @@
 import crypto from 'crypto';
 import { storage } from './storage';
-import type { ContractorCredential } from '@shared/schema';
 
 // Encryption configuration
 const ENCRYPTION_ALGORITHM = 'aes-256-gcm';

@@ -1,6 +1,6 @@
 import { db } from "../db";
 import { messages, activities, contractors } from "@shared/schema";
-import { and, isNull, sql, eq, isNotNull, or } from "drizzle-orm";
+import { and, isNull, sql, eq } from "drizzle-orm";
 
 interface ContractorCleanupResult {
   contractorId: string;

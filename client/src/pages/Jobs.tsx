@@ -11,7 +11,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { formatStatusLabel } from "@/lib/utils";
 import { useBulkActions } from "@/hooks/useBulkActions";
-import type { PaginatedJobs, TerminologySettings } from "@shared/schema";
+import type { PaginatedJobs } from "@shared/schema";
 import { useTerminology } from "@/hooks/useTerminology";
 import { useUsers } from "@/hooks/useUsers";
 import { useGlobalShortcuts } from "@/hooks/use-keyboard-shortcuts";
@@ -21,7 +21,7 @@ import { useWebSocketInvalidation } from "@/hooks/useWebSocketInvalidation";
 import { usePagePreferences } from "@/hooks/use-page-preferences";
 import { useAddModalFromUrl } from "@/hooks/use-add-modal-from-url";
 import { BulkActionToolbar } from "@/components/BulkActionToolbar";
-import { FilterPanel, type FilterState } from "@/components/FilterPanel";
+import { FilterPanel } from "@/components/FilterPanel";
 import { EmptyState } from "@/components/EmptyState";
 import { JobDetailsModal, type JobListItem } from "@/components/JobDetailsModal";
 import { HCPImportModal } from "@/components/HCPImportModal";
@@ -35,7 +35,7 @@ type JobStatus = (typeof JOB_STATUSES)[number];
 type FilterStatus = "all" | JobStatus;
 
 export default function Jobs({ externalSearch = "" }: { externalSearch?: string }) {
-  const [location] = useLocation();
+  useLocation();
   const { isHousecallProConfigured, syncStartDate } = useHousecallProIntegration();
 
   const {

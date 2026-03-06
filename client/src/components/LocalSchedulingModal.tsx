@@ -2,11 +2,10 @@ import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { format, addDays, isToday, isTomorrow, startOfWeek, addWeeks } from "date-fns";
+import { format, isToday, isTomorrow } from "date-fns";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Calendar } from "@/components/ui/calendar";
@@ -74,8 +73,12 @@ const generateTimeSlots = (
   }
   
   const slots = [];
-  const [startHour, startMinute = 0] = workingHoursStart.split(':').map(Number);
-  const [endHour, endMinute = 0] = workingHoursEnd.split(':').map(Number);
+  const startParts = workingHoursStart.split(':').map(Number);
+  const endParts = workingHoursEnd.split(':').map(Number);
+  const startHour = startParts[0] ?? 8;
+  const startMinute = startParts[1] ?? 0;
+  const endHour = endParts[0] ?? 17;
+  const endMinute = endParts[1] ?? 0;
   
   // Convert to minutes for easier calculation
   const dayStartMinutes = startHour * 60 + startMinute;
@@ -182,7 +185,7 @@ export function LocalSchedulingModal({ lead, isOpen, onClose, onScheduled }: Loc
 
   // Fetch HCP estimates for selected salesperson and date
   const formattedDate = selectedDate ? format(selectedDate, 'yyyy-MM-dd') : '';
-  const { data: hcpEstimates = [], isLoading: estimatesLoading } = useQuery<HCPEstimate[]>({
+  const { data: hcpEstimates = [] } = useQuery<HCPEstimate[]>({
     queryKey: ['/api/housecall/employee-estimates', selectedSalesperson?.housecallProUserId, formattedDate],
     queryFn: async () => {
       if (!selectedSalesperson?.housecallProUserId || !selectedDate) return [];

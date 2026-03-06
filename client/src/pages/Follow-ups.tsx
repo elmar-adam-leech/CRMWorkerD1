@@ -10,9 +10,8 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { Calendar, Clock, Filter } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { EditLeadDialog } from "@/components/EditLeadDialog";
@@ -434,7 +433,7 @@ export default function FollowUps() {
             isScheduled: false,
             housecallProEstimateId: schedulingModal.item.type === 'estimate' ? schedulingModal.item.id : null,
           } : null}
-          onScheduled={(scheduledLead) => {
+          onScheduled={(_scheduledLead) => {
             setSchedulingModal({ isOpen: false });
             // The leads/estimates list will be automatically refreshed by the modal's success handler
           }}

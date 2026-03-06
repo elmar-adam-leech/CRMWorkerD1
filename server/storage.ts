@@ -12,7 +12,7 @@ import {
   type Message, type InsertMessage,
   type Template, type InsertTemplate,
   type Call, type InsertCall,
-  type ContractorCredential, type InsertContractorCredential,
+  type ContractorCredential,
   type ContractorProvider,
   type ContractorIntegration,
   type Employee, type InsertEmployee,

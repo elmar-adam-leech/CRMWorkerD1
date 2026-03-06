@@ -1,5 +1,5 @@
 import type { WorkflowStep } from "@shared/schema";
-import type { ExecutionContext, StepResult } from "./types";
+import type { StepResult } from "./types";
 
 // ────────────────────────────────────────────────────────────────────────────
 // IMPORTANT — In-memory delay limitation

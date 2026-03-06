@@ -8,7 +8,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { GmailConnectionCard } from "@/components/settings/GmailConnectionCard";
 import {
   User, Calendar, Users, UserPlus, Settings2, Search, ExternalLink, Copy, Code, Info
@@ -16,14 +16,6 @@ import {
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
-const AVAILABLE_ROLES = [
-  { value: 'sales', label: 'Sales' },
-  { value: 'technician', label: 'Technician' },
-  { value: 'estimator', label: 'Estimator' },
-  { value: 'dispatcher', label: 'Dispatcher' },
-  { value: 'manager', label: 'Manager' },
-  { value: 'admin', label: 'Admin' },
-];
 
 type UserRow = { id: string; username: string; name: string; email: string; role: string; contractorId: string; createdAt: string };
 

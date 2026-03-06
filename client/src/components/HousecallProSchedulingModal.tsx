@@ -6,7 +6,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -16,7 +15,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Calendar as CalendarIcon, Clock, User, MapPin, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Calendar as CalendarIcon, Clock, User, AlertCircle, CheckCircle2 } from "lucide-react";
 import { format } from "date-fns";
 import { z } from "zod";
 import { cn } from "@/lib/utils";
@@ -131,14 +130,23 @@ export function HousecallProSchedulingModal({ lead, isOpen, onClose, onScheduled
       if (!lead) throw new Error('No lead selected');
       
       // Parse the selected time slot (format: "HH:MM-HH:MM")
-      const [startTime, endTime] = data.timeSlot.split('-');
-      
+      const parts = data.timeSlot.split('-');
+      const startTime = parts[0];
+      const endTime = parts[1];
+      if (!startTime || !endTime) throw new Error('Invalid time slot format');
+
       const scheduledStart = new Date(data.date);
-      const [startHour, startMinute] = startTime.split(':');
+      const startParts = startTime.split(':');
+      const startHour = startParts[0];
+      const startMinute = startParts[1];
+      if (!startHour || !startMinute) throw new Error('Invalid start time format');
       scheduledStart.setHours(parseInt(startHour), parseInt(startMinute));
       
       const scheduledEnd = new Date(data.date);
-      const [endHour, endMinute] = endTime.split(':');
+      const endParts = endTime.split(':');
+      const endHour = endParts[0];
+      const endMinute = endParts[1];
+      if (!endHour || !endMinute) throw new Error('Invalid end time format');
       scheduledEnd.setHours(parseInt(endHour), parseInt(endMinute));
 
       const response = await apiRequest('POST', `/api/leads/${lead.id}/schedule`, {

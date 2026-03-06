@@ -1,10 +1,10 @@
-import type { Express, Response } from "express";
+import type { Express } from "express";
 import { asyncHandler } from "../utils/async-handler";
 import { parseBody } from "../utils/validate-body";
 import { storage } from "../storage";
 import { insertContactSchema, contactStatusEnum } from "@shared/schema";
 import type { UpdateContact } from "../storage-types";
-import { requireAuth, requireManagerOrAdmin, type AuthenticatedRequest } from "../auth-service";
+import { requireManagerOrAdmin } from "../auth-service";
 import { workflowEngine } from "../workflow-engine";
 import { broadcastToContractor } from "../websocket";
 import { createActivityAndBroadcast } from "../utils/activity";
@@ -56,7 +56,7 @@ export function registerContactRoutes(app: Express): void {
     res.json(rows);
   }));
 
-  app.get("/api/leads/csv-template", asyncHandler(async (req, res) => {
+  app.get("/api/leads/csv-template", asyncHandler(async (_req, res) => {
     const csvHeaders = ['name', 'email', 'phone', 'address', 'source', 'notes', 'followUpDate'];
     const csvTemplate = csvHeaders.join(',') + '\n' +
       'John Smith,john@example.com,555-123-4567,"123 Main St, City, State 12345",Website Contact Form,"Interested in HVAC installation",2024-01-15\n' +

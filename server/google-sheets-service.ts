@@ -32,10 +32,8 @@ export interface ColumnMapping {
 
 export class GoogleSheetsService {
   private auth: JWT;
-  private config: GoogleSheetsConfig;
 
   constructor(config: GoogleSheetsConfig) {
-    this.config = config;
     this.auth = new JWT({
       email: config.serviceAccountEmail,
       key: config.privateKey.replace(/\\n/g, '\n'),

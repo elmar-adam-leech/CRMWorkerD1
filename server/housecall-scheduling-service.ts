@@ -1,6 +1,6 @@
 import { db } from './db';
 import { users, userContractors, scheduledBookings, contacts, estimates, contractors } from '@shared/schema';
-import { eq, and, gte, lte, desc, asc, sql } from 'drizzle-orm';
+import { eq, and, gte, lte, asc, sql } from 'drizzle-orm';
 import { housecallProService } from './housecall-pro-service';
 import type { TimeSlot, BusyWindow, AvailableSlot, AddressComponents, BookingRequest, BookingResult, SalespersonInfo } from './types/scheduling';
 import { parseAddressString } from './types/scheduling';
@@ -10,7 +10,7 @@ export type { TimeSlot, BusyWindow, AvailableSlot, AddressComponents, BookingReq
 const SLOT_DURATION_MINUTES = 60;
 const SLOT_INTERVAL_MINUTES = 15; // Time slots offered every 15 minutes for more booking options
 const BUFFER_MINUTES = 30;
-const DEFAULT_WORKING_HOURS = { start: 8, end: 17 }; // Fallback if salesperson has no custom hours
+// const DEFAULT_WORKING_HOURS = { start: 8, end: 17 }; // Reserved for future use
 
 export class HousecallSchedulingService {
   
@@ -350,35 +350,6 @@ export class HousecallSchedulingService {
   private parseWorkingHours(timeStr: string): { hours: number; minutes: number } {
     const [hours, minutes = 0] = timeStr.split(':').map(Number);
     return { hours, minutes };
-  }
-  
-  private getTimezoneOffset(date: Date, timezone: string): number {
-    try {
-      const formatter = new Intl.DateTimeFormat('en-US', {
-        timeZone: timezone,
-        year: 'numeric',
-        month: 'numeric',
-        day: 'numeric',
-        hour: 'numeric',
-        minute: 'numeric',
-        second: 'numeric',
-        hour12: false
-      });
-      const parts = formatter.formatToParts(date);
-      const getPart = (type: string) => parseInt(parts.find(p => p.type === type)?.value || '0');
-      
-      const tzYear = getPart('year');
-      const tzMonth = getPart('month') - 1;
-      const tzDay = getPart('day');
-      const tzHour = getPart('hour');
-      const tzMinute = getPart('minute');
-      const tzSecond = getPart('second');
-      
-      const tzDate = new Date(Date.UTC(tzYear, tzMonth, tzDay, tzHour, tzMinute, tzSecond));
-      return Math.round((date.getTime() - tzDate.getTime()) / (60 * 1000));
-    } catch {
-      return 0;
-    }
   }
   
   private getDatePartsInTimezone(date: Date, timezone: string): { year: number; month: number; day: number } {
@@ -848,7 +819,6 @@ export class HousecallSchedulingService {
     }
     
     // Create a CRM estimate record only if we have a contactId
-    let crmEstimateId: string | undefined;
     if (request.contactId) {
       const [crmEstimate] = await db.insert(estimates).values({
         contractorId: tenantId,
@@ -863,7 +833,6 @@ export class HousecallSchedulingService {
         housecallProEstimateId: hcpEstimateId,
       }).returning();
       
-      crmEstimateId = crmEstimate.id;
       console.log('[scheduling] Created CRM estimate:', crmEstimate.id);
     }
     
@@ -898,7 +867,7 @@ export class HousecallSchedulingService {
     };
   }
   
-  async getBookings(tenantId: string, startDate?: Date, endDate?: Date): Promise<any[]> {
+  async getBookings(tenantId: string, _startDate?: Date, _endDate?: Date): Promise<any[]> {
     let query = db.select({
       id: scheduledBookings.id,
       title: scheduledBookings.title,

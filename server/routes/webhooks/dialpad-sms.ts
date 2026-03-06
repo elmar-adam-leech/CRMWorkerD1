@@ -7,9 +7,10 @@ import { eq, and, sql } from "drizzle-orm";
 import { dialpadEnhancedService } from "../../dialpad-enhanced-service";
 import { webhookRateLimiter } from "../../middleware/rate-limiter";
 import { normalizePhoneNumber, normalizePhoneForStorage } from "../../utils/phone-normalizer";
+import { asyncHandler } from "../../utils/async-handler";
 
 export function registerDialpadSmsWebhookRoutes(app: Express): void {
-  app.post("/api/webhooks/dialpad/sms/:tenantId", webhookRateLimiter, express.json(), async (req: Request, res: Response) => {
+  app.post("/api/webhooks/dialpad/sms/:tenantId", webhookRateLimiter, express.json(), asyncHandler(async (req: Request, res: Response) => {
     try {
       const { tenantId } = req.params;
       console.log(`[Dialpad Webhook] Received SMS webhook for tenant ${tenantId}`);
@@ -65,7 +66,6 @@ export function registerDialpadSmsWebhookRoutes(app: Express): void {
       const toNumber = Array.isArray(toNumberRaw) ? toNumberRaw[0] : toNumberRaw;
       
       const normalizedFromNumber = normalizePhoneNumber(fromNumber);
-      const normalizedToNumber = normalizePhoneNumber(toNumber);
       
       const dialpadNumbers = await db.select()
         .from(dialpadPhoneNumbers)
@@ -233,5 +233,5 @@ export function registerDialpadSmsWebhookRoutes(app: Express): void {
       console.error('[Dialpad Webhook] Error processing webhook:', error);
       res.status(500).json({ success: false, error: 'Failed to process webhook' });
     }
-  });
+  }));
 }

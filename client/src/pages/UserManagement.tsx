@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -28,7 +28,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { UserPlus, Mail, Shield, Search, Phone, Edit, ArrowLeft, Key, Check, X, Settings } from "lucide-react";
+import { UserPlus, Mail, Shield, Search, ArrowLeft, Key, Check, X } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -130,27 +130,6 @@ export default function UserManagement() {
     onError: (error: Error) => {
       toast({
         title: "Failed to update permission",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
-
-  // Revoke permission mutation
-  const revokePermissionMutation = useMutation({
-    mutationFn: async (data: { phoneNumberId: string; userId: string }) => {
-      return await apiRequest('DELETE', `/api/dialpad/phone-numbers/${data.phoneNumberId}/permissions/${data.userId}`, {});
-    },
-    onSuccess: () => {
-      refetchPermissions();
-      toast({
-        title: "Permission revoked",
-        description: "Phone number permission has been revoked successfully",
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Failed to revoke permission",
         description: error.message,
         variant: "destructive",
       });

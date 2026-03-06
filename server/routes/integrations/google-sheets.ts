@@ -269,7 +269,7 @@ export function registerGoogleSheetsRoutes(app: Express): void {
           }
         }
         
-        const newContact = await storage.createContact(validationResult.data, contractorId);
+        await storage.createContact(validationResult.data, contractorId);
         results.imported++;
         
       } catch (error) {

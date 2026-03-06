@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { MessageSquare, ArrowDownLeft, ArrowUpRight } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight } from "lucide-react";
 
 interface Message {
   id: string;

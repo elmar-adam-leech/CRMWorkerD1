@@ -4,7 +4,6 @@ import {
   Mail,
   MessageSquare,
   Bell,
-  Edit,
   UserPlus,
   Brain,
   GitBranch,

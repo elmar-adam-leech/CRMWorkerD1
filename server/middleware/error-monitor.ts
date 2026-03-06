@@ -17,7 +17,7 @@ const MAX_ERROR_LOGS = 1000;
 /**
  * Enhanced error handling middleware with AI analysis
  */
-export function aiErrorHandler(err: Error, req: Request, res: Response, next: NextFunction) {
+export function aiErrorHandler(err: Error, req: Request, res: Response, _next: NextFunction) {
   const errorId = `err_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   const context = `${req.method} ${req.path} - User: ${(req as any).user?.id || 'anonymous'}`;
   

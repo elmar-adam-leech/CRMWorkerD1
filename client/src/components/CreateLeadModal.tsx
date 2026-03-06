@@ -19,7 +19,7 @@ interface CreateLeadModalProps {
   onViewDuplicate?: (contactId: string) => void;
 }
 
-export function CreateLeadModal({ isOpen, onClose, onSuccess, leads = [], onViewDuplicate }: CreateLeadModalProps) {
+export function CreateLeadModal({ isOpen, onClose, onSuccess, leads: _leads = [], onViewDuplicate }: CreateLeadModalProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);

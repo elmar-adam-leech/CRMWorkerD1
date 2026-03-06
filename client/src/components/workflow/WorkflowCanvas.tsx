@@ -67,8 +67,8 @@ type WorkflowCanvasProps = {
 export default function WorkflowCanvas({ 
   initialNodes, 
   initialEdges, 
-  workflowId, 
-  approvalStatus,
+  workflowId: _workflowId, 
+  approvalStatus: _approvalStatus,
   onNodesChange: onNodesChangeCallback,
   onEdgesChange: onEdgesChangeCallback,
   onNodeClick,
@@ -142,7 +142,6 @@ export default function WorkflowCanvas({
 
       if (!reactFlowWrapper.current || !reactFlowInstance) return;
 
-      const reactFlowBounds = reactFlowWrapper.current.getBoundingClientRect();
       const type = event.dataTransfer.getData('application/reactflow');
 
       if (!type) return;

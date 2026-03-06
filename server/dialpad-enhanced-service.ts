@@ -4,8 +4,6 @@ import { DialpadService } from './dialpad-service';
 import type { 
   DialpadPhoneNumber, 
   InsertDialpadPhoneNumber,
-  UserPhoneNumberPermission,
-  InsertUserPhoneNumberPermission
 } from '@shared/schema';
 
 // Dialpad API response types based on user's working code
@@ -42,11 +40,9 @@ interface DialpadApiResponse<T> {
 
 export class DialpadEnhancedService {
   private dialpadService: DialpadService;
-  private storage: typeof storage;
 
   constructor() {
     this.dialpadService = new DialpadService();
-    this.storage = storage;
   }
 
   /**

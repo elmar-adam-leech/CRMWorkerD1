@@ -6,18 +6,16 @@ import { db } from "../../db";
 import { eq } from "drizzle-orm";
 import { CredentialService } from "../../credential-service";
 import { workflowEngine } from "../../workflow-engine";
-import { broadcastToContractor } from "../../websocket";
-import { housecallProService } from "../../housecall-pro-service";
 import { mapHcpEstimateStatus } from "../../sync/housecall-pro";
 import { webhookRateLimiter } from "../../middleware/rate-limiter";
+import { asyncHandler } from "../../utils/async-handler";
 import crypto from "crypto";
 
 export function registerHousecallProWebhookRoutes(app: Express): void {
   app.post("/api/webhooks/:contractorId/housecall-pro", 
     webhookRateLimiter,
     express.raw({ type: 'application/json' }),
-    async (req: Request, res: Response) => {
-    try {
+    asyncHandler(async (req: Request, res: Response) => {
       const { contractorId } = req.params;
       
       const contractor = await storage.getContractor(contractorId);
@@ -147,9 +145,5 @@ export function registerHousecallProWebhookRoutes(app: Express): void {
       }
 
       res.status(200).json({ received: true });
-    } catch (error) {
-      console.error('Webhook processing error:', error);
-      res.status(200).json({ received: true, error: 'Processing failed' });
-    }
-  });
+  }));
 }

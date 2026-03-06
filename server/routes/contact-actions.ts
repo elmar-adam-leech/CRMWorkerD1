@@ -164,9 +164,8 @@ export function registerContactActionRoutes(app: Express): void {
     res.json(result);
   }));
 
-  app.post("/api/leads/csv-upload", async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const { csvData } = req.body;
+  app.post("/api/leads/csv-upload", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const { csvData } = req.body;
 
       if (!csvData || typeof csvData !== 'string') {
         res.status(400).json({ error: "Missing CSV data", message: "Please provide CSV data in the request body" });
@@ -294,9 +293,5 @@ export function registerContactActionRoutes(app: Express): void {
         failedCount: results.errors.length,
         errors: results.errors.slice(0, 10)
       });
-    } catch (error) {
-      console.error('CSV upload error:', error);
-      res.status(500).json({ error: "Internal server error", message: "Failed to process CSV upload" });
-    }
-  });
+  }));
 }

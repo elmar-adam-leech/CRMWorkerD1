@@ -1,12 +1,11 @@
 import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Clock, User, FileText, Phone, Mail, Calendar, UserCheck, AlertCircle, MessageSquare, Plus } from "lucide-react";
 import { format } from "date-fns";
 import { LogCallDialog } from "./LogCallDialog";
-import { queryClient } from "@/lib/queryClient";
 
 interface Activity {
   id: string;

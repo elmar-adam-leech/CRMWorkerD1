@@ -17,7 +17,7 @@ export function replaceVariables(template: string, variables: Record<string, unk
   // Regular expression to match {{variable.path}} patterns
   const variablePattern = /\{\{([^}]+)\}\}/g;
 
-  return template.replace(variablePattern, (match, variablePath) => {
+  return template.replace(variablePattern, (_match, variablePath) => {
     // Trim whitespace from variable path
     const cleanPath = (variablePath as string).trim();
     

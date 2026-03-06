@@ -5,9 +5,10 @@ import { housecallProService } from "../../housecall-pro-service";
 import { webhookRateLimiter } from "../../middleware/rate-limiter";
 import crypto from "crypto";
 import { normalizePhoneForStorage, normalizePhoneArrayForStorage } from "../../utils/phone-normalizer";
+import { asyncHandler } from "../../utils/async-handler";
 
 export function registerLeadWebhookRoutes(app: Express): void {
-  app.post("/api/webhooks/:contractorId/leads", webhookRateLimiter, async (req: Request, res: Response) => {
+  app.post("/api/webhooks/:contractorId/leads", webhookRateLimiter, asyncHandler(async (req: Request, res: Response) => {
     try {
       const { contractorId } = req.params;
       
@@ -457,5 +458,5 @@ export function registerLeadWebhookRoutes(app: Express): void {
         details: error instanceof Error ? error.message : 'Unknown error'
       });
     }
-  });
+  }));
 }

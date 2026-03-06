@@ -40,7 +40,7 @@ type JobCardProps = {
   selectable?: boolean;
 };
 
-export const JobCard = memo(function JobCard({ job, onStatusChange, onViewDetails, onEdit, onEditStatus, onUpdateJob, onDelete, selectable = false }: JobCardProps) {
+export const JobCard = memo(function JobCard({ job, onStatusChange: _onStatusChange, onViewDetails, onEdit, onEditStatus, onUpdateJob, onDelete, selectable = false }: JobCardProps) {
   const { toggleItem, isSelected } = useBulkSelection();
   const { toast } = useToast();
   const [tagsDialogOpen, setTagsDialogOpen] = useState(false);

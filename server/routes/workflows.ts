@@ -3,7 +3,6 @@ import { storage } from "../storage";
 import { insertWorkflowSchema, insertWorkflowStepSchema } from "@shared/schema";
 import { requireAuth, requireManagerOrAdmin, type AuthenticatedRequest } from "../auth-service";
 import { workflowEngine } from "../workflow-engine";
-import { broadcastToContractor } from "../websocket";
 import { asyncHandler } from "../utils/async-handler";
 
 export function registerWorkflowRoutes(app: Express): void {
