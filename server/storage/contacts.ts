@@ -68,7 +68,6 @@ async function getContactsPaginated(contractorId: string, options: {
   } else if (!options.status || options.status === 'all') {
     if (!options.type || options.type === 'lead') {
       conditions.push(ne(contacts.status, 'disqualified'));
-      conditions.push(ne(contacts.status, 'scheduled'));
     }
   }
   if (options.search) {
@@ -138,7 +137,6 @@ async function getContactsCount(contractorId: string, options: {
   } else if (!options.status || options.status === 'all') {
     if (!options.type || options.type === 'lead') {
       conditions.push(ne(contacts.status, 'disqualified'));
-      conditions.push(ne(contacts.status, 'scheduled'));
     }
   }
   if (options.search) {
