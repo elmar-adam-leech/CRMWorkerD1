@@ -1,4 +1,4 @@
-import { Plus, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { SidebarTrigger } from "@/components/ui/sidebar";
@@ -19,25 +19,17 @@ type HeaderProps = {
     avatar?: string;
   };
   onSearch?: (query: string) => void;
-  onNewItem?: () => void;
 };
 
 export function Header({
   user,
   onSearch,
-  onNewItem,
 }: HeaderProps) {
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
-  const handleNewItem = () => {
-    console.log("New item clicked");
-    onNewItem?.();
-  };
-
   const handleSettings = () => {
-    console.log("Settings clicked");
     setLocation("/settings");
   };
 
@@ -48,7 +40,6 @@ export function Header({
         title: "Logged out successfully",
         description: "You have been logged out of your account.",
       });
-      // Reload the page to trigger redirect to login
       window.location.reload();
     } catch (error) {
       console.error("Logout error:", error);
@@ -79,27 +70,6 @@ export function Header({
             data-testid="button-mobile-search"
           >
             <Search className="h-4 w-4" />
-          </Button>
-          
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleNewItem}
-            data-testid="button-new-item"
-            className="hidden sm:flex"
-          >
-            <Plus className="h-4 w-4 mr-1" />
-            New
-          </Button>
-          
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={handleNewItem}
-            data-testid="button-new-item-mobile"
-            className="sm:hidden"
-          >
-            <Plus className="h-4 w-4" />
           </Button>
           
           <NotificationDropdown />
