@@ -48,6 +48,8 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
   emailIdx: index("users_email_idx").on(table.email),
+  // Index for session-based tenant resolution (users.contractorId tracks the active session tenant)
+  contractorIdIdx: index("users_contractor_id_idx").on(table.contractorId),
 }));
 
 // User-Contractor junction table (many-to-many relationship)
@@ -188,10 +190,15 @@ export const contacts = pgTable("contacts", {
   externalLookupIdx: index("contacts_external_lookup_idx").on(table.contractorId, table.externalSource, table.externalId),
   // Index for tag-based filtering in workflows
   tagsIdx: index("contacts_tags_idx").on(table.tags),
-  // Index for follow-up date queries (Follow-ups page)
-  followUpDateIdx: index("contacts_follow_up_date_idx").on(table.followUpDate),
+  // Partial index for follow-up date queries — only rows that actually have a date set
+  // (Follow-ups page never queries contacts where follow_up_date IS NULL)
+  followUpDateIdx: index("contacts_follow_up_date_idx").on(table.followUpDate).where(sql`follow_up_date IS NOT NULL`),
   // Partial index for HCP customer ID lookups (sync path)
   housecallProCustomerIdIdx: index("contacts_housecall_pro_customer_id_idx").on(table.housecallProCustomerId).where(sql`housecall_pro_customer_id IS NOT NULL`),
+  // GIN indexes for array-contains queries on email and phone arrays.
+  // Without GIN, `WHERE emails @> ARRAY['x']` causes a full table scan.
+  emailsGinIdx: index("contacts_emails_gin_idx").using("gin", table.emails),
+  phonesGinIdx: index("contacts_phones_gin_idx").using("gin", table.phones),
 }));
 
 // Leads table - tracks individual lead submissions
@@ -231,6 +238,9 @@ export const leads = pgTable("leads", {
   contractorDateIdx: index("leads_contractor_date_idx").on(table.contractorId, table.createdAt),
   contactCreatedIdx: index("leads_contact_created_idx").on(table.contactId, table.createdAt),
   assignedToUserIdIdx: index("leads_assigned_to_user_id_idx").on(table.assignedToUserId),
+  // Indexes for conversion tracking queries (e.g., finding which estimate/job a lead became)
+  convertedToEstimateIdIdx: index("leads_converted_to_estimate_id_idx").on(table.convertedToEstimateId),
+  convertedToJobIdIdx: index("leads_converted_to_job_id_idx").on(table.convertedToJobId),
 }));
 
 // Jobs table
@@ -263,6 +273,8 @@ export const jobs = pgTable("jobs", {
   contractorDateIdx: index("jobs_contractor_date_idx").on(table.contractorId, table.createdAt),
   // Partial index for external ID lookups (HCP sync path)
   externalIdIdx: index("jobs_external_id_idx").on(table.externalId).where(sql`external_id IS NOT NULL`),
+  // Index for getJobByEstimateId() and joins from estimates → jobs
+  estimateIdIdx: index("jobs_estimate_id_idx").on(table.estimateId),
 }));
 
 // Estimates table
@@ -382,6 +394,10 @@ export const webhookEvents = pgTable("webhook_events", {
   createdAtIdx: index("webhook_events_created_at_idx").on(table.createdAt),
   // Composite index for finding unprocessed events
   processedCreatedAtIdx: index("webhook_events_processed_created_at_idx").on(table.processed, table.createdAt),
+  // Partial index specifically for the background processor's unprocessed event lookup.
+  // Because processed=true rows vastly outnumber processed=false rows over time,
+  // a partial index skips the large processed section entirely.
+  unprocessedIdx: index("webhook_events_unprocessed_idx").on(table.createdAt).where(sql`processed = false`),
 }));
 
 // Templates table for text and email templates
@@ -555,6 +571,10 @@ export const userPhoneNumberPermissions = pgTable("user_phone_number_permissions
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
   userPhoneUnique: unique().on(table.userId, table.phoneNumberId),
+  // Standalone indexes so lookups by any single dimension are fast
+  userIdIdx: index("user_phone_permissions_user_id_idx").on(table.userId),
+  phoneNumberIdIdx: index("user_phone_permissions_phone_number_id_idx").on(table.phoneNumberId),
+  contractorIdIdx: index("user_phone_permissions_contractor_id_idx").on(table.contractorId),
 }));
 
 // Dialpad users cache - stores Dialpad user data for each contractor
@@ -575,6 +595,8 @@ export const dialpadUsers = pgTable("dialpad_users", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
   contractorDialpadUserUnique: unique().on(table.contractorId, table.dialpadUserId),
+  // Standalone contractor index for "list all Dialpad users for tenant" queries
+  contractorIdIdx: index("dialpad_users_contractor_id_idx").on(table.contractorId),
 }));
 
 // Dialpad departments cache - stores Dialpad department data for each contractor  
@@ -593,6 +615,8 @@ export const dialpadDepartments = pgTable("dialpad_departments", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
   contractorDialpadDeptUnique: unique().on(table.contractorId, table.dialpadDepartmentId),
+  // Standalone contractor index for "list all departments for tenant" queries
+  contractorIdIdx: index("dialpad_departments_contractor_id_idx").on(table.contractorId),
 }));
 
 // Dialpad sync jobs - tracks sync operations and status
@@ -1006,7 +1030,10 @@ export const passwordResetTokens = pgTable("password_reset_tokens", {
   expiresAt: timestamp("expires_at").notNull(),
   usedAt: timestamp("used_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  // Index for "find all reset tokens for user" queries (e.g. invalidating old tokens)
+  userIdIdx: index("password_reset_tokens_user_id_idx").on(table.userId),
+}));
 
 export const insertPasswordResetTokenSchema = createInsertSchema(passwordResetTokens).omit({
   id: true,
@@ -1121,6 +1148,8 @@ export const workflowSteps = pgTable("workflow_steps", {
 }, (table) => ({
   workflowIdIdx: index("workflow_steps_workflow_id_idx").on(table.workflowId),
   workflowOrderIdx: index("workflow_steps_workflow_order_idx").on(table.workflowId, table.stepOrder),
+  // Index for recursive step traversal when building conditional branch trees
+  parentStepIdIdx: index("workflow_steps_parent_step_id_idx").on(table.parentStepId),
 }));
 
 export const insertWorkflowStepSchema = createInsertSchema(workflowSteps).omit({

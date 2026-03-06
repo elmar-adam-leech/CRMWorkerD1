@@ -1,3 +1,27 @@
+/**
+ * WorkflowCanvas — React Flow canvas for the visual workflow builder.
+ *
+ * Node type ↔ actionType mapping:
+ *   The canvas uses React Flow "node types" (short display names) while the database
+ *   stores "actionType" strings. The mapping lives in `client/src/lib/workflow-utils.ts`
+ *   (`ACTION_TO_NODE` and `NODE_TO_ACTION` maps). WorkflowBuilder.tsx applies those maps
+ *   when serializing nodes to steps (save) and deserializing steps to nodes (load).
+ *
+ *   Examples:
+ *     actionType              →  nodeType
+ *     ─────────────────────────────────────
+ *     'send_email'            →  'email'
+ *     'send_sms'              →  'sms'
+ *     'create_notification'   →  'notification'
+ *     'update_field'          →  'update'
+ *     'delay'                 →  'delay'
+ *     'condition'             →  'condition'
+ *     'assign_user'           →  'assign'
+ *
+ * The `nodeTypes` object (imported from `./WorkflowNodes`) registers the React
+ * components for each node type. Adding a new action requires both a new entry
+ * in the workflow-utils maps and a new component registered in `nodeTypes`.
+ */
 import { useCallback, useState, useEffect, useRef } from 'react';
 import ReactFlow, {
   Node,

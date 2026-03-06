@@ -1,3 +1,20 @@
+/**
+ * ProviderService — runtime abstraction layer for communication providers.
+ *
+ * Purpose:
+ *   Decouples application code from specific vendor SDKs (Dialpad, SendGrid, Gmail).
+ *   Route handlers call `providerService.sendEmail(...)`, `providerService.sendSms(...)`,
+ *   or `providerService.initiateCall(...)` and the service resolves which concrete
+ *   provider to use based on the contractor's configuration stored in `tenant_providers`.
+ *
+ * How to add a new provider:
+ *   1. Create `server/providers/<vendor>-provider.ts` implementing the `EmailProvider`,
+ *      `SmsProvider`, or `CallProvider` interface from `server/providers/interfaces.ts`.
+ *   2. Register a factory in `initializeProviderFactories()` under the appropriate key
+ *      (email / sms / calling) so the service can lazy-load it.
+ *   3. Add the vendor name to `AVAILABLE_INTEGRATIONS` and update the credential flow
+ *      in `server/credential-service.ts` if it needs an API key or OAuth token.
+ */
 import { providerRegistry } from './registry';
 import { storage } from '../storage';
 import { credentialService } from '../credential-service';

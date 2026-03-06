@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, memo, type ElementType } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,6 +42,100 @@ interface Conversation {
   unreadCount: number;
   totalMessages: number;
 }
+
+/** Single row in the conversations list. Memoized to avoid re-rendering when
+ *  unrelated state changes (e.g. filter dropdowns opening/closing). */
+const ConversationItem = memo(function ConversationItem({
+  conversation,
+  formatTimestamp,
+  getMessageTypeIcon,
+  getStatusBadgeVariant,
+  onOpen,
+  onText,
+}: {
+  conversation: Conversation;
+  formatTimestamp: (ts: string | Date) => string;
+  getMessageTypeIcon: (type: "text" | "email") => ElementType;
+  getStatusBadgeVariant: (status: "sent" | "delivered" | "failed") => "outline" | "default" | "destructive" | "secondary";
+  onOpen: (c: Conversation) => void;
+  onText: (c: Conversation) => void;
+}) {
+  const TypeIcon = getMessageTypeIcon(conversation.lastMessage.type as "text" | "email");
+  return (
+    <div
+      className="p-4 cursor-pointer hover-elevate border-b border-border/50 last:border-0"
+      onClick={() => onOpen(conversation)}
+      data-testid={`conversation-${conversation.contactId}`}
+    >
+      <div className="flex items-start gap-3">
+        <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center shrink-0">
+          <User className="h-5 w-5 text-muted-foreground" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between mb-1">
+            <h4 className="font-medium text-sm truncate">{conversation.contactName}</h4>
+            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+              <TypeIcon className="h-3 w-3" />
+              <span>{formatTimestamp(conversation.lastMessage.createdAt)}</span>
+            </div>
+          </div>
+          <p className="text-sm text-muted-foreground line-clamp-2 mb-2">
+            {conversation.lastMessage.content}
+          </p>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1">
+              <Badge
+                variant={getStatusBadgeVariant(conversation.lastMessage.status as any)}
+                className="text-xs"
+              >
+                {conversation.lastMessage.status}
+              </Badge>
+              <span className="text-xs text-muted-foreground">
+                {conversation.totalMessages} message{conversation.totalMessages !== 1 ? 's' : ''}
+              </span>
+            </div>
+            {conversation.contactPhone && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={(e) => { e.stopPropagation(); onText(conversation); }}
+                data-testid={`button-text-${conversation.contactId}`}
+              >
+                <MessageSquare className="h-3 w-3" />
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+// Pure helper functions — defined at module scope so ConversationItem's memo
+// never invalidates due to new function references from the parent.
+const formatTimestamp = (timestamp: string | Date) => {
+  const date = new Date(timestamp);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffHours = diffMs / (1000 * 60 * 60);
+  const diffDays = diffHours / 24;
+  if (diffHours < 1) return `${Math.floor(diffMs / (1000 * 60))}m ago`;
+  if (diffHours < 24) return `${Math.floor(diffHours)}h ago`;
+  if (diffDays < 7) return `${Math.floor(diffDays)}d ago`;
+  return date.toLocaleDateString();
+};
+
+const getMessageTypeIcon = (type: "text" | "email"): ElementType =>
+  type === "text" ? MessageSquare : Mail;
+
+const getStatusBadgeVariant = (status: "sent" | "delivered" | "failed"): "outline" | "default" | "destructive" | "secondary" => {
+  switch (status) {
+    case "sent": return "outline";
+    case "delivered": return "default";
+    case "failed": return "destructive";
+    default: return "secondary";
+  }
+};
 
 export default function Messages() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -103,52 +197,14 @@ export default function Messages() {
   // Remove the conversation messages query since it's now handled in the modal
 
   // Apply client-side date range filtering (other filters now handled server-side)
-  const filteredConversations = conversations.filter((conversation) => {
-    // Date range filtering (server-side date filtering can be added later if needed)
-    let matchesDateRange = true;
-    if (dateFrom || dateTo) {
-      const messageDate = new Date(conversation.lastMessage.createdAt);
-      if (dateFrom && messageDate < dateFrom) {
-        matchesDateRange = false;
-      }
-      if (dateTo && messageDate > new Date(dateTo.getTime() + 24 * 60 * 60 * 1000 - 1)) { // End of day
-        matchesDateRange = false;
-      }
-    }
-    
-    return matchesDateRange;
-  });
-
-  const formatTimestamp = (timestamp: string | Date) => {
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffHours = diffMs / (1000 * 60 * 60);
-    const diffDays = diffHours / 24;
-
-    if (diffHours < 1) {
-      return `${Math.floor(diffMs / (1000 * 60))}m ago`;
-    } else if (diffHours < 24) {
-      return `${Math.floor(diffHours)}h ago`;
-    } else if (diffDays < 7) {
-      return `${Math.floor(diffDays)}d ago`;
-    } else {
-      return date.toLocaleDateString();
-    }
-  };
-
-  const getMessageTypeIcon = (type: "text" | "email") => {
-    return type === "text" ? MessageSquare : Mail;
-  };
-
-  const getStatusBadgeVariant = (status: "sent" | "delivered" | "failed") => {
-    switch (status) {
-      case "sent": return "outline";
-      case "delivered": return "default";
-      case "failed": return "destructive";
-      default: return "secondary";
-    }
-  };
+  // Memoized — only recomputes when the conversation list or date bounds change.
+  const filteredConversations = useMemo(() => conversations.filter((conversation) => {
+    if (!dateFrom && !dateTo) return true;
+    const messageDate = new Date(conversation.lastMessage.createdAt);
+    if (dateFrom && messageDate < dateFrom) return false;
+    if (dateTo && messageDate > new Date(dateTo.getTime() + 24 * 60 * 60 * 1000 - 1)) return false;
+    return true;
+  }), [conversations, dateFrom, dateTo]);
 
   const handleStartConversation = (conversation: Conversation) => {
     setTextingModal({ isOpen: true, conversation });
@@ -285,65 +341,17 @@ export default function Messages() {
                   </div>
                 ) : (
                   <div className="space-y-1">
-                    {filteredConversations.map((conversation) => {
-                      const TypeIcon = getMessageTypeIcon(conversation.lastMessage.type as "text" | "email");
-                      
-                      return (
-                        <div
-                          key={conversation.contactId}
-                          className="p-4 cursor-pointer hover-elevate border-b border-border/50 last:border-0"
-                          onClick={() => setConversationModal({ isOpen: true, conversation })}
-                          data-testid={`conversation-${conversation.contactId}`}
-                        >
-                          <div className="flex items-start gap-3">
-                            <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center shrink-0">
-                              <User className="h-5 w-5 text-muted-foreground" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center justify-between mb-1">
-                                <h4 className="font-medium text-sm truncate">
-                                  {conversation.contactName}
-                                </h4>
-                                <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                                  <TypeIcon className="h-3 w-3" />
-                                  <span>{formatTimestamp(conversation.lastMessage.createdAt)}</span>
-                                </div>
-                              </div>
-                              <p className="text-sm text-muted-foreground line-clamp-2 mb-2">
-                                {conversation.lastMessage.content}
-                              </p>
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-1">
-                                  <Badge 
-                                    variant={getStatusBadgeVariant(conversation.lastMessage.status as any)}
-                                    className="text-xs"
-                                  >
-                                    {conversation.lastMessage.status}
-                                  </Badge>
-                                  <span className="text-xs text-muted-foreground">
-                                    {conversation.totalMessages} message{conversation.totalMessages !== 1 ? 's' : ''}
-                                  </span>
-                                </div>
-                                {conversation.contactPhone && (
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-6 w-6"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleStartConversation(conversation);
-                                    }}
-                                    data-testid={`button-text-${conversation.contactId}`}
-                                  >
-                                    <MessageSquare className="h-3 w-3" />
-                                  </Button>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
+                    {filteredConversations.map((conversation) => (
+                      <ConversationItem
+                        key={conversation.contactId}
+                        conversation={conversation}
+                        formatTimestamp={formatTimestamp}
+                        getMessageTypeIcon={getMessageTypeIcon}
+                        getStatusBadgeVariant={getStatusBadgeVariant}
+                        onOpen={(c) => setConversationModal({ isOpen: true, conversation: c })}
+                        onText={handleStartConversation}
+                      />
+                    ))}
                   </div>
                 )}
               </ScrollArea>

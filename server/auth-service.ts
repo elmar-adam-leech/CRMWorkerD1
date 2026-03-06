@@ -110,7 +110,19 @@ export class AuthService {
   }
 
   /**
-   * Check if token should be refreshed (older than 3.5 days)
+   * Determines whether the current request should receive a refreshed JWT cookie.
+   *
+   * Sliding-window expiration strategy:
+   *   - All tokens are issued with a `JWT_EXPIRES_IN` lifetime (default 7 days).
+   *   - On every authenticated request, `requireAuth` checks whether the token's age
+   *     has surpassed 50% of its total lifetime (≥ 3.5 days for the default 7-day config).
+   *   - If so, a brand-new 7-day token is issued and written back to the `auth_token`
+   *     cookie in the response.
+   *   - This keeps active users permanently logged in without requiring a full re-login,
+   *     while inactive users whose last activity was >7 days ago are naturally logged out.
+   *
+   * @param decoded - The verified JWT payload (must contain `iat`).
+   * @returns `true` if the token should be silently refreshed this request.
    */
   static shouldRefreshToken(decoded: JWTPayload): boolean {
     if (!decoded.iat) return false;
@@ -187,7 +199,25 @@ export class AuthService {
   };
 
   /**
-   * Role-based access control middleware
+   * Role-based access control (RBAC) middleware factory.
+   *
+   * Role hierarchy (most to least privileged):
+   *   super_admin → admin → manager → user
+   *
+   * Usage:
+   *   ```ts
+   *   app.delete('/api/users/:id', requireAuth, requireAdmin, handler);
+   *   // OR for multiple roles:
+   *   app.patch('/api/...', requireAuth, requireManagerOrAdmin, handler);
+   *   ```
+   *
+   * Pre-built role guards (exported at the bottom of this file):
+   *   - `requireAdmin`          — allows 'admin' and 'super_admin'
+   *   - `requireManagerOrAdmin` — allows 'manager', 'admin', and 'super_admin'
+   *
+   * Always place this middleware AFTER `requireAuth` — it assumes `req.user` is set.
+   *
+   * @param allowedRoles - Array of role strings permitted to proceed.
    */
   static requireRole = (allowedRoles: string[]) => {
     return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {

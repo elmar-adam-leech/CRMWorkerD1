@@ -1,6 +1,7 @@
 import type { Express, Response } from "express";
 import { storage } from "../storage";
 import { requireAuth, type AuthenticatedRequest } from "../auth-service";
+import { z } from "zod";
 
 export function registerSettingsRoutes(app: Express): void {
   // Business targets for contractors
@@ -42,7 +43,21 @@ export function registerSettingsRoutes(app: Express): void {
         return;
       }
 
-      const targets = req.body;
+      const targetsSchema = z.object({
+        speedToLeadMinutes: z.number().int().min(0),
+        // Percentages are stored as NUMERIC(5,2) strings in the DB (e.g. "80.00")
+        followUpRatePercent: z.string(),
+        setRatePercent: z.string(),
+        closeRatePercent: z.string(),
+      }).strict();
+
+      const parsed = targetsSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Invalid business targets" });
+        return;
+      }
+
+      const targets = parsed.data;
       
       // Check if targets already exist for this contractor
       const existingTargets = await storage.getBusinessTargets(req.user!.contractorId);
@@ -102,7 +117,26 @@ export function registerSettingsRoutes(app: Express): void {
         return;
       }
 
-      const settings = req.body;
+      const terminologySchema = z.object({
+        leadLabel:       z.string().min(1),
+        leadsLabel:      z.string().min(1),
+        estimateLabel:   z.string().min(1),
+        estimatesLabel:  z.string().min(1),
+        jobLabel:        z.string().min(1),
+        jobsLabel:       z.string().min(1),
+        messageLabel:    z.string().min(1),
+        messagesLabel:   z.string().min(1),
+        templateLabel:   z.string().min(1),
+        templatesLabel:  z.string().min(1),
+      });
+
+      const parsed = terminologySchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Invalid terminology settings" });
+        return;
+      }
+
+      const settings = parsed.data;
       
       // Check if settings already exist for this contractor
       const existingSettings = await storage.getTerminologySettings(req.user!.contractorId);

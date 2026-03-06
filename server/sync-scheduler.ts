@@ -1,6 +1,31 @@
+/**
+ * SyncScheduler — background job runner for integration data synchronisation.
+ *
+ * What it does:
+ *   Polls the `sync_schedules` database table every SCHEDULER_POLL_INTERVAL_MS and
+ *   runs any schedule whose `next_sync_at` timestamp has elapsed. Currently managed
+ *   integrations: housecall-pro (daily), gmail (every 5 minutes).
+ *
+ * How to add a new sync provider:
+ *   1. Create a `server/sync/<provider>.ts` module exporting an async `sync<Provider>(tenantId)` function.
+ *   2. Register the integration name in `onIntegrationEnabled` / `onIntegrationDisabled`.
+ *   3. Add a `case '<provider>':` entry in the `performSync` switch statement.
+ *
+ * Known scale limitation — in-memory lock (`activeSyncs`):
+ *   Overlapping runs for the same tenant+integration are prevented with an in-memory Set.
+ *   This is NOT safe for horizontal scaling (multiple server instances). If you ever run
+ *   more than one server process you will need a distributed lock (e.g. Redis SETNX, or
+ *   a `locked_at` database column with a heartbeat) instead.
+ */
 import { storage } from './storage';
 import { syncHousecallPro, syncHousecallProJobs } from './sync/housecall-pro';
 import { syncGmail } from './sync/gmail';
+
+// How often to poll sync_schedules for due syncs (milliseconds)
+const SCHEDULER_POLL_INTERVAL_MS = 60_000; // 1 minute
+
+// How long to wait before retrying a failed sync (milliseconds)
+const SYNC_RETRY_DELAY_MS = 60 * 60_000; // 1 hour
 
 // Batch size for transaction processing
 const SYNC_BATCH_SIZE = 25;
@@ -36,7 +61,7 @@ export class SyncScheduler {
 
     setInterval(() => {
       this.checkDueSyncs();
-    }, 60 * 1000);
+    }, SCHEDULER_POLL_INTERVAL_MS);
 
     this.checkDueSyncs();
   }
@@ -176,7 +201,7 @@ export class SyncScheduler {
       } catch (error) {
         console.error(`[sync-scheduler] Sync failed for ${schedule.integrationName} (contractor: ${schedule.contractorId}):`, error);
 
-        const retryAt = new Date(now.getTime() + 60 * 60 * 1000);
+        const retryAt = new Date(now.getTime() + SYNC_RETRY_DELAY_MS);
         await storage.updateSyncSchedule(schedule.contractorId, schedule.integrationName, { nextSyncAt: retryAt });
         console.log(`[sync-scheduler] Retry scheduled for: ${retryAt.toISOString()}`);
       }

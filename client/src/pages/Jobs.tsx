@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useLocation } from "wouter";
 import { JobCard } from "@/components/JobCard";
 import { CardSkeleton } from "@/components/CardSkeleton";
@@ -146,43 +146,45 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
     },
   });
 
-  const handleDeleteJob = (jobId: string, jobTitle: string) => {
+  const handleDeleteJob = useCallback((jobId: string, jobTitle: string) => {
     setDeleteConfirm({ isOpen: true, jobId, jobTitle });
-  };
+  }, []);
 
   // Global keyboard shortcuts
   useGlobalShortcuts((type) => {
     if (type === "job") setAddModalOpen(true);
   });
 
-  // Flatten paginated pages into a typed list
-  const allJobs: JobListItem[] = jobsData?.pages.flatMap((page) =>
-    (page.data || []).map((job) => ({
-      id: job.id,
-      title: job.title,
-      contactId: job.contactId,
-      contactName: job.contactName,
-      status: job.status,
-      value: typeof job.value === "string" ? parseFloat(job.value) : job.value,
-      scheduledDate: job.scheduledDate ? new Date(job.scheduledDate).toLocaleDateString() : "No date",
-      type: job.type,
-      priority: job.priority,
-      estimatedHours: job.estimatedHours ?? null,
-    }))
-  ) ?? [];
+  // Flatten paginated pages into a typed list. Memoized — only recomputes when
+  // jobsData changes, not on every filter/modal state update.
+  const allJobs: JobListItem[] = useMemo(() =>
+    jobsData?.pages.flatMap((page) =>
+      (page.data || []).map((job) => ({
+        id: job.id,
+        title: job.title,
+        contactId: job.contactId,
+        contactName: job.contactName,
+        status: job.status,
+        value: typeof job.value === "string" ? parseFloat(job.value) : job.value,
+        scheduledDate: job.scheduledDate ? new Date(job.scheduledDate).toLocaleDateString() : "No date",
+        type: job.type,
+        priority: job.priority,
+        estimatedHours: job.estimatedHours ?? null,
+      }))
+    ) ?? [], [jobsData]);
 
   const totalJobs = jobsData?.pages[0]?.pagination.total ?? 0;
 
   // ----- Event handlers -----
 
-  const handleStatusChange = (jobId: string, newStatus: string) => {
+  const handleStatusChange = useCallback((jobId: string, newStatus: string) => {
     updateJobStatusMutation.mutate({ jobId, status: newStatus });
-  };
+  }, [updateJobStatusMutation]);
 
-  const handleViewDetails = (jobId: string) => {
+  const handleViewDetails = useCallback((jobId: string) => {
     const job = allJobs.find((j) => j.id === jobId);
     if (job) setJobDetailsModal({ isOpen: true, job });
-  };
+  }, [allJobs]);
 
   const handleImportFromHousecallPro = () => {
     setAddModalOpen(false);

@@ -6,6 +6,12 @@ import { randomUUID } from 'crypto';
 
 const SYNC_BATCH_SIZE = 25;
 
+// Maximum wall-clock time a single HCP sync is allowed to run before being considered
+// stalled. This guards against runaway syncs holding the in-memory lock forever.
+// Set to 5 minutes — long enough for large tenants (~thousands of records), but short
+// enough that a crash-looping sync does not block the next scheduled run indefinitely.
+const HCP_SYNC_MAX_RUNTIME_MS = 5 * 60_000; // 5 minutes
+
 /**
  * Maps a Housecall Pro estimate to this CRM's estimate status.
  *

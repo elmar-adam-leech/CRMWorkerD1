@@ -116,7 +116,7 @@ export default function WorkflowBuilder() {
         const config = JSON.parse(step.actionConfig);
         nodes.push({
           id: config.nodeId || `node-${step.id}`,
-          type: mapActionTypeToNodeType(step.actionType),
+          type: ACTION_TO_NODE[step.actionType] ?? 'notification',
           position: config.position || { x: 100, y: 100 },
           data: config.data || {},
         });
@@ -155,7 +155,7 @@ export default function WorkflowBuilder() {
       setCurrentEdges(edges);
       setTemplateNodes(nodes);
       setTemplateEdges(edges);
-      setTimeout(() => { isInitialized.current = true; }, 0);
+      isInitialized.current = true;
     }
   }, [workflow, workflowSteps]);
 
@@ -191,12 +191,6 @@ export default function WorkflowBuilder() {
     if (isInitialized.current) setIsDirty(true);
   }, [currentNodes, currentEdges]);
 
-  const mapActionTypeToNodeType = (actionType: string): string =>
-    ACTION_TO_NODE[actionType] ?? 'notification';
-
-  const mapNodeTypeToActionType = (nodeType: string): string =>
-    NODE_TO_ACTION[nodeType] ?? 'create_notification';
-
   const saveWorkflowSteps = async (wfId: string) => {
     if (!wfId || wfId === 'undefined') throw new Error('Cannot save workflow steps: Invalid workflow ID');
 
@@ -228,7 +222,7 @@ export default function WorkflowBuilder() {
 
     const steps = actionNodes.map((node, i) => ({
       stepOrder: i,
-      actionType: mapNodeTypeToActionType(node.type || 'notification'),
+      actionType: NODE_TO_ACTION[node.type || 'notification'] ?? 'create_notification',
       actionConfig: JSON.stringify({
         nodeId: node.id,
         position: node.position,

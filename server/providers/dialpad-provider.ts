@@ -3,6 +3,50 @@ import { credentialService } from '../credential-service';
 import { storage } from '../storage';
 
 /**
+ * Wraps `fetch` with exponential-backoff retry for transient Dialpad API errors.
+ *
+ * Retry policy:
+ *   - Retries on HTTP 429 (rate limited) and any 5xx (server error).
+ *   - Does NOT retry on 4xx client errors (bad request, auth failure, etc.).
+ *   - Up to `maxAttempts` total attempts (default 3).
+ *   - Delay between attempts: baseDelayMs * 2^(attempt - 1)
+ *     Attempt 1 → 0 ms (immediate), attempt 2 → 500 ms, attempt 3 → 1000 ms.
+ *
+ * @param url         - URL to fetch.
+ * @param init        - Standard fetch RequestInit options.
+ * @param maxAttempts - Total attempts before giving up (default 3).
+ * @param baseDelayMs - Base delay for the exponential backoff (default 500 ms).
+ */
+async function fetchWithRetry(
+  url: string,
+  init: RequestInit,
+  maxAttempts = 3,
+  baseDelayMs = 500
+): Promise<Response> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const response = await fetch(url, init);
+
+    const isRateLimit = response.status === 429;
+    const isServerError = response.status >= 500 && response.status < 600;
+
+    if (!isRateLimit && !isServerError) {
+      return response;
+    }
+
+    lastError = new Error(`Dialpad API returned ${response.status} on attempt ${attempt}`);
+
+    if (attempt < maxAttempts) {
+      const delayMs = baseDelayMs * Math.pow(2, attempt - 1);
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+  }
+
+  throw lastError!;
+}
+
+/**
  * Format a phone number to E.164 format
  * Assumes US numbers if no country code is present
  */
@@ -86,7 +130,7 @@ export class DialpadSmsProvider implements SmsProvider {
         ...(options.fromNumber && { from_number: formatToE164(options.fromNumber) })
       };
 
-      const response = await fetch(`${baseUrl}/sms/`, {
+      const response = await fetchWithRetry(`${baseUrl}/sms/`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${apiKey}`,
@@ -282,7 +326,7 @@ export class DialpadCallProvider implements CallProvider {
       };
 
       // Use singular /call/ endpoint like in Google Apps Script (note trailing slash)
-      const response = await fetch(`${baseUrl}/call/`, {
+      const response = await fetchWithRetry(`${baseUrl}/call/`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${apiKey}`,

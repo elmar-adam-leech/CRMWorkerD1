@@ -1,3 +1,24 @@
+/**
+ * WorkflowEngine — event-driven automation engine.
+ *
+ * Architecture overview:
+ *   - Trigger model: external code calls `triggerWorkflowsForEvent(eventType, entityData, contractorId)`
+ *     after any entity mutation (contact created, job status changed, etc.).
+ *   - Action model: each WorkflowStep maps to a discrete action handler in `server/workflow-actions/`.
+ *     Steps with the same `stepOrder` are executed in parallel via `Promise.all`; groups at
+ *     different step orders run sequentially to preserve causality.
+ *   - Singleton: `WorkflowEngine.getInstance()` returns the single application-wide instance.
+ *
+ * Known scale limitation — in-memory state:
+ *   The `delay` action uses `setTimeout`, meaning pending delays are lost on server restart
+ *   (zombie executions). See `server/workflow-actions/delay.ts` for the recommended migration
+ *   path if this becomes a problem.
+ *
+ * How to add a new action type:
+ *   1. Create `server/workflow-actions/<action>.ts` exporting `handle<Action>(step, params, context)`.
+ *   2. Add a `case '<action>':` entry in `executeStep`.
+ *   3. Register the node type mapping in `client/src/lib/workflow-utils.ts` (`ACTION_TO_NODE`).
+ */
 import { storage } from "./storage";
 import type { WorkflowStep } from "@shared/schema";
 import { broadcastToContractor } from "./websocket";

@@ -38,6 +38,18 @@ The backend is built with Node.js and Express.js, offering a RESTful API with co
 - **Dashboard metrics**: `getMetricsAggregates` in `server/services/business-metrics.ts` uses SQL `COUNT` aggregates — never fetches rows.
 - **HCP manual sync**: Uses `getJobsCount` (SQL COUNT) before/after to count new jobs — not full table loads.
 - **Follow-ups**: Dedicated `/api/contacts/follow-ups` and `/api/estimates/follow-ups` endpoints with `WHERE follow_up_date IS NOT NULL` in SQL.
+
+### Code Health Improvements (most recent pass)
+- **Database indexes**: Added missing indexes for `dialpad_departments.contractorId`, `workflow_steps.parentStepId`, `password_reset_tokens.userId`.
+- **Sync scheduler constants**: Magic numbers replaced with `SCHEDULER_POLL_INTERVAL_MS` / `SYNC_RETRY_DELAY_MS`; file-level comment added explaining the in-memory lock limitation.
+- **Dialpad retry**: `fetchWithRetry` utility added to `dialpad-provider.ts` — retries on 429/5xx up to 3x with exponential backoff.
+- **Zod validation**: `/api/messages/send-email`, `/api/calls/initiate`, `/api/business-targets`, `/api/terminology` all use Zod `.safeParse()` instead of raw `req.body`.
+- **Frontend memoization**: `filteredConversations` (Messages.tsx), `allJobs` (Jobs.tsx), and event callbacks memoized; `ConversationItem` extracted as `React.memo`.
+- **WorkflowBuilder**: Removed wrapper functions `mapActionTypeToNodeType`/`mapNodeTypeToActionType` — now calls `ACTION_TO_NODE`/`NODE_TO_ACTION` maps directly; removed `setTimeout` anti-pattern.
+- **Settings.tsx**: Eliminated three `useEffect` state-sync anti-patterns; local state is now "pending edits only" with `effectiveX = localEdit ?? queryData ?? fallback` pattern.
+- **Unified hook**: `useConversationThread` replaces duplicate `useEmailThread` / `useSmsThread`; old files are thin re-exports for backward compatibility.
+- **useFetchContact**: Refactored to use `queryClient.fetchQuery` instead of raw `fetch`.
+- **JSDoc**: File-level comments added to `workflow-engine.ts`, `provider-service.ts`, `auth-service.ts`, `WebSocketContext.tsx`, `queryClient.ts`, `useWebSocketInvalidation.ts`, `WorkflowCanvas.tsx`.
 - **Lead Trend Chart**: `GET /api/contacts/lead-trend` returns a SQL `GROUP BY DATE` aggregate (≤30 rows). The `LeadsTrendChart` component uses this instead of fetching all lead contacts.
 - **HCP jobs sync**: `getJobsByExternalIds` pre-fetches all jobs in a batch via `inArray` before the inner loop — eliminates 1 DB query per job.
 - **HCP estimates sync**: `getEstimatesByHousecallProIds` pre-fetches all estimates in a batch — same pattern.

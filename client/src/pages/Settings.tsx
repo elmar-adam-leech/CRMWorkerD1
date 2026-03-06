@@ -28,22 +28,24 @@ export default function Settings() {
   const urlTab = urlParams.get('tab') as TabId | null;
   const [activeTab, setActiveTab] = useState<TabId>(urlTab || 'account');
 
-  const [businessTargets, setBusinessTargets] = useState({
-    speedToLeadMinutes: 60,
-    followUpRatePercent: "80.00",
-    setRatePercent: "40.00",
-    closeRatePercent: "25.00",
-  });
+  // Local state holds PENDING EDITS only. Query data is the source of truth.
+  // Use `effectiveX = localEdit ?? queryData ?? fallback` for the display value.
+  const [businessTargets, setBusinessTargets] = useState<{
+    speedToLeadMinutes: number;
+    followUpRatePercent: string;
+    setRatePercent: string;
+    closeRatePercent: string;
+  } | undefined>(undefined);
 
-  const [terminologySettings, setTerminologySettings] = useState({
-    leadLabel: 'Lead', leadsLabel: 'Leads',
-    estimateLabel: 'Estimate', estimatesLabel: 'Estimates',
-    jobLabel: 'Job', jobsLabel: 'Jobs',
-    messageLabel: 'Message', messagesLabel: 'Messages',
-    templateLabel: 'Template', templatesLabel: 'Templates',
-  });
+  const [terminologySettings, setTerminologySettings] = useState<{
+    leadLabel: string; leadsLabel: string;
+    estimateLabel: string; estimatesLabel: string;
+    jobLabel: string; jobsLabel: string;
+    messageLabel: string; messagesLabel: string;
+    templateLabel: string; templatesLabel: string;
+  } | undefined>(undefined);
 
-  const [bookingSlugInput, setBookingSlugInput] = useState('');
+  const [bookingSlugInput, setBookingSlugInput] = useState<string | undefined>(undefined);
 
   const { data: currentUser, isLoading: userLoading } = useCurrentUser();
 
@@ -95,37 +97,23 @@ export default function Settings() {
     enabled: isAdmin && activeTab === 'account',
   });
 
-  useEffect(() => {
-    if (currentTargets) {
-      setBusinessTargets({
-        speedToLeadMinutes: currentTargets.speedToLeadMinutes || 60,
-        followUpRatePercent: currentTargets.followUpRatePercent || "80.00",
-        setRatePercent: currentTargets.setRatePercent || "40.00",
-        closeRatePercent: currentTargets.closeRatePercent || "25.00",
-      });
-    }
-  }, [currentTargets]);
+  // Derived display values: pending local edit takes priority over query data.
+  const effectiveTargets = businessTargets ?? currentTargets ?? {
+    speedToLeadMinutes: 60,
+    followUpRatePercent: "80.00",
+    setRatePercent: "40.00",
+    closeRatePercent: "25.00",
+  };
 
-  useEffect(() => {
-    if (currentTerminology) {
-      setTerminologySettings({
-        leadLabel: currentTerminology.leadLabel || 'Lead',
-        leadsLabel: currentTerminology.leadsLabel || 'Leads',
-        estimateLabel: currentTerminology.estimateLabel || 'Estimate',
-        estimatesLabel: currentTerminology.estimatesLabel || 'Estimates',
-        jobLabel: currentTerminology.jobLabel || 'Job',
-        jobsLabel: currentTerminology.jobsLabel || 'Jobs',
-        messageLabel: currentTerminology.messageLabel || 'Message',
-        messagesLabel: currentTerminology.messagesLabel || 'Messages',
-        templateLabel: currentTerminology.templateLabel || 'Template',
-        templatesLabel: currentTerminology.templatesLabel || 'Templates',
-      });
-    }
-  }, [currentTerminology]);
+  const effectiveTerminology = terminologySettings ?? currentTerminology ?? {
+    leadLabel: 'Lead', leadsLabel: 'Leads',
+    estimateLabel: 'Estimate', estimatesLabel: 'Estimates',
+    jobLabel: 'Job', jobsLabel: 'Jobs',
+    messageLabel: 'Message', messagesLabel: 'Messages',
+    templateLabel: 'Template', templatesLabel: 'Templates',
+  };
 
-  useEffect(() => {
-    if (bookingSlugData) { setBookingSlugInput(bookingSlugData.bookingSlug || ''); }
-  }, [bookingSlugData]);
+  const effectiveBookingSlug = bookingSlugInput ?? bookingSlugData?.bookingSlug ?? '';
 
   useEffect(() => {
     if (!userLoading && currentUser?.user) {
@@ -197,10 +185,10 @@ export default function Settings() {
         <AccountTab
           currentUser={currentUser}
           isAdmin={isAdmin}
-          bookingSlugInput={bookingSlugInput}
+          bookingSlugInput={effectiveBookingSlug}
           setBookingSlugInput={setBookingSlugInput}
           bookingSlugData={bookingSlugData}
-          terminologySettings={terminologySettings}
+          terminologySettings={effectiveTerminology}
           setTerminologySettings={setTerminologySettings}
           allUsers={allUsers}
           usersLoading={usersLoading}
@@ -208,7 +196,7 @@ export default function Settings() {
       )}
       {activeTab === 'security' && <SecurityTab />}
       {activeTab === 'targets' && (
-        <TargetsTab currentUser={currentUser} targetsLoading={targetsLoading} businessTargets={businessTargets} setBusinessTargets={setBusinessTargets} />
+        <TargetsTab currentUser={currentUser} targetsLoading={targetsLoading} businessTargets={effectiveTargets} setBusinessTargets={setBusinessTargets} />
       )}
       {activeTab === 'webhooks' && <WebhooksTab webhookConfig={webhookConfig} webhookLoading={webhookLoading} />}
       {activeTab === 'salespeople' && <SalespeopleTab />}

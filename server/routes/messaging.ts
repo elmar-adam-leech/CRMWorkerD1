@@ -3,6 +3,7 @@ import { asyncHandler } from "../utils/async-handler";
 import { parseBody } from "../utils/validate-body";
 import { storage } from "../storage";
 import { insertMessageSchema, insertCallSchema, messages, activities, users, contractors } from "@shared/schema";
+import { z } from "zod";
 import { db } from "../db";
 import { eq, desc, and, inArray } from "drizzle-orm";
 import { dialpadService } from "../dialpad-service";
@@ -88,12 +89,22 @@ export function registerMessagingRoutes(app: Express): void {
   }));
 
   app.post("/api/messages/send-email", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    const { to, subject, content, contactId, leadId, customerId, estimateId } = req.body;
+    const emailBodySchema = z.object({
+      to: z.string().email({ message: "A valid recipient email address is required" }),
+      subject: z.string().min(1, { message: "Subject is required" }),
+      content: z.string().min(1, { message: "Email body is required" }),
+      contactId: z.string().optional(),
+      leadId: z.string().optional(),
+      customerId: z.string().optional(),
+      estimateId: z.string().optional(),
+    });
 
-    if (!to || !subject || !content) {
-      res.status(400).json({ message: "To, subject, and content are required" });
+    const parsed = emailBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Invalid request body" });
       return;
     }
+    const { to, subject, content, contactId, leadId, customerId, estimateId } = parsed.data;
 
     const resolvedContactId = contactId || leadId || customerId;
 
@@ -213,13 +224,22 @@ export function registerMessagingRoutes(app: Express): void {
   }));
 
   app.post("/api/calls/initiate", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    const { toNumber, fromNumber, autoRecord, contactId, customerId, leadId } = req.body;
-    const resolvedContactId = contactId || leadId || customerId;
+    const callBodySchema = z.object({
+      toNumber: z.string().min(1, { message: "Destination phone number is required" }),
+      fromNumber: z.string().optional(),
+      autoRecord: z.boolean().optional(),
+      contactId: z.string().optional(),
+      customerId: z.string().optional(),
+      leadId: z.string().optional(),
+    });
 
-    if (!toNumber) {
-      res.status(400).json({ message: "Phone number is required" });
+    const parsed = callBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Invalid request body" });
       return;
     }
+    const { toNumber, fromNumber, autoRecord, contactId, customerId, leadId } = parsed.data;
+    const resolvedContactId = contactId || leadId || customerId;
 
     const callResponse = await providerService.initiateCall({
       to: toNumber,
