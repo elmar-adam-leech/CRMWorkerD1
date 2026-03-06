@@ -228,7 +228,9 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
       .then(() => {
         queryClient.invalidateQueries({ queryKey: ["/api/activities"] });
       })
-      .catch(() => {});
+      .catch((err: unknown) => {
+        console.error("[Estimates] Failed to log activity:", err);
+      });
 
     const entity = { name: contact.name, emails: contact.emails, phones: contact.phones, id: estimate.id };
 

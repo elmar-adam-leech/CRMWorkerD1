@@ -3,7 +3,6 @@ import { storage } from "../../storage";
 import { CredentialService } from "../../credential-service";
 import { housecallProService } from "../../housecall-pro-service";
 import { webhookRateLimiter } from "../../middleware/rate-limiter";
-import crypto from "crypto";
 import { normalizePhoneForStorage, normalizePhoneArrayForStorage } from "../../utils/phone-normalizer";
 import { asyncHandler } from "../../utils/async-handler";
 
@@ -39,53 +38,25 @@ export function registerLeadWebhookRoutes(app: Express): void {
         return;
       }
       
-      let isValidKey = false;
+      let storedApiKey: string | null;
       try {
-        const storedApiKey = await CredentialService.getCredential(contractorId, 'webhook', 'api_key');
-        isValidKey = storedApiKey === apiKey;
+        storedApiKey = await CredentialService.getCredential(contractorId, 'webhook', 'api_key');
       } catch {
-        const newApiKey = crypto.randomBytes(32).toString('hex');
-        await CredentialService.setCredential(contractorId, 'webhook', 'api_key', newApiKey);
-        
-        res.status(200).json({
-          message: "API key generated for contractor",
-          apiKey: newApiKey,
-          webhookUrl: `${req.protocol}://${req.get('host')}/api/webhooks/${contractorId}/leads`,
-          documentation: {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-API-Key": newApiKey
-            },
-            requiredFields: ["name"],
-            optionalFields: ["email", "emails", "phone", "phones", "address", "source", "notes", "followUpDate", "tags"],
-            phoneNormalization: "All phone numbers are automatically normalized to E.164 format (+1XXXXXXXXXX for US). Supports any format: (xxx)xxx-xxxx, xxx-xxx-xxxx, xxx.xxx.xxxx, xxxxxxxxxx, +1(xxx)xxx-xxxx, etc.",
-            multipleContacts: "Send single values (email/phone) OR arrays (emails/phones). Arrays allow multiple contact methods per lead.",
-            tags: "Optional array of strings for segmentation and workflow targeting. Example: ['Ductless', 'Residential', 'Emergency']",
-            example: {
-              name: "John Smith",
-              phone: "(555) 123-4567",
-              email: "john@example.com",
-              address: "123 Main St, City, State 12345",
-              source: "Website Contact Form",
-              notes: "Interested in HVAC installation",
-              followUpDate: "2024-01-15T10:00:00Z",
-              tags: ["Ductless", "Residential", "High-Priority"]
-            },
-            exampleWithArrays: {
-              name: "Jane Doe",
-              phones: ["(555) 123-4567", "555-987-6543", "+1 555 111 2222"],
-              emails: ["jane@example.com", "jane.doe@work.com"],
-              address: "456 Oak Ave",
-              source: "Referral",
-              tags: ["Commercial", "Emergency"]
-            }
-          }
+        storedApiKey = null;
+      }
+
+      // If no key has been configured yet, reject and instruct the contractor
+      // to generate their key via the authenticated settings panel.
+      // Never auto-generate a key in response to an unauthenticated request.
+      if (!storedApiKey) {
+        res.status(401).json({
+          error: "Webhook not configured",
+          message: "No webhook API key has been set up for this contractor. Log in and generate your key from Settings > Webhooks."
         });
         return;
       }
-      
-      if (!isValidKey) {
+
+      if (storedApiKey !== apiKey) {
         res.status(401).json({ 
           error: "Invalid API key",
           message: "The provided API key is not valid for this contractor"

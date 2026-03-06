@@ -3,7 +3,6 @@ import { storage } from "../../storage";
 import { CredentialService } from "../../credential-service";
 import { broadcastToContractor } from "../../websocket";
 import { webhookRateLimiter } from "../../middleware/rate-limiter";
-import crypto from "crypto";
 import { parseWebhookDate } from "../../utils/parse-webhook-date";
 import { asyncHandler } from "../../utils/async-handler";
 
@@ -46,43 +45,18 @@ export function registerJobWebhookRoutes(app: Express): void {
       } catch {
         storedApiKey = null;
       }
-      
+
+      // If no key has been configured yet, reject and instruct the contractor
+      // to generate their key via the authenticated settings panel.
+      // Never auto-generate a key in response to an unauthenticated request.
       if (!storedApiKey) {
-        const newApiKey = crypto.randomBytes(32).toString('hex');
-        await CredentialService.setCredential(contractorId, 'webhook', 'api_key', newApiKey);
-        
-        res.status(401).json({ 
-          error: "First-time setup",
-          message: "API key generated for contractor",
-          apiKey: newApiKey,
-          webhookUrl: `${req.protocol}://${req.get('host')}/api/webhooks/${contractorId}/jobs`,
-          documentation: {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-API-Key": newApiKey
-            },
-            requiredFields: ["title", "scheduledDate", "customerName"],
-            optionalFields: ["type", "description", "status", "estimateId", "amount", "customerEmail", "customerPhone", "customerAddress", "notes"],
-            example: {
-              title: "HVAC Installation",
-              type: "service",
-              scheduledDate: "2024-02-15T09:00:00Z",
-              description: "Complete HVAC system installation for 2000 sq ft home",
-              customerName: "John Smith",
-              customerEmail: "john@example.com",
-              customerPhone: "(555) 123-4567",
-              customerAddress: "123 Main St, City, State 12345",
-              status: "scheduled",
-              amount: 5500.00,
-              estimateId: "optional-estimate-uuid",
-              notes: "Customer prefers morning installation"
-            }
-          }
+        res.status(401).json({
+          error: "Webhook not configured",
+          message: "No webhook API key has been set up for this contractor. Log in and generate your key from Settings > Webhooks."
         });
         return;
       }
-      
+
       if (apiKey !== storedApiKey) {
         res.status(403).json({ 
           error: "Invalid API key",

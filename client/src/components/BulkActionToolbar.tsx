@@ -11,6 +11,7 @@ import { X, Trash2, Download, Edit } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { DeleteConfirmDialog } from "@/components/DeleteConfirmDialog";
+import { useToast } from "@/hooks/use-toast";
 
 interface BulkActionToolbarProps {
   onDelete?: (ids: string[]) => Promise<void>;
@@ -28,6 +29,7 @@ export function BulkActionToolbar({
   className,
 }: BulkActionToolbarProps) {
   const { selectedIds, selectedCount, clearSelection, isSelectionMode } = useBulkSelection();
+  const { toast } = useToast();
   const [isProcessing, setIsProcessing] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
@@ -42,6 +44,11 @@ export function BulkActionToolbar({
       clearSelection();
     } catch (error) {
       console.error("Failed to delete items:", error);
+      toast({
+        variant: "destructive",
+        title: "Delete failed",
+        description: error instanceof Error ? error.message : "Failed to delete the selected items. Please try again.",
+      });
     } finally {
       setIsProcessing(false);
     }
@@ -55,6 +62,11 @@ export function BulkActionToolbar({
       clearSelection();
     } catch (error) {
       console.error("Failed to update status:", error);
+      toast({
+        variant: "destructive",
+        title: "Status update failed",
+        description: error instanceof Error ? error.message : "Failed to update the selected items. Please try again.",
+      });
     } finally {
       setIsProcessing(false);
     }
@@ -67,6 +79,11 @@ export function BulkActionToolbar({
       await onExport(Array.from(selectedIds));
     } catch (error) {
       console.error("Failed to export items:", error);
+      toast({
+        variant: "destructive",
+        title: "Export failed",
+        description: error instanceof Error ? error.message : "Failed to export the selected items. Please try again.",
+      });
     } finally {
       setIsProcessing(false);
     }

@@ -278,6 +278,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
     try {
       await apiRequest("PATCH", `/api/contacts/${contactId}`, updates);
       queryClient.invalidateQueries({ queryKey: ["/api/contacts/paginated"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts/status-counts"] });
       queryClient.invalidateQueries({ queryKey: [`/api/contacts/${contactId}`] });
       toast({ title: "Lead Updated", description: "Lead has been updated successfully." });
     } catch (error) {

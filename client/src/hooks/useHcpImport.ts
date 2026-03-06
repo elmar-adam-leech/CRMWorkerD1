@@ -43,7 +43,9 @@ export function useHcpImport({ entityType, syncStartDate, queryKeysToInvalidate 
       });
     } catch (error: unknown) {
       if (dateChanged) {
-        await apiRequest("POST", "/api/housecall-pro/sync-start-date", { syncStartDate }).catch(() => {});
+        await apiRequest("POST", "/api/housecall-pro/sync-start-date", { syncStartDate }).catch((err: unknown) => {
+          console.error("[useHcpImport] Failed to revert sync-start-date:", err);
+        });
       }
       toast({
         title: "Import Failed",

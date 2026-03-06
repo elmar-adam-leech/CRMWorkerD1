@@ -109,3 +109,12 @@ export const aiRateLimiter = createRateLimiter({
   maxRequests: 10,
   keyPrefix: 'ai-endpoint',
 });
+
+// General safety-net limiter applied to all authenticated API routes.
+// Generous enough to never affect normal usage but blocks runaway scripts
+// operating on a stolen/leaked session token.
+export const apiRateLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  maxRequests: 300,
+  keyPrefix: 'api',
+});

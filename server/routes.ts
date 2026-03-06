@@ -1,7 +1,8 @@
-import type { Express, NextFunction } from "express";
+import type { Express, NextFunction, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import cookieParser from "cookie-parser";
 import { requireAuth } from "./auth-service";
+import { apiRateLimiter } from './middleware/rate-limiter';
 import { aiErrorHandler } from './middleware/error-monitor';
 import { setupWebSocket } from './websocket';
 
@@ -47,6 +48,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     next();
   });
 
+  // General safety-net rate limiter for all /api/ routes.
+  // Routes with their own stricter limiters (auth, webhooks, public, AI) are
+  // excluded here because they apply their limiter at the individual route level.
+  app.use("/api", (req: Request, res: Response, next: NextFunction) => {
+    if (
+      req.path.startsWith('/auth/') ||
+      req.path.startsWith('/webhooks/') ||
+      req.path.startsWith('/public/') ||
+      req.path === '/version'
+    ) {
+      return next();
+    }
+    return apiRateLimiter(req, res, next);
+  });
+
+  // Auth middleware — enforces authentication on all /api/ routes except the
+  // public ones listed below.
   app.use("/api", (req, res, next: NextFunction) => {
     if (req.path === '/auth/login' || req.path === '/auth/register' || req.path === '/auth/logout') {
       return next();

@@ -212,13 +212,13 @@ export function registerPublicRoutes(app: Express): void {
       return;
     }
 
-    // Return only the fields needed for prefilling (no sensitive data)
+    // Return only the contact's name for the greeting on the booking form.
+    // Email, phone, and address are intentionally omitted — the customer
+    // should enter those themselves on the public form rather than having
+    // PII pre-populated from an unauthenticated endpoint.
     res.json({
       prefill: {
         name: contact.name,
-        email: contact.emails?.[0] || '',
-        phone: contact.phones?.[0] || '',
-        address: contact.address || '',
       }
     });
   }));

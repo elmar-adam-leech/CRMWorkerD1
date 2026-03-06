@@ -15,6 +15,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Separator } from "@/components/ui/separator";
 import { Calendar as CalendarIcon, Clock, User, Mail, Phone, MapPin, CheckCircle, Loader2, AlertCircle } from "lucide-react";
 import { AddressAutocomplete, AddressComponents } from "@/components/ui/AddressAutocomplete";
+import { useToast } from "@/hooks/use-toast";
 
 interface ContractorInfo {
   id: string;
@@ -45,9 +46,9 @@ type BookingFormValues = z.infer<typeof bookingFormSchema>;
 
 interface PrefillData {
   name: string;
-  email: string;
-  phone: string;
-  address: string;
+  email?: string;
+  phone?: string;
+  address?: string;
 }
 
 export default function PublicBooking() {
@@ -59,6 +60,7 @@ export default function PublicBooking() {
   const [bookingComplete, setBookingComplete] = useState(false);
   const [bookingDetails, setBookingDetails] = useState<{ startTime: string } | null>(null);
   const [addressComponents, setAddressComponents] = useState<AddressComponents | null>(null);
+  const { toast } = useToast();
 
   const { data: contractorData, isLoading: contractorLoading, error: contractorError } = useQuery<{ contractor: ContractorInfo }>({
     queryKey: ['/api/public/book', slug],
@@ -170,6 +172,13 @@ export default function PublicBooking() {
     onSuccess: (_data) => {
       setBookingDetails({ startTime: form.getValues('timeSlot') });
       setBookingComplete(true);
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: "destructive",
+        title: "Booking failed",
+        description: error.message || "Unable to submit your booking. Please try again.",
+      });
     },
   });
 

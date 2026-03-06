@@ -11,6 +11,7 @@ import { LoginForm } from "@/components/LoginForm";
 import { RefreshBanner } from "@/components/ui/refresh-banner";
 import { useAppVersion } from "@/hooks/use-app-version";
 import { useState, useEffect } from "react";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 // Import pages
 import Dashboard from "@/pages/Dashboard";
@@ -323,13 +324,15 @@ function App() {
                 onSearch={handleSearch}
                 onQuickAction={handleQuickAction}
               >
-                <Router 
-                  isAuthenticated={isAuthenticated} 
-                  onLogin={handleLogin} 
-                  isLoading={isLoading} 
-                  loginError={loginError}
-                  globalSearch={globalSearch}
-                />
+                <ErrorBoundary fallbackTitle="Page error">
+                  <Router 
+                    isAuthenticated={isAuthenticated} 
+                    onLogin={handleLogin} 
+                    isLoading={isLoading} 
+                    loginError={loginError}
+                    globalSearch={globalSearch}
+                  />
+                </ErrorBoundary>
               </DashboardLayout>
               <Toaster />
               </BulkSelectionProvider>

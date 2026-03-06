@@ -96,6 +96,8 @@ export function CreateJobForm({ onSuccess, onCancel }: CreateJobFormProps) {
     onSuccess: () => {
       toast({ title: "Job created", description: "Job has been created successfully" });
       queryClient.invalidateQueries({ queryKey: ['/api/jobs'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/jobs/paginated'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/jobs/status-counts'] });
       onSuccess();
     },
     onError: (error: any) => {

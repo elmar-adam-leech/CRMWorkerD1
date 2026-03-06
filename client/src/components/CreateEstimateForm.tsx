@@ -59,6 +59,8 @@ export function CreateEstimateForm({ onSuccess, onCancel }: CreateEstimateFormPr
     onSuccess: () => {
       toast({ title: "Estimate created", description: "Estimate has been created successfully" });
       queryClient.invalidateQueries({ queryKey: ['/api/estimates'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/estimates/paginated'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/estimates/status-counts'] });
       onSuccess();
     },
     onError: (error: any) => {
