@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -23,7 +23,7 @@ type FilterPanelProps = {
   dateLabel?: string;
 };
 
-export function FilterPanel({
+export const FilterPanel = memo(function FilterPanel({
   filters,
   onFiltersChange,
   statusOptions = [],
@@ -261,4 +261,4 @@ export function FilterPanel({
       )}
     </div>
   );
-}
+});

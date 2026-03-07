@@ -2,18 +2,18 @@ import type { Express, Response } from "express";
 import { storage } from "../../storage";
 import { dialpadEnhancedService } from "../../dialpad-enhanced-service";
 import { providerService, INTEGRATION_NAMES } from "../../providers/provider-service";
-import { requireManagerOrAdmin, type AuthenticatedRequest } from "../../auth-service";
+import { requireManagerOrAdmin, type AuthedRequest } from "../../auth-service";
 import { CredentialService } from "../../credential-service";
 import { asyncHandler } from "../../utils/async-handler";
 import crypto from "crypto";
 
 export function registerIntegrationRoutes(app: Express): void {
   // Integration management routes
-  app.get("/api/integrations", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    const canManageIntegrations = req.user!.role === 'admin' 
-      || req.user!.role === 'super_admin' 
-      || req.user!.role === 'manager'
-      || req.user!.canManageIntegrations === true;
+  app.get("/api/integrations", asyncHandler(async (req: AuthedRequest, res: Response) => {
+    const canManageIntegrations = req.user.role === 'admin' 
+      || req.user.role === 'super_admin' 
+      || req.user.role === 'manager'
+      || req.user.canManageIntegrations === true;
     
     if (!canManageIntegrations) {
       res.status(403).json({ message: "You do not have permission to view integrations" });
@@ -22,15 +22,15 @@ export function registerIntegrationRoutes(app: Express): void {
 
     // Fetch tenant integration list and enabled set in parallel — independent queries
     const [tenantIntegrations, enabledIntegrations] = await Promise.all([
-      storage.getTenantIntegrations(req.user!.contractorId),
-      storage.getEnabledIntegrations(req.user!.contractorId),
+      storage.getTenantIntegrations(req.user.contractorId),
+      storage.getEnabledIntegrations(req.user.contractorId),
     ]);
     
     const integrationStatus = await Promise.all(
       INTEGRATION_NAMES.map(async (integrationName) => {
         const [hasCredentials, isEnabled] = await Promise.all([
-          providerService.hasRequiredCredentials(req.user!.contractorId, integrationName),
-          storage.isIntegrationEnabled(req.user!.contractorId, integrationName),
+          providerService.hasRequiredCredentials(req.user.contractorId, integrationName),
+          storage.isIntegrationEnabled(req.user.contractorId, integrationName),
         ]);
         return { name: integrationName, hasCredentials, isEnabled, canEnable: hasCredentials && !isEnabled };
       })
@@ -43,11 +43,11 @@ export function registerIntegrationRoutes(app: Express): void {
     });
   }));
 
-  app.post("/api/integrations/:integrationName/enable", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    const canManageIntegrations = req.user!.role === 'admin' 
-      || req.user!.role === 'super_admin' 
-      || req.user!.role === 'manager'
-      || req.user!.canManageIntegrations === true;
+  app.post("/api/integrations/:integrationName/enable", asyncHandler(async (req: AuthedRequest, res: Response) => {
+    const canManageIntegrations = req.user.role === 'admin' 
+      || req.user.role === 'super_admin' 
+      || req.user.role === 'manager'
+      || req.user.canManageIntegrations === true;
     
     if (!canManageIntegrations) {
       res.status(403).json({ message: "You do not have permission to enable integrations" });
@@ -61,7 +61,7 @@ export function registerIntegrationRoutes(app: Express): void {
       return;
     }
     
-    const hasCredentials = await providerService.hasRequiredCredentials(req.user!.contractorId, integrationName);
+    const hasCredentials = await providerService.hasRequiredCredentials(req.user.contractorId, integrationName);
     if (!hasCredentials) {
       res.status(400).json({ 
         message: `Cannot enable ${integrationName} integration. Please configure credentials first.`,
@@ -71,15 +71,15 @@ export function registerIntegrationRoutes(app: Express): void {
     }
     
     const integration = await storage.enableTenantIntegration(
-      req.user!.contractorId, 
+      req.user.contractorId, 
       integrationName, 
-      req.user!.userId
+      req.user.userId
     );
     
     if (integrationName === 'housecall-pro') {
       try {
         const { syncScheduler } = await import('../../sync-scheduler');
-        await syncScheduler.onIntegrationEnabled(req.user!.contractorId, 'housecall-pro');
+        await syncScheduler.onIntegrationEnabled(req.user.contractorId, 'housecall-pro');
       } catch (error) {
         console.error('Failed to schedule sync for Housecall Pro integration:', error);
       }
@@ -95,7 +95,7 @@ export function registerIntegrationRoutes(app: Express): void {
         const baseWebhookUrl = `${protocol}://${host}`;
         
         const result = await dialpadEnhancedService.createWebhookWithSubscription(
-          req.user!.contractorId,
+          req.user.contractorId,
           'inbound',
           baseWebhookUrl
         );
@@ -120,11 +120,11 @@ export function registerIntegrationRoutes(app: Express): void {
     });
   }));
 
-  app.post("/api/integrations/:integrationName/disable", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    const canManageIntegrations = req.user!.role === 'admin' 
-      || req.user!.role === 'super_admin' 
-      || req.user!.role === 'manager'
-      || req.user!.canManageIntegrations === true;
+  app.post("/api/integrations/:integrationName/disable", asyncHandler(async (req: AuthedRequest, res: Response) => {
+    const canManageIntegrations = req.user.role === 'admin' 
+      || req.user.role === 'super_admin' 
+      || req.user.role === 'manager'
+      || req.user.canManageIntegrations === true;
     
     if (!canManageIntegrations) {
       res.status(403).json({ message: "You do not have permission to disable integrations" });
@@ -138,19 +138,19 @@ export function registerIntegrationRoutes(app: Express): void {
       return;
     }
     
-    await storage.disableTenantIntegration(req.user!.contractorId, integrationName);
+    await storage.disableTenantIntegration(req.user.contractorId, integrationName);
     
     if (integrationName === 'housecall-pro') {
       try {
         const { syncScheduler } = await import('../../sync-scheduler');
-        await syncScheduler.onIntegrationDisabled(req.user!.contractorId, 'housecall-pro');
+        await syncScheduler.onIntegrationDisabled(req.user.contractorId, 'housecall-pro');
       } catch (error) {
         // Non-fatal: integration is already disabled in the DB. The sync scheduler
         // will not pick it up on the next run even if the in-memory cancel failed.
         // Log enough context for an operator to diagnose if syncs keep running.
         console.error(
           `[integrations] Failed to cancel scheduled sync after disabling housecall-pro ` +
-          `— contractorId=${req.user!.contractorId}, error: ${error instanceof Error ? error.message : String(error)}`
+          `— contractorId=${req.user.contractorId}, error: ${error instanceof Error ? error.message : String(error)}`
         );
       }
     }
@@ -161,7 +161,7 @@ export function registerIntegrationRoutes(app: Express): void {
     });
   }));
 
-  app.get("/api/integrations/:integrationName/status", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/integrations/:integrationName/status", asyncHandler(async (req: AuthedRequest, res: Response) => {
     const { integrationName } = req.params;
     
     if (!INTEGRATION_NAMES.includes(integrationName as any)) {
@@ -171,9 +171,9 @@ export function registerIntegrationRoutes(app: Express): void {
     
     // Three independent queries — run in parallel
     const [hasCredentials, isEnabled, integration] = await Promise.all([
-      providerService.hasRequiredCredentials(req.user!.contractorId, integrationName),
-      storage.isIntegrationEnabled(req.user!.contractorId, integrationName),
-      storage.getTenantIntegration(req.user!.contractorId, integrationName),
+      providerService.hasRequiredCredentials(req.user.contractorId, integrationName),
+      storage.isIntegrationEnabled(req.user.contractorId, integrationName),
+      storage.getTenantIntegration(req.user.contractorId, integrationName),
     ]);
     
     res.json({
@@ -187,7 +187,7 @@ export function registerIntegrationRoutes(app: Express): void {
     });
   }));
 
-  app.post("/api/integrations/:integrationName/credentials", requireManagerOrAdmin, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/integrations/:integrationName/credentials", requireManagerOrAdmin, asyncHandler(async (req: AuthedRequest, res: Response) => {
     const { integrationName } = req.params;
     const { credentials } = req.body;
     
@@ -201,7 +201,7 @@ export function registerIntegrationRoutes(app: Express): void {
       return;
     }
     
-    const result = await providerService.saveCredentials(req.user!.contractorId, integrationName, credentials);
+    const result = await providerService.saveCredentials(req.user.contractorId, integrationName, credentials);
     
     if (result.success) {
       res.json({ 
@@ -216,7 +216,7 @@ export function registerIntegrationRoutes(app: Express): void {
     }
   }));
 
-  app.get("/api/integrations/:integrationName/credentials", requireManagerOrAdmin, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/integrations/:integrationName/credentials", requireManagerOrAdmin, asyncHandler(async (req: AuthedRequest, res: Response) => {
     const { integrationName } = req.params;
     
     if (!INTEGRATION_NAMES.includes(integrationName as any)) {
@@ -224,12 +224,12 @@ export function registerIntegrationRoutes(app: Express): void {
       return;
     }
     
-    const credentials = await CredentialService.getMaskedCredentials(req.user!.contractorId, integrationName);
+    const credentials = await CredentialService.getMaskedCredentials(req.user.contractorId, integrationName);
     
     res.json({ credentials });
   }));
 
-  app.delete("/api/integrations/:integrationName/credentials", requireManagerOrAdmin, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.delete("/api/integrations/:integrationName/credentials", requireManagerOrAdmin, asyncHandler(async (req: AuthedRequest, res: Response) => {
     const { integrationName } = req.params;
     
     if (!INTEGRATION_NAMES.includes(integrationName as any)) {
@@ -237,7 +237,7 @@ export function registerIntegrationRoutes(app: Express): void {
       return;
     }
     
-    await CredentialService.deleteIntegrationCredentials(req.user!.contractorId, integrationName);
+    await CredentialService.deleteIntegrationCredentials(req.user.contractorId, integrationName);
     
     res.json({ 
       success: true, 
@@ -247,8 +247,8 @@ export function registerIntegrationRoutes(app: Express): void {
 
   // Webhook configuration endpoint — returns the public webhook URL and a persistent API key
   // for this contractor's lead intake webhook. Generates and saves the key on first call.
-  app.get("/api/webhook-config", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    const contractorId = req.user!.contractorId;
+  app.get("/api/webhook-config", asyncHandler(async (req: AuthedRequest, res: Response) => {
+    const contractorId = req.user.contractorId;
     
     let apiKey: string;
     try {

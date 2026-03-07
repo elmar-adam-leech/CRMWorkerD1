@@ -12,6 +12,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { formatStatusLabel } from "@/lib/utils";
 import { useBulkActions } from "@/hooks/useBulkActions";
+import { useBulkSelection } from "@/contexts/BulkSelectionContext";
 import type { PaginatedJobs } from "@shared/schema";
 import { useTerminology } from "@/hooks/useTerminology";
 import { useUsers } from "@/hooks/useUsers";
@@ -202,6 +203,7 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
   };
 
   // ----- Bulk action handlers -----
+  const { selectedIds, toggleItem } = useBulkSelection();
 
   const { handleBulkDelete, handleBulkStatusChange, handleBulkExport } = useBulkActions({
     entityType: "job",
@@ -261,7 +263,7 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
           filters={advancedFilters}
           onFiltersChange={setAdvancedFilters}
           statusOptions={JOB_STATUSES.map((s) => ({ value: s, label: formatStatusLabel(s) }))}
-          userOptions={usersData?.map((u) => ({ value: u.id, label: u.fullName })) ?? []}
+          userOptions={usersData?.map((u) => ({ value: u.id, label: u.name })) ?? []}
           dateLabel="Scheduled Date"
         />
       </div>
@@ -278,7 +280,16 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
         {jobsLoading
           ? Array.from({ length: 6 }).map((_, i) => <CardSkeleton key={`skeleton-${i}`} />)
           : allJobs.map((job) => (
-              <JobCard key={job.id} job={job} onStatusChange={handleStatusChange} onViewDetails={handleViewDetails} onDelete={handleDeleteJob} selectable />
+              <JobCard
+                key={job.id}
+                job={job}
+                onStatusChange={handleStatusChange}
+                onViewDetails={handleViewDetails}
+                onDelete={handleDeleteJob}
+                selectable
+                isSelected={selectedIds.has(job.id)}
+                onToggleSelect={() => toggleItem(job.id, "jobs")}
+              />
             ))}
       </div>
 

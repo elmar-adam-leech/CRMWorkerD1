@@ -5,9 +5,18 @@ import {
   contactStatusEnum,
 } from "@shared/schema";
 import { db } from "../db";
-import { eq, and, or, desc, ne, gt, lte, gte, ilike, isNotNull, notInArray, inArray, sql, count } from "drizzle-orm";
+import { deduplicateContacts } from "../services/contact-deduper";
+import { eq, and, or, desc, ne, gt, lte, gte, ilike, isNotNull, notInArray, sql, count } from "drizzle-orm";
 import { normalizePhoneArrayForStorage } from "../utils/phone-normalizer";
 import type { UpdateContact } from "../storage-types";
+
+/** Derive the 10-digit normalized phone stored in contacts.normalizedPhone from a phones array. */
+function computeNormalizedPhone(phones: string[] | null | undefined): string | null {
+  const first = phones?.[0];
+  if (!first) return null;
+  const digits = first.replace(/\D/g, '');
+  return digits.length > 0 ? digits.slice(-10) : null;
+}
 
 type PaginatedContacts = {
   data: any[];
@@ -292,18 +301,14 @@ async function getContactByExternalId(externalId: string, externalSource: string
 
 async function getContactByPhone(phone: string, contractorId: string): Promise<Contact | undefined> {
   const digits = phone.replace(/\D/g, '');
-  const normalizedPhone = digits.length > 10 ? digits.slice(-10) : digits;
-  // The SQL subquery strips all non-digit characters from each stored phone number
-  // then takes the last 10 digits (RIGHT(..., 10)) to drop any country-code prefix,
-  // and compares against the already-normalized 10-digit input.  This lets "+1 (555)
-  // 867-5309", "5558675309", and "15558675309" all match each other.
+  const normalized = digits.length > 0 ? digits.slice(-10) : digits;
+  // Fast indexed lookup on the pre-computed normalizedPhone column.
+  // Avoids the REGEXP_REPLACE full-table-scan that this query previously used.
+  // normalizedPhone is populated on every createContact/updateContact call.
   const result = await db.select().from(contacts)
     .where(and(
-      sql`EXISTS (
-        SELECT 1 FROM unnest(${contacts.phones}) AS phone_num
-        WHERE RIGHT(REGEXP_REPLACE(phone_num, '[^0-9]', '', 'g'), 10) = ${normalizedPhone}
-      )`,
-      eq(contacts.contractorId, contractorId)
+      eq(contacts.contractorId, contractorId),
+      eq(contacts.normalizedPhone, normalized),
     ))
     .limit(1);
   return result[0];
@@ -318,18 +323,24 @@ async function getContactByHousecallProCustomerId(housecallProCustomerId: string
 }
 
 async function createContact(contact: Omit<InsertContact, 'contractorId'>, contractorId: string): Promise<Contact> {
+  const normalizedPhones = contact.phones ? normalizePhoneArrayForStorage(contact.phones) : [];
   const normalizedContact = {
     ...contact,
-    phones: contact.phones ? normalizePhoneArrayForStorage(contact.phones) : []
+    phones: normalizedPhones,
+    normalizedPhone: computeNormalizedPhone(normalizedPhones),
   };
   const result = await db.insert(contacts).values({ ...normalizedContact, contractorId }).returning();
   return result[0];
 }
 
 async function updateContact(id: string, contact: UpdateContact, contractorId: string): Promise<Contact | undefined> {
+  const normalizedPhones = contact.phones ? normalizePhoneArrayForStorage(contact.phones) : undefined;
   const normalizedContact = {
     ...contact,
-    ...(contact.phones && { phones: normalizePhoneArrayForStorage(contact.phones) })
+    ...(normalizedPhones !== undefined && {
+      phones: normalizedPhones,
+      normalizedPhone: computeNormalizedPhone(normalizedPhones),
+    }),
   };
   const result = await db.update(contacts)
     .set({ ...normalizedContact, updatedAt: new Date() })
@@ -528,220 +539,8 @@ async function restoreLead(id: string, contractorId: string): Promise<Lead | und
   return result[0];
 }
 
-/**
- * Detect and merge duplicate contacts for a contractor using a Union-Find algorithm.
- *
- * Memory note: This function fetches ALL contacts for the contractor into memory.
- * For contractors with tens of thousands of contacts this can be significant.
- * If deduplication becomes a performance bottleneck, consider:
- *   - Running it as an off-hours background job.
- *   - Processing contacts in chunks by creation date.
- *   - Moving the Union-Find logic into a stored procedure.
- *
- * The algorithm (Union-Find / Disjoint Set Union):
- *   - Each contact starts as its own "root".
- *   - Contacts that share a phone number or email address are unioned together.
- *   - Unions are transitive: if A shares a phone with B and B shares an email
- *     with C, all three end up in the same group.
- *   - The oldest contact in each group becomes the merge target (primary record).
- *   - Path compression keeps subsequent find() calls O(1) amortized.
- */
-/**
- * Batch size for the deduplication contact loader.
- *
- * Contacts are fetched from the database in pages of DEDUP_BATCH_SIZE rows,
- * then accumulated into the in-memory Union-Find structure. This bounds the
- * single DB round-trip to ~DEDUP_BATCH_SIZE rows so the Node.js heap never
- * holds the entire contacts table for a large tenant.
- *
- * Trade-off: total DB round-trips = Math.ceil(contactCount / DEDUP_BATCH_SIZE).
- * For a tenant with 100k contacts at 2k per batch: 50 queries — still far safer
- * than one 100k-row query that can OOM the process.
- *
- * Medium-term migration path: move deduplication into SQL using a temp table
- * + Postgres MERGE so zero rows are loaded into JS heap at all.
- */
-const DEDUP_BATCH_SIZE = 2_000;
-
-// Safety ceiling for deduplication. The Union-Find graph is built entirely in
-// Node.js heap memory, so very large tenants can OOM the process. This guard
-// prevents that by refusing to run deduplication above the threshold and
-// returning early with a clear error. The limit can be raised once the
-// algorithm is migrated to a SQL-side MERGE / temp-table approach (see the
-// DEDUP_BATCH_SIZE comment above for the migration path).
-const DEDUP_MAX_CONTACTS = 50_000;
-
-async function deduplicateContacts(contractorId: string): Promise<{ duplicatesFound: number; contactsMerged: number; contactsDeleted: number }> {
-  console.log(`[deduplicateContacts] Starting deduplication for contractor: ${contractorId}`);
-
-  // Pre-flight count check — bail early before loading any rows into memory
-  const [countRow] = await db
-    .select({ total: sql<number>`COUNT(*)::int` })
-    .from(contacts)
-    .where(eq(contacts.contractorId, contractorId));
-  const totalContacts = countRow?.total ?? 0;
-
-  if (totalContacts > DEDUP_MAX_CONTACTS) {
-    const msg = `[deduplicateContacts] Aborted: tenant has ${totalContacts} contacts which exceeds the in-memory deduplication limit of ${DEDUP_MAX_CONTACTS}. Migrate to SQL-side MERGE to lift this restriction.`;
-    console.error(msg);
-    throw new Error(`Contact deduplication is limited to ${DEDUP_MAX_CONTACTS} contacts. This tenant has ${totalContacts}.`);
-  }
-
-  const phoneToContacts = new Map<string, string[]>();
-  const emailToContacts = new Map<string, string[]>();
-  const contactById = new Map<string, Contact>();
-
-  const normalizePhone = (phone: string): string => phone.replace(/\D/g, '').slice(-10);
-
-  let offset = 0;
-  let totalLoaded = 0;
-
-  while (true) {
-    const batch = await db
-      .select()
-      .from(contacts)
-      .where(eq(contacts.contractorId, contractorId))
-      .orderBy(contacts.createdAt)
-      .limit(DEDUP_BATCH_SIZE)
-      .offset(offset);
-
-    if (batch.length === 0) break;
-
-    for (const contact of batch) {
-      contactById.set(contact.id, contact);
-      contact.phones?.forEach((phone: string) => {
-        const normalized = normalizePhone(phone);
-        if (normalized.length >= 10) {
-          const existing = phoneToContacts.get(normalized) || [];
-          existing.push(contact.id);
-          phoneToContacts.set(normalized, existing);
-        }
-      });
-      contact.emails?.forEach((email: string) => {
-        const normalized = email.toLowerCase().trim();
-        if (normalized) {
-          const existing = emailToContacts.get(normalized) || [];
-          existing.push(contact.id);
-          emailToContacts.set(normalized, existing);
-        }
-      });
-    }
-
-    totalLoaded += batch.length;
-    offset += DEDUP_BATCH_SIZE;
-
-    if (batch.length < DEDUP_BATCH_SIZE) break;
-  }
-
-  console.log(`[deduplicateContacts] Loaded ${totalLoaded} contacts across batches`);
-
-  // Union-Find (Disjoint Set Union) algorithm for grouping duplicate contacts.
-  //
-  // Problem: two contacts are "duplicates" if they share any phone number or email,
-  // even if they share different fields (A shares a phone with B; B shares an email
-  // with C → A, B, C are all the same person).  A naive O(N²) pairwise comparison
-  // would be too slow for large contractors.
-  //
-  // How it works:
-  //   `parent` maps each contact ID to its group's representative (root) ID.
-  //   Initially every contact is its own root (lazy-initialized in `find`).
-  //
-  //   `find(id)` — path-compressed lookup: follows parent pointers to the root,
-  //   then flattens the chain so future lookups are O(1) amortized.
-  //
-  //   `union(id1, id2)` — merges two groups: finds both roots, and if they differ,
-  //   makes the OLDER contact (by createdAt) the authoritative root so the earliest
-  //   record is kept as the "primary" after merging.
-  //
-  // After all phone/email collisions are unioned, we group every contact by its root
-  // to get the final duplicate clusters.
-  const parent = new Map<string, string>();
-  const find = (id: string): string => {
-    if (!parent.has(id)) parent.set(id, id);
-    if (parent.get(id) !== id) {
-      parent.set(id, find(parent.get(id)!)); // path compression
-    }
-    return parent.get(id)!;
-  };
-  const union = (id1: string, id2: string) => {
-    const root1 = find(id1);
-    const root2 = find(id2);
-    if (root1 !== root2) {
-      const contact1 = contactById.get(root1)!;
-      const contact2 = contactById.get(root2)!;
-      // Keep the oldest contact as the group root (it becomes the merge target)
-      if (contact1.createdAt <= contact2.createdAt) {
-        parent.set(root2, root1);
-      } else {
-        parent.set(root1, root2);
-      }
-    }
-  };
-
-  for (const contactIds of Array.from(phoneToContacts.values())) {
-    for (let i = 1; i < contactIds.length; i++) union(contactIds[0], contactIds[i]);
-  }
-  for (const contactIds of Array.from(emailToContacts.values())) {
-    for (let i = 1; i < contactIds.length; i++) union(contactIds[0], contactIds[i]);
-  }
-
-  const groups = new Map<string, Contact[]>();
-  for (const contact of Array.from(contactById.values())) {
-    const root = find(contact.id);
-    const group = groups.get(root) || [];
-    group.push(contact);
-    groups.set(root, group);
-  }
-
-  const contactGroups = new Map<string, Contact[]>();
-  for (const [root, group] of Array.from(groups)) {
-    if (group.length > 1) {
-      group.sort((a: Contact, b: Contact) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-      contactGroups.set(root, group);
-    }
-  }
-
-  console.log(`[deduplicateContacts] Found ${contactGroups.size} groups of duplicates`);
-
-  let contactsMerged = 0;
-  let contactsDeleted = 0;
-
-  const allDuplicateIds: string[] = [];
-
-  await Promise.all(Array.from(contactGroups.entries()).map(async ([, duplicates]) => {
-    const primary = duplicates[0];
-    const duplicatesToMerge = duplicates.slice(1);
-    if (duplicatesToMerge.length === 0) return;
-
-    const duplicateIds = duplicatesToMerge.map(d => d.id);
-
-    const allPhones = new Set<string>();
-    const allEmails = new Set<string>();
-    for (const contact of duplicates) {
-      contact.phones?.forEach(phone => allPhones.add(phone));
-      contact.emails?.forEach(email => allEmails.add(email.toLowerCase()));
-    }
-
-    await Promise.all([
-      db.update(contacts).set({ phones: Array.from(allPhones), emails: Array.from(allEmails), updatedAt: new Date() }).where(eq(contacts.id, primary.id)),
-      db.update(messages).set({ contactId: primary.id }).where(inArray(messages.contactId, duplicateIds)),
-      db.update(activities).set({ contactId: primary.id }).where(inArray(activities.contactId, duplicateIds)),
-      db.update(estimates).set({ contactId: primary.id }).where(inArray(estimates.contactId, duplicateIds)),
-      db.update(jobs).set({ contactId: primary.id }).where(inArray(jobs.contactId, duplicateIds)),
-    ]);
-
-    allDuplicateIds.push(...duplicateIds);
-    contactsDeleted += duplicateIds.length;
-    contactsMerged++;
-  }));
-
-  if (allDuplicateIds.length > 0) {
-    await db.delete(contacts).where(inArray(contacts.id, allDuplicateIds));
-  }
-
-  console.log(`[deduplicateContacts] Completed: ${contactsMerged} contacts merged, ${contactsDeleted} duplicates deleted`);
-  return { duplicatesFound: contactGroups.size, contactsMerged, contactsDeleted };
-}
+// deduplicateContacts — moved to server/services/contact-deduper.ts
+// Imported above and re-exported via contactMethods.deduplicateContacts below.
 
 async function getDashboardMetrics(contractorId: string, userId: string, userRole: string, startDate?: Date, endDate?: Date): Promise<{
   speedToLeadMinutes: number;

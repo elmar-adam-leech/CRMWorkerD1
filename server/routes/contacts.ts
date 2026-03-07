@@ -375,7 +375,7 @@ export function registerContactRoutes(app: Express): void {
       res.status(404).json({ message: "Lead not found" });
       return;
     }
-    broadcastToContractor(req.user.contractorId, { type: 'lead_updated', leadId: req.params.id });
+    broadcastToContractor(req.user.contractorId, { type: 'contact_updated', contactId: req.params.id });
     res.json(lead);
   }));
 
@@ -385,7 +385,7 @@ export function registerContactRoutes(app: Express): void {
       res.status(404).json({ message: "Lead not found" });
       return;
     }
-    broadcastToContractor(req.user.contractorId, { type: 'lead_updated', leadId: req.params.id });
+    broadcastToContractor(req.user.contractorId, { type: 'contact_updated', contactId: req.params.id });
     res.json(lead);
   }));
 

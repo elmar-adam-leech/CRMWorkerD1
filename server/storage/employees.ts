@@ -3,7 +3,7 @@ import {
   employees,
 } from "@shared/schema";
 import { db } from "../db";
-import { eq, and, asc, inArray } from "drizzle-orm";
+import { eq, and, asc, inArray, sql } from "drizzle-orm";
 import type { UpdateEmployee } from "../storage-types";
 
 function mapExternalRoleToInternalRoles(externalRole: string): string[] {
@@ -95,12 +95,34 @@ async function upsertEmployees(employeeData: Omit<InsertEmployee, 'contractorId'
   }
 
   if (toUpdate.length > 0) {
-    const updated = await Promise.all(
-      toUpdate.map(({ id, data }) =>
-        db.update(employees).set(data).where(eq(employees.id, id)).returning().then(r => r[0])
-      )
-    );
-    results.push(...updated.filter(Boolean));
+    // Build a single bulk upsert instead of N sequential UPDATE calls.
+    // All employees are written in one database round-trip regardless of list size.
+    const upsertRows = toUpdate.map(({ id, data }) => ({
+      id,
+      contractorId,
+      firstName: data.firstName ?? '',
+      lastName: data.lastName ?? '',
+      email: data.email ?? null,
+      isActive: data.isActive ?? true,
+      externalRole: data.externalRole ?? null,
+      ...(data.roles ? { roles: data.roles } : {}),
+      updatedAt: new Date(),
+    }));
+    const upserted = await db.insert(employees)
+      .values(upsertRows)
+      .onConflictDoUpdate({
+        target: employees.id,
+        set: {
+          firstName: sql`excluded.first_name`,
+          lastName: sql`excluded.last_name`,
+          email: sql`excluded.email`,
+          isActive: sql`excluded.is_active`,
+          externalRole: sql`excluded.external_role`,
+          updatedAt: sql`excluded.updated_at`,
+        },
+      })
+      .returning();
+    results.push(...upserted);
   }
 
   return results;

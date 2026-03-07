@@ -4,6 +4,7 @@ import { parseBody } from "../utils/validate-body";
 import { storage } from "../storage";
 import { insertActivitySchema } from "@shared/schema";
 import { requireManagerOrAdmin } from "../auth-service";
+import { broadcastToContractor } from "../websocket";
 
 export function registerActivityRoutes(app: Express): void {
   app.get("/api/activities", asyncHandler(async (req, res) => {
@@ -40,6 +41,11 @@ export function registerActivityRoutes(app: Express): void {
     if (contactId && ['call', 'email', 'sms'].includes(activity.type)) {
       await storage.markContactContacted(contactId, req.user.contractorId, req.user.userId);
     }
+    broadcastToContractor(req.user.contractorId, {
+      type: 'activity_created',
+      activityId: activity.id,
+      contactId: activity.contactId ?? undefined,
+    });
     res.status(201).json(activity);
   }));
 

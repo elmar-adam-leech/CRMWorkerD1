@@ -60,7 +60,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
   const { filterStatus, setFilterStatus, advancedFilters, setAdvancedFilters } =
     usePagePreferences({ pageKey: "estimates" });
 
-  const { isSelectionMode } = useBulkSelection();
+  const { isSelectionMode, selectedIds, toggleItem } = useBulkSelection();
 
   const {
     emailModal,
@@ -103,7 +103,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
     []
   );
   const estimateUserOptions = useMemo(
-    () => usersData?.map((u) => ({ value: u.id, label: u.fullName })) ?? [],
+    () => usersData?.map((u) => ({ value: u.id, label: u.name })) ?? [],
     [usersData]
   );
 
@@ -463,6 +463,8 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
             onSendEmail={handleSendEmailByEntity}
             onDelete={handleDelete}
             selectable={true}
+            isSelected={selectedIds.has(estimate.id)}
+            onToggleSelect={() => toggleItem(estimate.id, "estimates")}
           />
         ))}
       </div>

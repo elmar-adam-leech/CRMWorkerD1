@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useWebSocketInvalidation } from "@/hooks/useWebSocketInvalidation";
 import { useParams, useLocation } from "wouter";
 import {
   AlertDialog,
@@ -29,6 +30,11 @@ export default function WorkflowBuilder() {
   const { toast } = useToast();
   
   const [workflowId, setWorkflowId] = useState<string | undefined>(params.id);
+
+  // Invalidate this workflow's cache when another user saves changes to the same workflow.
+  useWebSocketInvalidation([
+    { types: ['workflow_updated'], queryKeys: ['/api/workflows'] },
+  ]);
   
   useEffect(() => {
     setWorkflowId(params.id);

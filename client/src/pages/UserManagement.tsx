@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useWebSocketInvalidation } from "@/hooks/useWebSocketInvalidation";
+import { useUsers } from "@/hooks/useUsers";
 import { useDialpadPhoneNumbers } from "@/hooks/useDialpadPhoneNumbers";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -61,6 +63,10 @@ type PhonePermission = {
 export default function UserManagement() {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
+
+  useWebSocketInvalidation([
+    { types: ['user_updated', 'user_created', 'user_deleted'], queryKeys: ['/api/users'] },
+  ]);
   const [isAddUserDialogOpen, setIsAddUserDialogOpen] = useState(false);
   const [newUserData, setNewUserData] = useState({ 
     username: "", 
@@ -73,9 +79,7 @@ export default function UserManagement() {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
 
   // Fetch all users
-  const { data: users = [], isLoading } = useQuery<User[]>({
-    queryKey: ['/api/users'],
-  });
+  const { data: users = [], isLoading } = useUsers();
 
   // Fetch available Dialpad phone numbers
   const { data: dialpadPhoneNumbers = [] } = useDialpadPhoneNumbers();

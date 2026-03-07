@@ -10,7 +10,6 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { CommunicationActionButtons } from "./CommunicationActionButtons";
 import { ViewDetailsButton } from "./ViewDetailsButton";
-import { useBulkSelection } from "@/contexts/BulkSelectionContext";
 import { InlineEdit } from "./InlineEdit";
 import { TagsDialog } from "./TagsDialog";
 import {
@@ -52,10 +51,11 @@ type EstimateCardProps = {
   onDelete?: (estimateId: string) => void;
   onUpdateEstimate?: (estimateId: string, updates: Partial<EstimateCardItem>) => Promise<void>;
   selectable?: boolean;
+  isSelected?: boolean;
+  onToggleSelect?: () => void;
 };
 
-export const EstimateCard = memo(function EstimateCard({ estimate, onSend: _onSend, onViewDetails, onConvertToJob: _onConvertToJob, onEdit, onContact: _onContact, onSendText, onSendEmail, onSetFollowUp, onDelete, onUpdateEstimate, selectable = false }: EstimateCardProps) {
-  const { toggleItem, isSelected } = useBulkSelection();
+export const EstimateCard = memo(function EstimateCard({ estimate, onSend: _onSend, onViewDetails, onConvertToJob: _onConvertToJob, onEdit, onContact: _onContact, onSendText, onSendEmail, onSetFollowUp, onDelete, onUpdateEstimate, selectable = false, isSelected = false, onToggleSelect }: EstimateCardProps) {
   const { toast } = useToast();
   const isMobile = useIsMobile();
   const showSendButton = isMobile && estimate.status === "draft" && !!_onSend;
@@ -100,8 +100,8 @@ export const EstimateCard = memo(function EstimateCard({ estimate, onSend: _onSe
       <CardHeader className="flex flex-row items-start justify-between gap-2 space-y-0 pb-2">
         {selectable && (
           <Checkbox
-            checked={isSelected(estimate.id)}
-            onCheckedChange={() => toggleItem(estimate.id, "estimates")}
+            checked={isSelected}
+            onCheckedChange={() => onToggleSelect?.()}
             data-testid={`checkbox-estimate-${estimate.id}`}
             className="shrink-0 mt-1"
           />

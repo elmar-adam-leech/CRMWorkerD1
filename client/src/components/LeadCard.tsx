@@ -10,7 +10,6 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { CommunicationActionButtons } from "./CommunicationActionButtons";
 import { ViewDetailsButton } from "./ViewDetailsButton";
-import { useBulkSelection } from "@/contexts/BulkSelectionContext";
 import { InlineEdit } from "./InlineEdit";
 import { TagsDialog } from "./TagsDialog";
 import { getInitials } from "@/lib/utils";
@@ -35,10 +34,11 @@ type LeadCardProps = {
   onSetFollowUp?: (lead: LeadCardContact) => void;
   onUpdateLead?: (leadId: string, updates: Partial<Contact>) => Promise<void>;
   selectable?: boolean;
+  isSelected?: boolean;
+  onToggleSelect?: () => void;
 };
 
-export const LeadCard = memo(function LeadCard({ lead, onContact: _onContact, onSchedule, onSendText, onSendEmail, onEdit, onDelete, onArchive, onRestore, onEditStatus, onViewDetails, onSetFollowUp, onUpdateLead, selectable = false }: LeadCardProps) {
-  const { toggleItem, isSelected } = useBulkSelection();
+export const LeadCard = memo(function LeadCard({ lead, onContact: _onContact, onSchedule, onSendText, onSendEmail, onEdit, onDelete, onArchive, onRestore, onEditStatus, onViewDetails, onSetFollowUp, onUpdateLead, selectable = false, isSelected = false, onToggleSelect }: LeadCardProps) {
   const [tagsDialogOpen, setTagsDialogOpen] = useState(false);
 
   const leadName = lead.name || '';
@@ -64,8 +64,8 @@ export const LeadCard = memo(function LeadCard({ lead, onContact: _onContact, on
         <div className="flex items-center space-x-3 flex-1 min-w-0">
           {selectable && (
             <Checkbox
-              checked={isSelected(lead.id)}
-              onCheckedChange={() => toggleItem(lead.id, "leads")}
+              checked={isSelected}
+              onCheckedChange={() => onToggleSelect?.()}
               data-testid={`checkbox-lead-${lead.id}`}
               className="shrink-0"
             />

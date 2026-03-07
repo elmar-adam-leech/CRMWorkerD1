@@ -11,7 +11,16 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+// max: caps concurrent connections — raise via DB_POOL_MAX if queries queue under load.
+// idleTimeoutMillis: release idle connections back to Neon after 30 s of inactivity.
+// connectionTimeoutMillis: fail fast (5 s) rather than letting requests hang indefinitely.
+export const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: Number(process.env.DB_POOL_MAX ?? 20),
+  idleTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 5_000,
+});
+console.info(`[DB] pool initialized — max: ${pool.options.max}`);
 export const db = drizzle({ client: pool, schema });
 
 // Enable pg_trgm extension for trigram-based GIN indexes on text columns.

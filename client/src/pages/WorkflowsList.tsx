@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { useWebSocketInvalidation } from "@/hooks/useWebSocketInvalidation";
 import { useLocation } from "wouter";
 import { Check, X, Eye, Edit, AlertCircle, Search, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,10 @@ import type { Workflow, WorkflowApprovalStatus } from "@/types/workflow";
 export default function WorkflowsList() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
+
+  useWebSocketInvalidation([
+    { types: ['workflow_updated', 'workflow_created', 'workflow_deleted'], queryKeys: ['/api/workflows'] },
+  ]);
   const [statusFilter, setStatusFilter] = useState<"all" | "pending_approval">("all");
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [rejectingWorkflowId, setRejectingWorkflowId] = useState<string | null>(null);

@@ -49,7 +49,7 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
 
   // Shared hooks — share cache entries across the whole app
   const { data: usersData = [] } = useUsers();
-  const teamUsers = usersData.map(u => ({ id: u.id, name: u.fullName, email: '' }));
+  const teamUsers = usersData.map(u => ({ id: u.id, name: u.name, email: '' }));
 
   const { data: terminology } = useTerminology();
 

@@ -12,6 +12,7 @@ export interface ProviderConfig {
     emailProvider?: string;
     smsProvider?: string;
     callingProvider?: string;
+    isActive: boolean;
   }>;
 }
 

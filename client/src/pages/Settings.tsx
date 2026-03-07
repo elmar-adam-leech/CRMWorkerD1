@@ -12,6 +12,9 @@ import { SecurityTab } from "@/components/settings/SecurityTab";
 import { TargetsTab } from "@/components/settings/TargetsTab";
 import { WebhooksTab } from "@/components/settings/WebhooksTab";
 import { SalespeopleTab } from "@/components/settings/SalespeopleTab";
+import { useTerminology } from "@/hooks/useTerminology";
+import { useProviderConfig } from "@/hooks/use-provider-config";
+import { useUsers } from "@/hooks/useUsers";
 
 interface IntegrationData {
   name: string;
@@ -65,19 +68,13 @@ export default function Settings() {
     enabled: integrations.some(i => i.name === 'housecall-pro' && i.isEnabled),
   });
 
-  const { data: providerData } = useQuery<{
-    available: { email: string[]; sms: string[]; calling: string[] };
-    configured: Array<{ providerType: string; emailProvider?: string; smsProvider?: string; callingProvider?: string; isActive: boolean }>;
-  }>({ queryKey: ['/api/providers'] });
+  const { data: providerData } = useProviderConfig();
 
   const { data: currentTargets, isLoading: targetsLoading } = useQuery<{
     speedToLeadMinutes: number; followUpRatePercent: string; setRatePercent: string; closeRatePercent: string;
   }>({ queryKey: ['/api/business-targets'], enabled: canManageIntegrations });
 
-  const { data: currentTerminology } = useQuery<any>({
-    queryKey: ['/api/terminology'],
-    enabled: activeTab === 'account',
-  });
+  const { data: currentTerminology } = useTerminology();
 
   const { data: bookingSlugData } = useQuery<{ bookingSlug: string | null; bookingUrl: string | null }>({
     queryKey: ['/api/booking-slug'],
@@ -91,11 +88,7 @@ export default function Settings() {
     documentation?: any;
   }>({ queryKey: ['/api/webhook-config'], enabled: activeTab === 'webhooks' });
 
-  type User = { id: string; username: string; name: string; email: string; role: string; contractorId: string; createdAt: string };
-  const { data: allUsers = [], isLoading: usersLoading } = useQuery<User[]>({
-    queryKey: ['/api/users'],
-    enabled: isAdmin && activeTab === 'account',
-  });
+  const { data: allUsers = [], isLoading: usersLoading } = useUsers();
 
   // Derived display values: pending local edit takes priority over query data.
   const effectiveTargets = businessTargets ?? currentTargets ?? {

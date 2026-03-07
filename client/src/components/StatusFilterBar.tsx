@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Filter } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { formatStatusLabel } from "@/lib/utils";
@@ -10,7 +11,7 @@ type StatusFilterBarProps = {
   formatLabel?: (status: string) => string;
 };
 
-export function StatusFilterBar({
+export const StatusFilterBar = memo(function StatusFilterBar({
   statuses,
   activeStatus,
   counts,
@@ -45,4 +46,4 @@ export function StatusFilterBar({
       </div>
     </div>
   );
-}
+});

@@ -10,7 +10,8 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { LoginForm } from "@/components/LoginForm";
 import { RefreshBanner } from "@/components/ui/refresh-banner";
 import { useAppVersion } from "@/hooks/use-app-version";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { useToast } from "@/hooks/use-toast";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { MobileBottomNav } from "@/components/MobileBottomNav";
 
@@ -78,6 +79,7 @@ function Router({ isAuthenticated, onLogin, isLoading, loginError, globalSearch 
 }
 
 function App() {
+  const { toast } = useToast();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [loginError, setLoginError] = useState("");
@@ -242,9 +244,19 @@ function App() {
         window.location.reload();
       } else {
         console.error("Failed to switch contractor");
+        toast({
+          title: "Failed to switch account",
+          description: "Could not switch to the selected account. Please refresh the page and try again.",
+          variant: "destructive",
+        });
       }
     } catch (error) {
       console.error("Error switching contractor:", error);
+      toast({
+        title: "Failed to switch account",
+        description: "A network error occurred. Please refresh the page and try again.",
+        variant: "destructive",
+      });
     }
   };
 

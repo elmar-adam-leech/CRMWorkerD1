@@ -45,7 +45,7 @@ These are single-process assumptions that work fine now but require architectura
 
 1. **WebSocket broadcasts** (`server/websocket.ts`): `broadcastToContractor` only reaches clients on the current Node.js process. Fix: Redis pub/sub fan-out.
 2. **Rate limiter** (`server/middleware/rate-limiter.ts`): In-memory `Map` store — counts are not shared across processes. Fix: Redis-backed store (e.g. `rate-limit-redis`).
-3. **Contact deduplication** (`server/storage/contacts.ts`): The Union-Find graph is built entirely in Node.js heap. A 50k-contact ceiling guard is in place. Fix: migrate to SQL-side MERGE using a temp table.
+3. **Contact deduplication** (`server/services/contact-deduper.ts`): The Union-Find graph is built entirely in Node.js heap. A 50k-contact ceiling guard is in place. Fix: migrate to SQL-side MERGE using a temp table.
 
 ---
 
@@ -57,18 +57,27 @@ These are single-process assumptions that work fine now but require architectura
 - **`auth-helpers.ts`** — `getAuthUser(req, res)` helper that returns the typed JWT payload or sends a 401 and returns null. Use this instead of `req.user!` in route handlers to eliminate non-null assertions.
 - **`workflow/entity-adapter.ts`** — `toWorkflowEvent(entity)` adapter that safely converts typed Drizzle entities to `Record<string, unknown>` for the workflow engine. Eliminates all `as unknown as Record<string, unknown>` casts.
 
-### Storage Module (`server/storage.ts`)
+### Schema Module (`shared/schema/`)
+- The monolithic `shared/schema.ts` has been split into 12 domain-scoped files under `shared/schema/`.
+- `shared/schema/index.ts` re-exports everything — all existing `import ... from "@shared/schema"` imports continue to work unchanged.
+- Domain files: `enums`, `settings`, `users`, `contacts`, `estimates`, `jobs`, `leads`, `messages`, `activities`, `integrations`, `notifications`, `workflows`.
+
+### Storage Module (`server/storage/`)
 - Full orientation JSDoc at the top of `IStorage` explaining the multi-module composition pattern and the multi-tenancy requirement.
-- `deduplicateContacts` processes contacts in paginated batches (`DEDUP_BATCH_SIZE = 2000`) — no unbounded `SELECT *`.
+- **Contact deduplication** has been extracted to `server/services/contact-deduper.ts` — a dedicated service with full JSDoc explaining the Union-Find algorithm (O(N·α(N)) complexity). `contactMethods.deduplicateContacts` re-exports from this service. Contacts are processed in paginated batches (`DEDUP_BATCH_SIZE = 2000`) — no unbounded `SELECT *`.
 
 ### DB Indexes
 - Added composite index on `workflow_executions(workflow_id, created_at)`.
 - Added partial index on `estimates(housecall_pro_estimate_id)` for HCP sync lookups.
-- Both applied directly via SQL and reflected in `shared/schema.ts`.
+- Added functional index on `contacts.normalized_phone` for O(1) webhook lookups — eliminates REGEXP_REPLACE full-table scans on every Dialpad call/SMS.
+- Both applied directly via SQL and reflected in `shared/schema/contacts.ts`.
 
 ### Frontend Shared Hooks (`client/src/hooks/`)
 - **`useDialpadPhoneNumbers`** — Single cache-sharing hook for `/api/dialpad/phone-numbers`. Used by `NodeEditDialog`, `EnhancedDialpadConfig`, and `UserManagement` instead of inline `useQuery`.
-- **`useTerminology`**, **`useFetchContact`**, **`useUsers`** — Existing shared hooks; use these instead of inline queries.
+- **`useTerminology`** — Use for `/api/terminology`; returns `TerminologySettings` type. Settings.tsx uses this hook.
+- **`useProviderConfig`** — Use for `/api/providers`; returns `ProviderConfig` (includes `isActive` flag). Settings.tsx uses this hook.
+- **`useUsers`** — Use for `/api/users`; returns `UserSummary[]` with `{ id, username, name, email, role, contractorId, dialpadDefaultNumber, canManageIntegrations, createdAt }`. Note: field is `name` (not `fullName`). Settings.tsx and UserManagement.tsx use this hook.
+- **`useFetchContact`** — Existing shared hook for single contact fetches.
 
 ## External Dependencies
 

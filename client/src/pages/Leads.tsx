@@ -67,7 +67,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
     closeSchedulingModal,
   } = useCommunicationActions();
 
-  const { isSelectionMode } = useBulkSelection();
+  const { isSelectionMode, selectedIds, toggleItem } = useBulkSelection();
 
   const [addContactModal, setAddContactModal] = useState(false);
 
@@ -108,7 +108,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
     []
   );
   const leadUserOptions = useMemo(
-    () => usersData?.map((u) => ({ value: u.id, label: u.fullName })) ?? [],
+    () => usersData?.map((u) => ({ value: u.id, label: u.name })) ?? [],
     [usersData]
   );
 
@@ -329,7 +329,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
     updateStatusMutation.mutate({ contactId, status: newStatus });
   }, [updateStatusMutation]);
 
-  const handleUpdateLead = async (contactId: string, updates: Partial<Contact>) => {
+  const handleUpdateLead = useCallback(async (contactId: string, updates: Partial<Contact>) => {
     try {
       await apiRequest("PATCH", `/api/contacts/${contactId}`, updates);
       queryClient.invalidateQueries({ queryKey: ["/api/contacts/paginated"] });
@@ -343,7 +343,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
         variant: "destructive",
       });
     }
-  };
+  }, [toast]);
 
   const { handleBulkDelete, handleBulkStatusChange, handleBulkExport } = useBulkActions({
     entityType: "contact",
@@ -453,6 +453,8 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
               onSetFollowUp={handleSetFollowUp}
               onUpdateLead={handleUpdateLead}
               selectable={!showArchived}
+              isSelected={selectedIds.has(lead.id)}
+              onToggleSelect={() => toggleItem(lead.id, "leads")}
             />
           ))}
         </div>

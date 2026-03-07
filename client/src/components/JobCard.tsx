@@ -9,7 +9,6 @@ import { Calendar, Clock, MoreHorizontal, ExternalLink, Phone, Mail, Edit, Setti
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { ViewDetailsButton } from "./ViewDetailsButton";
-import { useBulkSelection } from "@/contexts/BulkSelectionContext";
 import { InlineEdit } from "./InlineEdit";
 import { TagsDialog } from "./TagsDialog";
 import { useQuery } from "@tanstack/react-query";
@@ -39,10 +38,11 @@ type JobCardProps = {
   onUpdateJob?: (jobId: string, updates: Partial<any>) => Promise<void>;
   onDelete?: (jobId: string, jobTitle: string) => void;
   selectable?: boolean;
+  isSelected?: boolean;
+  onToggleSelect?: () => void;
 };
 
-export const JobCard = memo(function JobCard({ job, onStatusChange: _onStatusChange, onViewDetails, onEdit, onEditStatus, onUpdateJob, onDelete, selectable = false }: JobCardProps) {
-  const { toggleItem, isSelected } = useBulkSelection();
+export const JobCard = memo(function JobCard({ job, onStatusChange: _onStatusChange, onViewDetails, onEdit, onEditStatus, onUpdateJob, onDelete, selectable = false, isSelected = false, onToggleSelect }: JobCardProps) {
   const { toast } = useToast();
   const isMobile = useIsMobile();
   const showMarkComplete = isMobile
@@ -82,8 +82,8 @@ export const JobCard = memo(function JobCard({ job, onStatusChange: _onStatusCha
       <CardHeader className="flex flex-row items-start justify-between gap-2 space-y-0 pb-2">
         {selectable && (
           <Checkbox
-            checked={isSelected(job.id)}
-            onCheckedChange={() => toggleItem(job.id, "jobs")}
+            checked={isSelected}
+            onCheckedChange={() => onToggleSelect?.()}
             data-testid={`checkbox-job-${job.id}`}
             className="shrink-0 mt-1"
           />
