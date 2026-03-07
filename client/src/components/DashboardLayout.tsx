@@ -6,6 +6,7 @@ import { CommandPalette } from "./CommandPalette";
 import { useTerminologyContext } from "@/contexts/TerminologyContext";
 import { useWebSocketContext } from "@/contexts/WebSocketContext";
 import { WifiOff } from "lucide-react";
+import type { ContractorMembership, ActiveContractor } from "@/types/contractor";
 
 type DashboardLayoutProps = {
   children: React.ReactNode;
@@ -16,9 +17,9 @@ type DashboardLayoutProps = {
     role: string;
     avatar?: string;
   };
-  contractors: any[];
-  currentContractor: any;
-  onContractorChange: (contractor: any) => void;
+  contractors: ContractorMembership[];
+  currentContractor: ActiveContractor | null;
+  onContractorChange: (contractor: ActiveContractor) => void;
   onSearch?: (query: string) => void;
   onQuickAction?: (action: string) => void;
 };

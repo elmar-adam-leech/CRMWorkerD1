@@ -49,7 +49,7 @@ export const FilterPanel = memo(function FilterPanel({
     onFiltersChange(newFilters);
   };
 
-  const updateFilter = (key: keyof FilterState, value: any) => {
+  const updateFilter = (key: keyof FilterState, value: string | string[] | boolean | Date | undefined) => {
     onFiltersChange({ ...filters, [key]: value });
   };
 

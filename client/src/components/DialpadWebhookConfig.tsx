@@ -30,8 +30,9 @@ export function DialpadWebhookConfig() {
 
   const { data: webhookConfig, isLoading, error } = useQuery<WebhookConfig>({
     queryKey: ['/api/dialpad-webhook-config'],
-    staleTime: 0, // Always fetch fresh data
-    gcTime: 0, // Don't cache
+    // No staleTime/gcTime override needed — the webhook URL only changes when the
+    // user explicitly regenerates it (mutation below invalidates this query key).
+    // The global 5-minute default is appropriate for this rarely-changing config.
   });
 
   const handleCopyUrl = async () => {

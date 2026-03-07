@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import DOMPurify from "dompurify";
 import { ArrowDownLeft, ArrowUpRight } from "lucide-react";
 
 interface Message {
@@ -133,7 +134,7 @@ export function MessageHistory({
                         {msg.type === 'email' ? (
                           <div
                             className={`prose prose-sm max-w-none ${isInbound ? 'dark:prose-invert' : 'prose-invert'}`}
-                            dangerouslySetInnerHTML={{ __html: msg.content }}
+                            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(msg.content) }}
                           />
                         ) : (
                           msg.content

@@ -16,6 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { MobileBottomNav } from "@/components/MobileBottomNav";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import type { ContractorMembership, ActiveContractor } from "@/types/contractor";
 
 // Import pages
 import Dashboard from "@/pages/Dashboard";
@@ -107,17 +108,6 @@ function AppInner() {
   const { showRefreshBanner, handleRefresh, handleDismiss } = useAppVersion();
 
   // User contractors - fetched from API once the user is known
-  interface ContractorMembership {
-    contractorId: string;
-    role: string;
-    contractor: { id: string; name: string; domain: string };
-  }
-  interface ActiveContractor {
-    id: string;
-    name: string;
-    domain: string;
-    role: string;
-  }
   const [userContractors, setUserContractors] = useState<ContractorMembership[]>([]);
   const [currentContractor, setCurrentContractor] = useState<ActiveContractor | null>(null);
 

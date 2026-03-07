@@ -25,9 +25,19 @@ export interface TextingModalState {
   customer?: CommunicationEntity;
 }
 
+export interface SchedulingLead {
+  id: string;
+  name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  isScheduled?: boolean;
+  housecallProEstimateId?: string | null;
+}
+
 export interface SchedulingModalState {
   isOpen: boolean;
-  lead?: any;
+  lead?: SchedulingLead;
 }
 
 export function useCommunicationActions() {
@@ -79,9 +89,13 @@ export function useCommunicationActions() {
     }
   };
 
-  const handleSchedule = (lead: any) => {
-    // Convert to the expected format for the scheduling modal
-    const modalLead = {
+  const handleSchedule = (lead: CommunicationEntity & {
+    isScheduled?: boolean;
+    status?: string;
+    address?: string | null;
+    housecallProEstimateId?: string | null;
+  }) => {
+    const modalLead: SchedulingLead = {
       id: lead.id,
       name: lead.name || lead.customerName,
       email: lead.emails && lead.emails.length > 0 ? lead.emails[0] : lead.email,

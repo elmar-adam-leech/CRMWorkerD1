@@ -167,8 +167,13 @@ export function setupWebSocket(server: Server) {
 // to the broadcast call-sites — only the implementation here changes.
 // ───────────────────────────────────────────────────────────────────────────
 
+export interface WebSocketBroadcastPayload {
+  type: string;
+  [key: string]: unknown;
+}
+
 // Broadcast a message to all connected clients of a specific contractor
-export function broadcastToContractor(contractorId: string, message: any) {
+export function broadcastToContractor(contractorId: string, message: WebSocketBroadcastPayload) {
   if (!wss) {
     log('[WebSocket] Server not initialized, cannot broadcast');
     return;
@@ -186,7 +191,7 @@ export function broadcastToContractor(contractorId: string, message: any) {
 }
 
 // Broadcast to a specific user
-export function broadcastToUser(userId: string, message: any) {
+export function broadcastToUser(userId: string, message: WebSocketBroadcastPayload) {
   if (!wss) {
     log('[WebSocket] Server not initialized, cannot broadcast');
     return;

@@ -4,7 +4,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
-import { Clock, Target, Users, Calendar as CalendarIcon } from "lucide-react";
+import { Clock, Target, Users, Calendar as CalendarIcon, AlertCircle } from "lucide-react";
 import { format } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
@@ -52,7 +52,7 @@ export function DashboardMetrics() {
     queryParams.set("endDate", customEndDate.toISOString());
   }
 
-  const { data: metrics, isLoading } = useQuery<{
+  const { data: metrics, isLoading, isError } = useQuery<{
     speedToLeadMinutes: number;
     setRate: number;
     totalLeads: number;
@@ -189,6 +189,11 @@ export function DashboardMetrics() {
       {isLoading ? (
         <div className="text-center py-12">
           <div className="text-lg">Loading metrics...</div>
+        </div>
+      ) : isError ? (
+        <div className="flex items-center gap-2 py-6 text-sm text-destructive" data-testid="metrics-error">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <span>Unable to load metrics. Please try refreshing the page.</span>
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-4" data-testid="dashboard-metrics">

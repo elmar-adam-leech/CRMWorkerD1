@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/EmptyState";
-import { Calendar, ExternalLink, FileText, Briefcase } from "lucide-react";
+import { AlertCircle, Calendar, ExternalLink, FileText, Briefcase } from "lucide-react";
 import { format } from "date-fns";
 import type { Lead } from "@shared/schema";
 import { Link } from "wouter";
@@ -13,10 +13,19 @@ interface LeadSubmissionHistoryProps {
 }
 
 export function LeadSubmissionHistory({ contactId }: LeadSubmissionHistoryProps) {
-  const { data: leads, isLoading } = useQuery<Lead[]>({
+  const { data: leads, isLoading, isError } = useQuery<Lead[]>({
     queryKey: [`/api/contacts/${contactId}/leads`],
     enabled: !!contactId,
   });
+
+  if (isError) {
+    return (
+      <div className="flex items-center gap-2 py-4 text-sm text-destructive" data-testid="lead-history-error">
+        <AlertCircle className="h-4 w-4 shrink-0" />
+        <span>Unable to load submission history.</span>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (

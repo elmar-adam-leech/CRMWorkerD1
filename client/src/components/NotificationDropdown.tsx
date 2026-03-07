@@ -11,7 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Bell, Check, X } from "lucide-react";
+import { Bell, Check, X, AlertCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { apiRequest } from "@/lib/queryClient";
 import { formatDistanceToNow } from "date-fns";
@@ -34,7 +34,7 @@ export function NotificationDropdown() {
   });
 
   // Fetch all recent notifications
-  const { data: allNotifications = [] } = useQuery<Notification[]>({
+  const { data: allNotifications = [], isError: notificationsError } = useQuery<Notification[]>({
     queryKey: ['/api/notifications'],
     enabled: open, // Only fetch when dropdown is open
   });
@@ -119,7 +119,12 @@ export function NotificationDropdown() {
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <ScrollArea className="h-[400px]">
-          {allNotifications.length === 0 ? (
+          {notificationsError ? (
+            <div className="flex items-center gap-2 p-4 text-sm text-destructive" data-testid="text-notifications-error">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              <span>Unable to load notifications.</span>
+            </div>
+          ) : allNotifications.length === 0 ? (
             <div className="p-4 text-center text-sm text-muted-foreground" data-testid="text-no-notifications">
               No notifications
             </div>

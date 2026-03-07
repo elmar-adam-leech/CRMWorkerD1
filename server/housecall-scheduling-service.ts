@@ -4,6 +4,11 @@ import { eq, and, gte, lte, asc, sql } from 'drizzle-orm';
 import { housecallProService } from './housecall-pro-service';
 import type { TimeSlot, BusyWindow, AvailableSlot, AddressComponents, BookingRequest, BookingResult, SalespersonInfo } from './types/scheduling';
 import { parseAddressString } from './types/scheduling';
+import {
+  parseWorkingHours as parseWorkingHoursUtil,
+  createDateInTimezone as createDateInTimezoneUtil,
+  getDayOfWeekInTimezone as getDayOfWeekInTimezoneUtil,
+} from './utils/time';
 
 /**
  * Housecall Pro employee object shape as returned by the HCP API.
@@ -395,74 +400,10 @@ export class HousecallSchedulingService {
     };
   }
   
-  private parseWorkingHours(timeStr: string): { hours: number; minutes: number } {
-    const [hours, minutes = 0] = timeStr.split(':').map(Number);
-    return { hours, minutes };
-  }
-  
-  private getDatePartsInTimezone(date: Date, timezone: string): { year: number; month: number; day: number } {
-    const formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: timezone,
-      year: 'numeric',
-      month: 'numeric',
-      day: 'numeric'
-    });
-    const parts = formatter.formatToParts(date);
-    const getPart = (type: string) => parseInt(parts.find(p => p.type === type)?.value || '0');
-    return {
-      year: getPart('year'),
-      month: getPart('month') - 1,
-      day: getPart('day')
-    };
-  }
-  
-  private createDateInTimezone(date: Date, hours: number, minutes: number, timezone: string): Date {
-    const { year, month, day } = this.getDatePartsInTimezone(date, timezone);
-    
-    const localDateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`;
-    
-    const formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: timezone,
-      year: 'numeric',
-      month: 'numeric',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: 'numeric',
-      second: 'numeric',
-      hour12: false
-    });
-    
-    let testDate = new Date(`${localDateStr}Z`);
-    for (let i = 0; i < 48; i++) {
-      const parts = formatter.formatToParts(testDate);
-      const getPart = (type: string) => parseInt(parts.find(p => p.type === type)?.value || '0');
-      const tzHour = getPart('hour');
-      const tzMinute = getPart('minute');
-      
-      if (tzHour === hours && tzMinute === minutes) {
-        return testDate;
-      }
-      
-      const hourDiff = hours - tzHour;
-      const minuteDiff = minutes - tzMinute;
-      testDate = new Date(testDate.getTime() + (hourDiff * 60 + minuteDiff) * 60 * 1000);
-    }
-    
-    return testDate;
-  }
-  
-  private getDayOfWeekInTimezone(date: Date, timezone: string): number {
-    const formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: timezone,
-      weekday: 'short'
-    });
-    const dayName = formatter.format(date);
-    const dayMap: Record<string, number> = {
-      'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6
-    };
-    return dayMap[dayName] ?? 0;
-  }
-  
+  private parseWorkingHours(timeStr: string) { return parseWorkingHoursUtil(timeStr); }
+  private createDateInTimezone(date: Date, hours: number, minutes: number, timezone: string) { return createDateInTimezoneUtil(date, hours, minutes, timezone); }
+  private getDayOfWeekInTimezone(date: Date, timezone: string) { return getDayOfWeekInTimezoneUtil(date, timezone); }
+
   async getUnifiedAvailability(tenantId: string, startDate: Date, endDate: Date, timezone: string = 'America/New_York'): Promise<AvailableSlot[]> {
     const salespeople = await this.getSalespeople(tenantId);
     

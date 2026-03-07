@@ -8,6 +8,7 @@
  * cacheable. The EditLeadDialog component owns the lead-edit form and mutation.
  */
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useContactMutations } from "@/hooks/useContactMutations";
 import { format } from "date-fns";
 import { Calendar, Clock, Filter } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -267,30 +268,7 @@ export default function FollowUps() {
     },
   });
 
-  // Delete lead mutation
-  const deleteLeadMutation = useMutation({
-    mutationFn: async (leadId: string) => {
-      const response = await apiRequest('DELETE', `/api/contacts/${leadId}`);
-      return response;
-    },
-    onSuccess: () => {
-      toast({
-        title: "Lead Deleted",
-        description: "Lead has been successfully deleted.",
-      });
-      queryClient.invalidateQueries({ queryKey: ['/api/contacts/paginated'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/contacts/status-counts'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/contacts/follow-ups'] });
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Failed to Delete Lead",
-        description: error.message || "Something went wrong.",
-        variant: "destructive",
-      });
-    },
-  });
+  const { deleteContact: deleteLeadMutation } = useContactMutations();
 
   const handleEdit = (item: FollowUpItem) => {
     if (item.type === 'lead') {

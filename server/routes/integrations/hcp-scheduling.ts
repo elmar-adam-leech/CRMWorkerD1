@@ -131,7 +131,14 @@ export function registerHcpSchedulingRoutes(app: Express): void {
     try {
       const secret = await CredentialService.getCredential(contractorId, 'housecallpro', 'webhook_secret');
       secretConfigured = !!(secret && secret.trim());
-    } catch { /* no secret stored yet */ }
+    } catch (err) {
+      // CredentialService throws when no credential exists yet — that's expected on
+      // first setup. Log unexpected errors (e.g., DB timeouts) without crashing.
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!msg.includes('not found') && !msg.includes('No rows') && !msg.includes('no result')) {
+        console.warn('[hcp-scheduling] Unexpected error fetching webhook secret:', msg);
+      }
+    }
     res.json({ webhookUrl, secretConfigured });
   }));
 

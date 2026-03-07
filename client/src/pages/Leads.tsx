@@ -14,6 +14,7 @@ import { LeadKanbanBoard } from "@/components/LeadKanbanBoard";
 import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useContactMutations } from "@/hooks/useContactMutations";
 import type { Contact, PaginatedContacts } from "@shared/schema";
 import { useTerminologyContext } from "@/contexts/TerminologyContext";
 import { useUsers } from "@/hooks/useUsers";
@@ -175,36 +176,30 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
   );
   const totalLeads = leadsData?.pages[0]?.pagination.total || 0;
 
-  const updateStatusMutation = useMutation({
-    mutationFn: async (data: { contactId: string; status: string }) => {
-      return apiRequest("PATCH", `/api/contacts/${data.contactId}/status`, { status: data.status });
-    },
-    onSuccess: (_result, data) => {
-      toast({ title: "Status Updated", description: "Lead status has been successfully updated." });
-      invalidateContacts(data.contactId);
-      queryClient.invalidateQueries({ queryKey: ["/api/contacts/follow-ups"] });
-      setEditStatusModal({ isOpen: false });
-    },
-    onError: (error: Error) => {
-      toast({ title: "Failed to Update Status", description: error.message || "Something went wrong.", variant: "destructive" });
-    },
-  });
+  const { deleteContact: deleteContactMutationBase, updateContactStatus } = useContactMutations();
 
-  const deleteContactMutation = useMutation({
-    mutationFn: async (contactId: string) => {
-      return apiRequest("DELETE", `/api/contacts/${contactId}`);
+  const updateStatusMutation = {
+    ...updateContactStatus,
+    mutate: (data: { contactId: string; status: string }) => {
+      updateContactStatus.mutate(data, {
+        onSuccess: () => {
+          invalidateContacts(data.contactId);
+          setEditStatusModal({ isOpen: false });
+        },
+      });
     },
-    onSuccess: () => {
-      toast({ title: "Lead Deleted", description: "Lead has been successfully deleted." });
-      queryClient.invalidateQueries({ queryKey: ["/api/contacts/paginated"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/contacts/status-counts"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
-      setDeleteConfirmDialog({ isOpen: false });
+    isPending: updateContactStatus.isPending,
+  };
+
+  const deleteContactMutation = {
+    ...deleteContactMutationBase,
+    mutate: (contactId: string) => {
+      deleteContactMutationBase.mutate(contactId, {
+        onSuccess: () => setDeleteConfirmDialog({ isOpen: false }),
+      });
     },
-    onError: (error: Error) => {
-      toast({ title: "Failed to Delete Lead", description: error.message || "Something went wrong.", variant: "destructive" });
-    },
-  });
+    isPending: deleteContactMutationBase.isPending,
+  };
 
   const archiveLeadMutation = useMutation({
     mutationFn: async (leadId: string) => {

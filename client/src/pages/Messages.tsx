@@ -225,7 +225,7 @@ export default function Messages() {
           />
         </div>
         <div className="flex gap-2 flex-wrap">
-          <Select value={filterType} onValueChange={(value: any) => setFilterType(value)}>
+          <Select value={filterType} onValueChange={(value: string) => setFilterType(value)}>
             <SelectTrigger className="w-32" data-testid="select-filter-type">
               <SelectValue placeholder="Type" />
             </SelectTrigger>
@@ -235,7 +235,7 @@ export default function Messages() {
               <SelectItem value="email">Email</SelectItem>
             </SelectContent>
           </Select>
-          <Select value={filterStatus} onValueChange={(value: any) => setFilterStatus(value)}>
+          <Select value={filterStatus} onValueChange={(value: string) => setFilterStatus(value)}>
             <SelectTrigger className="w-32" data-testid="select-filter-status">
               <SelectValue placeholder="Status" />
             </SelectTrigger>

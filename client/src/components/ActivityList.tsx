@@ -1,4 +1,5 @@
 import { useState } from "react";
+import DOMPurify from "dompurify";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -83,7 +84,18 @@ export function ActivityList({ leadId, estimateId, jobId, customerId, showAddBut
   });
 
   // Query to fetch SMS messages
-  const { data: messages = [], isLoading: isLoadingMessages } = useQuery<any[]>({
+  interface ConversationMessage {
+    id: string;
+    type: string;
+    content: string;
+    direction?: string;
+    createdAt: string;
+    userName?: string;
+    contactId?: string;
+    estimateId?: string;
+    userId?: string;
+  }
+  const { data: messages = [], isLoading: isLoadingMessages } = useQuery<ConversationMessage[]>({
     queryKey: ['/api/conversations', leadId || customerId || estimateId, leadId ? 'lead' : customerId ? 'customer' : 'estimate'],
     queryFn: async () => {
       if (!leadId && !customerId && !estimateId) return [];
@@ -97,7 +109,7 @@ export function ActivityList({ leadId, estimateId, jobId, customerId, showAddBut
   });
 
   // Convert messages (SMS and emails) to activity format
-  const messageActivities: Activity[] = messages.map((msg: any) => {
+  const messageActivities: Activity[] = messages.map((msg) => {
     const isEmail = msg.type === 'email';
     return {
       id: msg.id,
@@ -236,7 +248,7 @@ export function ActivityList({ leadId, estimateId, jobId, customerId, showAddBut
                       {activity.type === 'email' ? (
                         <div
                           className="prose prose-sm max-w-none dark:prose-invert"
-                          dangerouslySetInnerHTML={{ __html: activity.content }}
+                          dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(activity.content) }}
                         />
                       ) : (
                         <p className="whitespace-pre-wrap">{activity.content}</p>

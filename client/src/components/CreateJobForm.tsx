@@ -184,7 +184,7 @@ export function CreateJobForm({ onSuccess, onCancel }: CreateJobFormProps) {
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="status">Status</Label>
-          <Select value={selectedStatus} onValueChange={(value: any) => setValue("status", value)}>
+          <Select value={selectedStatus} onValueChange={(value: string) => setValue("status", value)}>
             <SelectTrigger id="status" data-testid="select-status">
               <SelectValue placeholder="Select status" />
             </SelectTrigger>
@@ -199,7 +199,7 @@ export function CreateJobForm({ onSuccess, onCancel }: CreateJobFormProps) {
 
         <div className="space-y-2">
           <Label htmlFor="priority">Priority</Label>
-          <Select value={selectedPriority} onValueChange={(value: any) => setValue("priority", value)}>
+          <Select value={selectedPriority} onValueChange={(value: string) => setValue("priority", value)}>
             <SelectTrigger id="priority" data-testid="select-priority">
               <SelectValue placeholder="Select priority" />
             </SelectTrigger>
