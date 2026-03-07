@@ -55,6 +55,7 @@ export default function Contacts() {
     hasNextPage,
     isFetchingNextPage,
     isLoading,
+    isError,
   } = useInfiniteQuery({
     queryKey: ["/api/contacts/with-counts", { search: searchQuery }],
     queryFn: async ({ pageParam }) => {
@@ -123,7 +124,15 @@ export default function Contacts() {
         </div>
       )}
 
-      {!isLoading && contacts.length === 0 && (
+      {isError && !isLoading && (
+        <EmptyState
+          icon={BookUser}
+          title="Could not load contacts"
+          description="There was a problem connecting to the server. Please try refreshing the page."
+        />
+      )}
+
+      {!isError && !isLoading && contacts.length === 0 && (
         <EmptyState
           icon={BookUser}
           title="No contacts found"
