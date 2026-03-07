@@ -276,6 +276,7 @@ export const leads = pgTable("leads", {
   utmContent: text("utm_content"),
   pageUrl: text("page_url"), // Page where this lead was submitted
   rawPayload: text("raw_payload"), // Store the raw webhook payload for debugging
+  archived: boolean("archived").notNull().default(false), // Archived leads are hidden from main view but not deleted
   followUpDate: timestamp("follow_up_date"), // Follow-up date for this specific lead
   convertedAt: timestamp("converted_at"), // When this lead was converted to customer/estimate/job
   convertedToEstimateId: varchar("converted_to_estimate_id").references(() => estimates.id), // If converted to estimate

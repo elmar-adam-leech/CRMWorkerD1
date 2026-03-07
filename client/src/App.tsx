@@ -33,6 +33,7 @@ import ResetPassword from "@/pages/ResetPassword";
 import UserManagement from "@/pages/UserManagement";
 import EnhancedDialpadSetup from "@/pages/EnhancedDialpadSetup";
 import PublicBooking from "@/pages/PublicBooking";
+import Contacts from "@/pages/Contacts";
 import NotFound from "@/pages/not-found";
 
 function Router({ isAuthenticated, onLogin, isLoading, loginError, globalSearch = "" }: { 
@@ -54,6 +55,7 @@ function Router({ isAuthenticated, onLogin, isLoading, loginError, globalSearch 
       <Route path="/book/:slug" component={PublicBooking} />
       
       {/* Protected routes - redirect to login if not authenticated */}
+      <Route path="/contacts" component={() => isAuthenticated ? <Contacts /> : loginFallback} />
       <Route path="/leads" component={() => isAuthenticated ? <Leads externalSearch={globalSearch} /> : loginFallback} />
       <Route path="/follow-ups" component={() => isAuthenticated ? <FollowUps /> : loginFallback} />
       <Route path="/estimates" component={() => isAuthenticated ? <Estimates externalSearch={globalSearch} /> : loginFallback} />

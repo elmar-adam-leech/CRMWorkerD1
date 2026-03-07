@@ -135,6 +135,7 @@ export interface IStorage {
     status?: string;
     search?: string;
     includeAll?: boolean;
+    archived?: boolean;
   }): Promise<PaginatedContacts>;
   getContactsCount(contractorId: string, options?: {
     type?: 'lead' | 'customer' | 'inactive';
@@ -164,12 +165,14 @@ export interface IStorage {
   findMatchingContact(contractorId: string, emails?: string[], phones?: string[]): Promise<string | null>;
 
   // Lead operations (individual lead submissions)
-  getLeads(contractorId: string): Promise<Lead[]>;
+  getLeads(contractorId: string, includeArchived?: boolean): Promise<Lead[]>;
   getLeadsByContact(contactId: string, contractorId: string): Promise<Lead[]>;
   getLead(id: string, contractorId: string): Promise<Lead | undefined>;
   createLead(lead: Omit<InsertLead, 'contractorId'>, contractorId: string): Promise<Lead>;
   updateLead(id: string, lead: Partial<InsertLead>, contractorId: string): Promise<Lead | undefined>;
   deleteLead(id: string, contractorId: string): Promise<boolean>;
+  archiveLead(id: string, contractorId: string): Promise<Lead | undefined>;
+  restoreLead(id: string, contractorId: string): Promise<Lead | undefined>;
 
   // Job operations
   getJobs(contractorId: string): Promise<Job[]>;
@@ -244,6 +247,14 @@ export interface IStorage {
   }>;
 
   getContactsWithFollowUp(contractorId: string, limit?: number): Promise<Contact[]>;
+  getContactsWithCounts(contractorId: string, options?: {
+    search?: string;
+    cursor?: string;
+    limit?: number;
+  }): Promise<{
+    data: Array<Contact & { leadCount: number; estimateCount: number; jobCount: number }>;
+    pagination: { total: number; hasMore: boolean; nextCursor: string | null };
+  }>;
   getEstimatesWithFollowUp(contractorId: string, limit?: number): Promise<Estimate[]>;
 
   // Contact deduplication

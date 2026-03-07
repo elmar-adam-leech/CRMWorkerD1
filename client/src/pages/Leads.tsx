@@ -9,7 +9,7 @@ import { FollowUpDateModal } from "@/components/FollowUpDateModal";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header-v2";
 import { PageLayout } from "@/components/ui/page-layout";
-import { Plus, Filter, UserPlus, Users, AlertCircle } from "lucide-react";
+import { Plus, Filter, UserPlus, Users, AlertCircle, Archive, ArchiveRestore } from "lucide-react";
 import { LeadKanbanBoard } from "@/components/LeadKanbanBoard";
 import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -43,6 +43,7 @@ const LEAD_STATUSES = ["new", "contacted", "scheduled", "disqualified"] as const
 export default function Leads({ externalSearch = "" }: { externalSearch?: string }) {
   useLocation();
   const [searchQuery, setSearchQuery] = useState(externalSearch);
+  const [showArchived, setShowArchived] = useState(false);
 
   useEffect(() => {
     setSearchQuery(externalSearch);
@@ -132,6 +133,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
       assignedTo: advancedFilters.assignedTo,
       dateFrom: advancedFilters.dateFrom?.toISOString(),
       dateTo: advancedFilters.dateTo?.toISOString(),
+      archived: showArchived,
     }],
     queryFn: async ({ pageParam }) => {
       const url = new URL("/api/contacts/paginated", window.location.origin);
@@ -146,6 +148,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
       if (advancedFilters.assignedTo) url.searchParams.set("assignedTo", advancedFilters.assignedTo);
       if (advancedFilters.dateFrom) url.searchParams.set("dateFrom", advancedFilters.dateFrom.toISOString());
       if (advancedFilters.dateTo) url.searchParams.set("dateTo", advancedFilters.dateTo.toISOString());
+      url.searchParams.set("archived", showArchived ? "true" : "false");
       url.searchParams.set("limit", "50");
       return (await apiRequest("GET", url.toString())).json();
     },
@@ -187,6 +190,34 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
     },
     onError: (error: Error) => {
       toast({ title: "Failed to Delete Lead", description: error.message || "Something went wrong.", variant: "destructive" });
+    },
+  });
+
+  const archiveLeadMutation = useMutation({
+    mutationFn: async (leadId: string) => {
+      return apiRequest("PATCH", `/api/leads/${leadId}/archive`);
+    },
+    onSuccess: () => {
+      toast({ title: "Lead Archived", description: "Lead has been archived and is hidden from the main view." });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts/paginated"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts/status-counts"] });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to Archive Lead", description: error.message || "Something went wrong.", variant: "destructive" });
+    },
+  });
+
+  const restoreLeadMutation = useMutation({
+    mutationFn: async (leadId: string) => {
+      return apiRequest("PATCH", `/api/leads/${leadId}/restore`);
+    },
+    onSuccess: () => {
+      toast({ title: "Lead Restored", description: "Lead has been restored and is visible again." });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts/paginated"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts/status-counts"] });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to Restore Lead", description: error.message || "Something went wrong.", variant: "destructive" });
     },
   });
 
@@ -253,6 +284,14 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
     setDeleteConfirmDialog({ isOpen: true, contactId, contactName: contact.name });
   }, [leads]);
 
+  const handleArchive = useCallback((leadId: string) => {
+    archiveLeadMutation.mutate(leadId);
+  }, [archiveLeadMutation]);
+
+  const handleRestore = useCallback((leadId: string) => {
+    restoreLeadMutation.mutate(leadId);
+  }, [restoreLeadMutation]);
+
   const handleViewDetails = useCallback((contactId: string) => {
     const contact = leads.find((l: Contact) => l.id === contactId);
     if (contact) setContactDetailsModal({ isOpen: true, contact });
@@ -318,13 +357,26 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
   return (
     <PageLayout className={cn(isSelectionMode && "pb-20")}>
       <PageHeader
-        title={terminology?.leadsLabel || "Leads"}
-        description="Manage and track potential customers and sales opportunities"
+        title={showArchived ? `Archived ${terminology?.leadsLabel || "Leads"}` : (terminology?.leadsLabel || "Leads")}
+        description={showArchived ? "Archived leads are preserved but hidden from the main view" : "Manage and track potential customers and sales opportunities"}
         actions={
-          <Button onClick={() => setAddContactModal(true)} data-testid="button-add-lead">
-            <Plus className="h-4 w-4 mr-2" />
-            Add {terminology?.leadLabel || "Lead"}
-          </Button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              variant={showArchived ? "default" : "outline"}
+              onClick={() => setShowArchived((v) => !v)}
+              data-testid="button-toggle-archived"
+            >
+              {showArchived ? <ArchiveRestore className="h-4 w-4 mr-2" /> : <Archive className="h-4 w-4 mr-2" />}
+              <span className="hidden sm:inline">{showArchived ? "Show Active" : "Archived"}</span>
+            </Button>
+            {!showArchived && (
+              <Button onClick={() => setAddContactModal(true)} data-testid="button-add-lead">
+                <Plus className="h-4 w-4 mr-2" />
+                <span className="hidden sm:inline">Add {terminology?.leadLabel || "Lead"}</span>
+                <span className="sm:hidden">Add</span>
+              </Button>
+            )}
+          </div>
         }
       />
 
@@ -378,11 +430,13 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
               onSendEmail={handleSendEmailByEntity}
               onEdit={handleEdit}
               onDelete={handleDelete}
+              onArchive={showArchived ? undefined : handleArchive}
+              onRestore={showArchived ? handleRestore : undefined}
               onEditStatus={handleEditStatus}
               onViewDetails={handleViewDetails}
               onSetFollowUp={handleSetFollowUp}
               onUpdateLead={handleUpdateLead}
-              selectable={true}
+              selectable={!showArchived}
             />
           ))}
         </div>

@@ -1,7 +1,7 @@
 import {
   type Job, type InsertJob,
   type Estimate, type InsertEstimate,
-  jobs, estimates, contacts, activities,
+  jobs, estimates, contacts, activities, leads, messages, calls,
   jobStatusEnum, estimateStatusEnum,
 } from "@shared/schema";
 import { db } from "../db";
@@ -165,10 +165,41 @@ async function updateJob(id: string, job: UpdateJob, contractorId: string): Prom
 }
 
 async function deleteJob(id: string, contractorId: string): Promise<boolean> {
+  const job = await db.select({ contactId: jobs.contactId })
+    .from(jobs)
+    .where(and(eq(jobs.id, id), eq(jobs.contractorId, contractorId)))
+    .limit(1);
+
+  if (job.length === 0) return false;
+  const contactId = job[0].contactId;
+
   const result = await db.delete(jobs)
     .where(and(eq(jobs.id, id), eq(jobs.contractorId, contractorId)))
     .returning();
-  return result.length > 0;
+  if (result.length === 0) return false;
+
+  if (contactId) {
+    const [remainingLeads, remainingEstimates, remainingJobs] = await Promise.all([
+      db.select({ id: leads.id }).from(leads).where(and(eq(leads.contactId, contactId), eq(leads.contractorId, contractorId))).limit(1),
+      db.select({ id: estimates.id }).from(estimates).where(and(eq(estimates.contactId, contactId), eq(estimates.contractorId, contractorId))).limit(1),
+      db.select({ id: jobs.id }).from(jobs).where(and(eq(jobs.contactId, contactId), eq(jobs.contractorId, contractorId))).limit(1),
+    ]);
+    if (remainingLeads.length === 0 && remainingEstimates.length === 0 && remainingJobs.length === 0) {
+      await deleteContactFull(contactId, contractorId);
+    }
+  }
+
+  return true;
+}
+
+async function deleteContactFull(id: string, contractorId: string): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx.delete(messages).where(and(eq(messages.contactId, id), eq(messages.contractorId, contractorId)));
+    await tx.delete(calls).where(and(eq(calls.contactId, id), eq(calls.contractorId, contractorId)));
+    await tx.delete(estimates).where(and(eq(estimates.contactId, id), eq(estimates.contractorId, contractorId)));
+    await tx.delete(jobs).where(and(eq(jobs.contactId, id), eq(jobs.contractorId, contractorId)));
+    await tx.delete(contacts).where(and(eq(contacts.id, id), eq(contacts.contractorId, contractorId)));
+  });
 }
 
 async function getJobByEstimateId(estimateId: string, contractorId: string): Promise<Job | undefined> {
@@ -351,6 +382,14 @@ async function updateEstimate(id: string, estimate: UpdateEstimate, contractorId
 }
 
 async function deleteEstimate(id: string, contractorId: string): Promise<boolean> {
+  const estimate = await db.select({ contactId: estimates.contactId })
+    .from(estimates)
+    .where(and(eq(estimates.id, id), eq(estimates.contractorId, contractorId)))
+    .limit(1);
+
+  if (estimate.length === 0) return false;
+  const contactId = estimate[0].contactId;
+
   await db.delete(activities).where(and(
     eq(activities.estimateId, id),
     eq(activities.contractorId, contractorId)
@@ -358,7 +397,20 @@ async function deleteEstimate(id: string, contractorId: string): Promise<boolean
   const result = await db.delete(estimates)
     .where(and(eq(estimates.id, id), eq(estimates.contractorId, contractorId)))
     .returning();
-  return result.length > 0;
+  if (result.length === 0) return false;
+
+  if (contactId) {
+    const [remainingLeads, remainingEstimates, remainingJobs] = await Promise.all([
+      db.select({ id: leads.id }).from(leads).where(and(eq(leads.contactId, contactId), eq(leads.contractorId, contractorId))).limit(1),
+      db.select({ id: estimates.id }).from(estimates).where(and(eq(estimates.contactId, contactId), eq(estimates.contractorId, contractorId))).limit(1),
+      db.select({ id: jobs.id }).from(jobs).where(and(eq(jobs.contactId, contactId), eq(jobs.contractorId, contractorId))).limit(1),
+    ]);
+    if (remainingLeads.length === 0 && remainingEstimates.length === 0 && remainingJobs.length === 0) {
+      await deleteContactFull(contactId, contractorId);
+    }
+  }
+
+  return true;
 }
 
 async function getEstimatesWithFollowUp(contractorId: string, limit = 200): Promise<Estimate[]> {

@@ -1,7 +1,7 @@
 import {
   type Contact, type InsertContact,
   type Lead, type InsertLead,
-  contacts, leads, messages, activities, estimates, jobs,
+  contacts, leads, messages, activities, estimates, jobs, calls,
   contactStatusEnum,
 } from "@shared/schema";
 import { db } from "../db";
@@ -91,6 +91,7 @@ async function getContactsPaginated(contractorId: string, options: {
   status?: string;
   search?: string;
   includeAll?: boolean;
+  archived?: boolean;
 } = {}): Promise<PaginatedContacts> {
   const limit = Math.min(options.limit || 50, 100);
   const conditions = [eq(contacts.contractorId, contractorId)];
@@ -116,6 +117,16 @@ async function getContactsPaginated(contractorId: string, options: {
       ilike(contacts.address, `%${options.search}%`),
       ilike(contacts.source, `%${options.search}%`)
     )!);
+  }
+  // archived filter: when true, show only contacts whose leads are all archived;
+  // when false (default for lead type), exclude contacts with only archived leads
+  if (options.type === 'lead' && !options.includeAll) {
+    if (options.archived === true) {
+      conditions.push(sql`EXISTS (SELECT 1 FROM leads WHERE leads.contact_id = ${contacts.id} AND leads.contractor_id = ${contractorId} AND leads.archived = true)`);
+      conditions.push(sql`NOT EXISTS (SELECT 1 FROM leads WHERE leads.contact_id = ${contacts.id} AND leads.contractor_id = ${contractorId} AND leads.archived = false)`);
+    } else {
+      conditions.push(sql`EXISTS (SELECT 1 FROM leads WHERE leads.contact_id = ${contacts.id} AND leads.contractor_id = ${contractorId} AND leads.archived = false)`);
+    }
   }
 
   const [contactsData, total] = await Promise.all([
@@ -204,7 +215,17 @@ async function getContactsStatusCounts(contractorId: string, options: {
     )!);
   }
 
+  // For lead-type queries, exclude contacts whose ALL leads are archived
   const isLeadType = !options.type || options.type === 'lead';
+  if (isLeadType) {
+    baseConditions.push(sql`EXISTS (
+      SELECT 1 FROM leads
+      WHERE leads.contact_id = ${contacts.id}
+        AND leads.contractor_id = ${contractorId}
+        AND leads.archived = false
+    )`);
+  }
+
   const result = await db.select({
     all: isLeadType
       ? sql<number>`COUNT(CASE WHEN ${contacts.status} NOT IN ('scheduled', 'disqualified') THEN 1 END)`
@@ -341,11 +362,16 @@ async function deleteContact(id: string, contractorId: string): Promise<boolean>
     )).limit(1);
     if (existing.length === 0) return false;
 
-    await tx.update(messages).set({ contactId: null }).where(and(
+    // Delete all records associated with this contact
+    await tx.delete(messages).where(and(
       eq(messages.contactId, id), eq(messages.contractorId, contractorId)
+    ));
+    await tx.delete(calls).where(and(
+      eq(calls.contactId, id), eq(calls.contractorId, contractorId)
     ));
     await tx.delete(estimates).where(and(eq(estimates.contactId, id), eq(estimates.contractorId, contractorId)));
     await tx.delete(jobs).where(and(eq(jobs.contactId, id), eq(jobs.contractorId, contractorId)));
+    // activities and leads cascade via FK onDelete: cascade
     const result = await tx.delete(contacts).where(and(eq(contacts.id, id), eq(contacts.contractorId, contractorId)));
     return (result.rowCount ?? 0) > 0;
   });
@@ -426,8 +452,10 @@ async function findMatchingContact(contractorId: string, emails?: string[], phon
   return null;
 }
 
-async function getLeads(contractorId: string): Promise<Lead[]> {
-  return await db.select().from(leads).where(eq(leads.contractorId, contractorId)).orderBy(desc(leads.createdAt)).limit(1000);
+async function getLeads(contractorId: string, includeArchived = false): Promise<Lead[]> {
+  const conditions = [eq(leads.contractorId, contractorId)];
+  if (!includeArchived) conditions.push(eq(leads.archived, false));
+  return await db.select().from(leads).where(and(...conditions)).orderBy(desc(leads.createdAt)).limit(1000);
 }
 
 async function getLeadsByContact(contactId: string, contractorId: string): Promise<Lead[]> {
@@ -464,12 +492,40 @@ async function deleteLead(id: string, contractorId: string): Promise<boolean> {
   if (lead.length === 0) return false;
 
   const contactId = lead[0].contactId;
+
+  // Delete the lead row first
+  const result = await db.delete(leads).where(and(eq(leads.id, id), eq(leads.contractorId, contractorId)));
+  if ((result.rowCount ?? 0) === 0) return false;
+
   if (contactId) {
-    return deleteContact(contactId, contractorId);
+    // If the contact has no remaining leads, estimates, or jobs, delete the contact too
+    const [remainingLeads, remainingEstimates, remainingJobs] = await Promise.all([
+      db.select({ id: leads.id }).from(leads).where(and(eq(leads.contactId, contactId), eq(leads.contractorId, contractorId))).limit(1),
+      db.select({ id: estimates.id }).from(estimates).where(and(eq(estimates.contactId, contactId), eq(estimates.contractorId, contractorId))).limit(1),
+      db.select({ id: jobs.id }).from(jobs).where(and(eq(jobs.contactId, contactId), eq(jobs.contractorId, contractorId))).limit(1),
+    ]);
+    if (remainingLeads.length === 0 && remainingEstimates.length === 0 && remainingJobs.length === 0) {
+      await deleteContact(contactId, contractorId);
+    }
   }
 
-  const result = await db.delete(leads).where(and(eq(leads.id, id), eq(leads.contractorId, contractorId)));
-  return (result.rowCount ?? 0) > 0;
+  return true;
+}
+
+async function archiveLead(id: string, contractorId: string): Promise<Lead | undefined> {
+  const result = await db.update(leads)
+    .set({ archived: true, updatedAt: new Date() })
+    .where(and(eq(leads.id, id), eq(leads.contractorId, contractorId)))
+    .returning();
+  return result[0];
+}
+
+async function restoreLead(id: string, contractorId: string): Promise<Lead | undefined> {
+  const result = await db.update(leads)
+    .set({ archived: false, updatedAt: new Date() })
+    .where(and(eq(leads.id, id), eq(leads.contractorId, contractorId)))
+    .returning();
+  return result[0];
 }
 
 /**
@@ -815,6 +871,72 @@ async function bulkCreateContacts(contactList: Array<Omit<InsertContact, 'contra
   return { inserted: result.length };
 }
 
+async function getContactsWithCounts(contractorId: string, options: {
+  search?: string;
+  cursor?: string;
+  limit?: number;
+} = {}): Promise<{
+  data: Array<Contact & { leadCount: number; estimateCount: number; jobCount: number }>;
+  pagination: { total: number; hasMore: boolean; nextCursor: string | null };
+}> {
+  const limit = Math.min(options.limit || 50, 100);
+  const conditions = [eq(contacts.contractorId, contractorId)];
+
+  if (options.cursor) conditions.push(lte(contacts.createdAt, new Date(options.cursor)));
+  if (options.search) {
+    conditions.push(or(
+      ilike(contacts.name, `%${options.search}%`),
+      sql`EXISTS (SELECT 1 FROM unnest(${contacts.emails}) e WHERE e ILIKE ${`%${options.search}%`})`
+    )!);
+  }
+
+  const [rows, totalResult] = await Promise.all([
+    db.select({
+      id: contacts.id,
+      name: contacts.name,
+      emails: contacts.emails,
+      phones: contacts.phones,
+      address: contacts.address,
+      type: contacts.type,
+      status: contacts.status,
+      source: contacts.source,
+      notes: contacts.notes,
+      tags: contacts.tags,
+      followUpDate: contacts.followUpDate,
+      housecallProCustomerId: contacts.housecallProCustomerId,
+      externalId: contacts.externalId,
+      externalSource: contacts.externalSource,
+      contractorId: contacts.contractorId,
+      createdAt: contacts.createdAt,
+      updatedAt: contacts.updatedAt,
+      leadCount: sql<number>`(SELECT COUNT(*) FROM leads WHERE leads.contact_id = ${contacts.id} AND leads.contractor_id = ${contractorId})::int`,
+      estimateCount: sql<number>`(SELECT COUNT(*) FROM estimates WHERE estimates.contact_id = ${contacts.id} AND estimates.contractor_id = ${contractorId})::int`,
+      jobCount: sql<number>`(SELECT COUNT(*) FROM jobs WHERE jobs.contact_id = ${contacts.id} AND jobs.contractor_id = ${contractorId})::int`,
+    })
+    .from(contacts)
+    .where(and(...conditions))
+    .orderBy(desc(contacts.createdAt))
+    .limit(limit + 1),
+
+    db.select({ count: count() }).from(contacts).where(and(
+      eq(contacts.contractorId, contractorId),
+      options.search ? or(
+        ilike(contacts.name, `%${options.search}%`),
+        sql`EXISTS (SELECT 1 FROM unnest(${contacts.emails}) e WHERE e ILIKE ${`%${options.search}%`})`
+      )! : sql`true`
+    )),
+  ]);
+
+  const hasMore = rows.length > limit;
+  const data = hasMore ? rows.slice(0, limit) : rows;
+  const nextCursor = hasMore ? data[data.length - 1].createdAt?.toISOString() ?? null : null;
+
+  return {
+    data: data as Array<Contact & { leadCount: number; estimateCount: number; jobCount: number }>,
+    pagination: { total: totalResult[0]?.count ?? 0, hasMore, nextCursor },
+  };
+}
+
 export const contactMethods = {
   getContacts,
   getLeadTrend,
@@ -838,8 +960,11 @@ export const contactMethods = {
   createLead,
   updateLead,
   deleteLead,
+  archiveLead,
+  restoreLead,
   deduplicateContacts,
   getDashboardMetrics,
   getMetricsAggregates,
   getContactsWithFollowUp,
+  getContactsWithCounts,
 };

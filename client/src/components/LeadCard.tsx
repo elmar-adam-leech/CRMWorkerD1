@@ -5,7 +5,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "./StatusBadge";
 import { CustomerBadge } from "./CustomerBadge";
-import { Phone, Mail, MapPin, Calendar, MoreHorizontal, Edit, Trash2, Settings, CalendarClock, Tag } from "lucide-react";
+import { Phone, Mail, MapPin, Calendar, MoreHorizontal, Edit, Trash2, Settings, CalendarClock, Tag, Archive, ArchiveRestore } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { CommunicationActionButtons } from "./CommunicationActionButtons";
@@ -28,6 +28,8 @@ type LeadCardProps = {
   onSendEmail?: (lead: LeadCardContact) => void;
   onEdit?: (leadId: string) => void;
   onDelete?: (leadId: string) => void;
+  onArchive?: (leadId: string) => void;
+  onRestore?: (leadId: string) => void;
   onEditStatus?: (leadId: string) => void;
   onViewDetails?: (leadId: string) => void;
   onSetFollowUp?: (lead: LeadCardContact) => void;
@@ -35,7 +37,7 @@ type LeadCardProps = {
   selectable?: boolean;
 };
 
-export const LeadCard = memo(function LeadCard({ lead, onContact: _onContact, onSchedule, onSendText, onSendEmail, onEdit, onDelete, onEditStatus, onViewDetails, onSetFollowUp, onUpdateLead, selectable = false }: LeadCardProps) {
+export const LeadCard = memo(function LeadCard({ lead, onContact: _onContact, onSchedule, onSendText, onSendEmail, onEdit, onDelete, onArchive, onRestore, onEditStatus, onViewDetails, onSetFollowUp, onUpdateLead, selectable = false }: LeadCardProps) {
   const { toggleItem, isSelected } = useBulkSelection();
   const [tagsDialogOpen, setTagsDialogOpen] = useState(false);
 
@@ -125,6 +127,18 @@ export const LeadCard = memo(function LeadCard({ lead, onContact: _onContact, on
               </DropdownMenuItem>
             )}
             <DropdownMenuSeparator />
+            {onRestore && (
+              <DropdownMenuItem onClick={() => onRestore(lead.id)} data-testid={`menu-restore-lead-${lead.id}`}>
+                <ArchiveRestore className="h-4 w-4 mr-2" />
+                Restore Lead
+              </DropdownMenuItem>
+            )}
+            {onArchive && (
+              <DropdownMenuItem onClick={() => onArchive(lead.id)} data-testid={`menu-archive-lead-${lead.id}`}>
+                <Archive className="h-4 w-4 mr-2" />
+                Archive Lead
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem 
               onClick={() => onDelete?.(lead.id)} 
               className="text-destructive focus:text-destructive" 

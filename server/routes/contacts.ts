@@ -34,7 +34,7 @@ export function registerContactRoutes(app: Express): void {
   }));
 
   app.get("/api/contacts/paginated", asyncHandler(async (req, res) => {
-    const { cursor, limit, type, status, search, includeAll } = req.query;
+    const { cursor, limit, type, status, search, includeAll, archived } = req.query;
     const options = {
       cursor: cursor as string | undefined,
       limit: limit ? parseInt(limit as string, 10) : 50,
@@ -42,6 +42,7 @@ export function registerContactRoutes(app: Express): void {
       status: status as string | undefined,
       search: search as string | undefined,
       includeAll: includeAll === "true",
+      archived: archived === "true" ? true : archived === "false" ? false : undefined,
     };
     const paginatedContacts = await storage.getContactsPaginated(req.user!.contractorId, options);
     res.json(paginatedContacts);
@@ -87,6 +88,16 @@ export function registerContactRoutes(app: Express): void {
       return;
     }
     res.json(contact);
+  }));
+
+  app.get("/api/contacts/with-counts", asyncHandler(async (req, res) => {
+    const { search, cursor, limit } = req.query;
+    const result = await storage.getContactsWithCounts(req.user!.contractorId, {
+      search: search as string | undefined,
+      cursor: cursor as string | undefined,
+      limit: limit ? parseInt(limit as string, 10) : 50,
+    });
+    res.json(result);
   }));
 
   app.get("/api/contacts/:contactId/leads", asyncHandler(async (req, res) => {
@@ -356,6 +367,26 @@ export function registerContactRoutes(app: Express): void {
     });
 
     res.json(contact);
+  }));
+
+  app.patch("/api/leads/:id/archive", asyncHandler(async (req, res) => {
+    const lead = await storage.archiveLead(req.params.id, req.user!.contractorId);
+    if (!lead) {
+      res.status(404).json({ message: "Lead not found" });
+      return;
+    }
+    broadcastToContractor(req.user!.contractorId, { type: 'lead_updated', leadId: req.params.id });
+    res.json(lead);
+  }));
+
+  app.patch("/api/leads/:id/restore", asyncHandler(async (req, res) => {
+    const lead = await storage.restoreLead(req.params.id, req.user!.contractorId);
+    if (!lead) {
+      res.status(404).json({ message: "Lead not found" });
+      return;
+    }
+    broadcastToContractor(req.user!.contractorId, { type: 'lead_updated', leadId: req.params.id });
+    res.json(lead);
   }));
 
   app.delete("/api/contacts/:id", requireManagerOrAdmin, asyncHandler(async (req, res) => {

@@ -10,6 +10,7 @@ import {
   FileText,
   Workflow,
   Clock,
+  BookUser,
 } from "lucide-react";
 import {
   Sidebar,
@@ -40,6 +41,11 @@ const getMenuItems = (terminology?: any) => [
     title: terminology?.leadsLabel || "Leads",
     url: "/leads",
     icon: Users,
+  },
+  {
+    title: "Contacts",
+    url: "/contacts",
+    icon: BookUser,
   },
   {
     title: terminology?.estimatesLabel || "Estimates",
