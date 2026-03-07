@@ -5,6 +5,44 @@ import { housecallProService } from './housecall-pro-service';
 import type { TimeSlot, BusyWindow, AvailableSlot, AddressComponents, BookingRequest, BookingResult, SalespersonInfo } from './types/scheduling';
 import { parseAddressString } from './types/scheduling';
 
+/**
+ * Housecall Pro employee object shape as returned by the HCP API.
+ *
+ * The HCP API is not strictly typed in our codebase (no SDK). This interface
+ * captures the fields we actually use. Any additional fields returned by HCP
+ * are simply ignored. If the HCP API changes field names, update this interface
+ * and the usages below — the TypeScript compiler will highlight every call-site.
+ *
+ * Fields marked optional reflect uncertainty about whether HCP always returns them
+ * (the API docs are inconsistent). Runtime guards (|| null) are used at each access.
+ */
+interface HCPEmployee {
+  id: string;
+  email: string;
+  first_name?: string;
+  last_name?: string;
+  /** `true` if the employee is active. HCP returns this field inconsistently — some
+   *  responses use `is_active`, others `active`. Both are checked at usage sites. */
+  is_active?: boolean;
+  active?: boolean;
+  /** Working day schedule data — format varies by HCP account configuration. */
+  working_days?: number[];
+  work_days?: number[];
+  schedule?: {
+    working_days?: number[];
+    start_time?: string;
+    end_time?: string;
+  };
+  working_hours_start?: string;
+  working_hours_end?: string;
+  work_start_time?: string;
+  work_end_time?: string;
+  /** Average rating for the employee, used in salesperson scoring. */
+  average_rating?: number;
+  /** Total number of jobs completed, used in salesperson scoring. */
+  total_jobs?: number;
+}
+
 export type { TimeSlot, BusyWindow, AvailableSlot, AddressComponents, BookingRequest, BookingResult, SalespersonInfo };
 
 const SLOT_DURATION_MINUTES = 60;
@@ -27,16 +65,15 @@ export class HousecallSchedulingService {
         return result;
       }
       
-      const hcpUsers = hcpUsersResponse.data;
+      const hcpUsers = hcpUsersResponse.data as HCPEmployee[];
       result.hcpUsersFound = hcpUsers.length;
-      console.log('[scheduling-sync] Found', hcpUsers.length, 'HCP users:', hcpUsers.map((u: any) => u.email));
+      console.log('[scheduling-sync] Found', hcpUsers.length, 'HCP users:', hcpUsers.map((u) => u.email));
       
       for (const hcpUser of hcpUsers) {
-        // Debug: log the actual is_active value
-        console.log('[scheduling-sync] Processing HCP user:', hcpUser.email, 'is_active:', hcpUser.is_active, 'active:', (hcpUser as any).active);
+        console.log('[scheduling-sync] Processing HCP user:', hcpUser.email, 'is_active:', hcpUser.is_active, 'active:', hcpUser.active);
         
         // Skip users without email. Only skip if is_active is explicitly false (not undefined)
-        const isActive = hcpUser.is_active !== false && (hcpUser as any).active !== false;
+        const isActive = hcpUser.is_active !== false && hcpUser.active !== false;
         if (!hcpUser.email) {
           console.log('[scheduling-sync] Skipping emailless user:', hcpUser.first_name);
           continue;
@@ -119,14 +156,16 @@ export class HousecallSchedulingService {
             ))
             .limit(1);
           
-          // Extract working hours from HCP employee if available
-          // HCP typically provides schedule data in employee object
-          const hcpWorkingDays = (hcpUser as any).working_days || (hcpUser as any).work_days || 
-            (hcpUser as any).schedule?.working_days || null;
-          const hcpWorkingHoursStart = (hcpUser as any).working_hours_start || 
-            (hcpUser as any).schedule?.start_time || (hcpUser as any).work_start_time || null;
-          const hcpWorkingHoursEnd = (hcpUser as any).working_hours_end || 
-            (hcpUser as any).schedule?.end_time || (hcpUser as any).work_end_time || null;
+          // Extract working hours from HCP employee if available.
+          // HCP provides schedule data in multiple possible field locations depending
+          // on the account configuration and API version — the HCPEmployee interface
+          // documents all known variants. Fall back to null if none are present.
+          const hcpWorkingDays = hcpUser.working_days || hcpUser.work_days ||
+            hcpUser.schedule?.working_days || null;
+          const hcpWorkingHoursStart = hcpUser.working_hours_start ||
+            hcpUser.schedule?.start_time || hcpUser.work_start_time || null;
+          const hcpWorkingHoursEnd = hcpUser.working_hours_end ||
+            hcpUser.schedule?.end_time || hcpUser.work_end_time || null;
           
           // Default working hours if not provided by HCP (Mon-Fri, 8AM-5PM)
           const defaultWorkingDays = [1, 2, 3, 4, 5]; // Monday to Friday

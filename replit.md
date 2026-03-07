@@ -28,11 +28,27 @@ The backend is built with Node.js and Express.js, providing a RESTful API with c
 - **Real-time**: WebSocket-based architecture with reconnect/stale-data banner in DashboardLayout.
 - **Security**: HTTP-only cookies, role-based access control, AES-256-GCM encryption.
 
+## Running TODO List
+See `TODO.md` at the repo root for the prioritized list of open improvements, security items, performance work, and technical debt. Update it whenever you find new issues or complete existing ones.
+
+---
+
+## Known Scaling Limitations
+
+These are single-process assumptions that work fine now but require architectural changes before horizontal scaling:
+
+1. **WebSocket broadcasts** (`server/websocket.ts`): `broadcastToContractor` only reaches clients on the current Node.js process. Fix: Redis pub/sub fan-out.
+2. **Rate limiter** (`server/middleware/rate-limiter.ts`): In-memory `Map` store — counts are not shared across processes. Fix: Redis-backed store (e.g. `rate-limit-redis`).
+3. **Contact deduplication** (`server/storage/contacts.ts`): The Union-Find graph is built entirely in Node.js heap. A 50k-contact ceiling guard is in place. Fix: migrate to SQL-side MERGE using a temp table.
+
+---
+
 ## Code Quality & Architecture Notes (Technical Health Pass)
 
 ### Server Utilities (`server/utils/`)
 - **`errors.ts`** — `getErrorMessage(e: unknown): string` helper for typed catch blocks.
 - **`logger.ts`** — Thin structured logger (`logger('ModuleName')`). All route files and the workflow engine use this instead of raw `console.*`.
+- **`auth-helpers.ts`** — `getAuthUser(req, res)` helper that returns the typed JWT payload or sends a 401 and returns null. Use this instead of `req.user!` in route handlers to eliminate non-null assertions.
 - **`workflow/entity-adapter.ts`** — `toWorkflowEvent(entity)` adapter that safely converts typed Drizzle entities to `Record<string, unknown>` for the workflow engine. Eliminates all `as unknown as Record<string, unknown>` casts.
 
 ### Storage Module (`server/storage.ts`)

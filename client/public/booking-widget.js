@@ -12,7 +12,9 @@
           return new URL(src).origin;
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      console.warn('[BookingWidget] Could not determine script origin, falling back to window.location.origin:', e);
+    }
     return window.location.origin;
   }
   

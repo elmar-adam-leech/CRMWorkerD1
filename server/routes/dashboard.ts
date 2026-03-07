@@ -3,6 +3,19 @@ import { storage } from "../storage";
 import type { AuthenticatedRequest } from "../auth-service";
 import { asyncHandler } from "../utils/async-handler";
 
+// Minimal types for the Google Places API v1 responses used in this file.
+// Only fields actually consumed by the handlers are listed. See:
+//   https://developers.google.com/maps/documentation/places/web-service/reference/rest/v1/places
+interface GooglePlacesAutocompleteResponse {
+  suggestions?: unknown[];
+  error?: { message: string; status: string };
+}
+interface GooglePlacesDetailsResponse {
+  formattedAddress?: string;
+  addressComponents?: unknown[];
+  error?: { message: string; status: string };
+}
+
 export function registerDashboardRoutes(app: Express): void {
   // Google Places API proxy — authenticated, server-side calls bypass browser referrer restrictions
   app.get('/api/places/autocomplete', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
@@ -29,7 +42,7 @@ export function registerDashboardRoutes(app: Express): void {
         includedRegionCodes: ['us'],
       }),
     });
-    const data = await response.json() as any;
+    const data = await response.json() as GooglePlacesAutocompleteResponse;
     if (!response.ok) {
       console.error('[Places Autocomplete] API error:', data);
       res.status(502).json({ error: 'Places API error', details: data });
@@ -60,7 +73,7 @@ export function registerDashboardRoutes(app: Express): void {
         },
       }
     );
-    const data = await response.json() as any;
+    const data = await response.json() as GooglePlacesDetailsResponse;
     if (!response.ok) {
       console.error('[Places Details] API error:', data);
       res.status(502).json({ error: 'Places API error', details: data });

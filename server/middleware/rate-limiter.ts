@@ -5,6 +5,16 @@ interface RateLimitEntry {
   resetAt: number;
 }
 
+// ─── Scaling Note ──────────────────────────────────────────────────────────
+// This rate limiter uses an in-process Map for storage. This means:
+//   1. Rate limit counts are NOT shared across multiple Node.js processes or pods.
+//   2. If the app is horizontally scaled, each instance enforces limits independently
+//      so the effective limit per IP becomes (maxRequests × process count).
+//
+// To fix this at scale, replace `rateLimitStore` with a Redis-backed adapter
+// (e.g. `rate-limit-redis` or `ioredis`). The `createRateLimiter` API can remain
+// identical — only the store implementation changes.
+// ───────────────────────────────────────────────────────────────────────────
 const rateLimitStore = new Map<string, RateLimitEntry>();
 
 // Hard upper bound on in-memory store size. Without this, a DDoS flood of
@@ -86,9 +96,13 @@ export function createRateLimiter(options: RateLimitOptions) {
   };
 }
 
+// Tightened to 10/min (down from 30/min): this endpoint performs heavy
+// scheduling math and external HCP API calls, making it a potential DoS vector
+// for an unauthenticated route. 10 requests/min is still generous for real
+// booking traffic but meaningfully limits automated abuse.
 export const publicBookingRateLimiter = createRateLimiter({
   windowMs: 60 * 1000,
-  maxRequests: 30,
+  maxRequests: 10,
   keyPrefix: 'public-booking',
 });
 

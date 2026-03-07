@@ -154,6 +154,18 @@ export function setupWebSocket(server: Server) {
   log('[WebSocket] Server initialized on path /ws');
 }
 
+// ─── Scaling Note ──────────────────────────────────────────────────────────
+// The WebSocket server operates in single-process mode: `wss.clients` only
+// contains connections on THIS Node.js process. If the app is ever scaled
+// horizontally (multiple processes / pods), broadcasts will silently fail to
+// reach clients connected to other processes.
+//
+// To fix this at scale, replace the in-process broadcast functions below with
+// a Redis pub/sub fan-out (e.g. `ioredis` publish on the source process, and
+// subscribe + re-broadcast on all worker processes). This requires zero changes
+// to the broadcast call-sites — only the implementation here changes.
+// ───────────────────────────────────────────────────────────────────────────
+
 // Broadcast a message to all connected clients of a specific contractor
 export function broadcastToContractor(contractorId: string, message: any) {
   if (!wss) {

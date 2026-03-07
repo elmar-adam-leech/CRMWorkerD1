@@ -494,8 +494,29 @@ async function deleteLead(id: string, contractorId: string): Promise<boolean> {
  */
 const DEDUP_BATCH_SIZE = 2_000;
 
+// Safety ceiling for deduplication. The Union-Find graph is built entirely in
+// Node.js heap memory, so very large tenants can OOM the process. This guard
+// prevents that by refusing to run deduplication above the threshold and
+// returning early with a clear error. The limit can be raised once the
+// algorithm is migrated to a SQL-side MERGE / temp-table approach (see the
+// DEDUP_BATCH_SIZE comment above for the migration path).
+const DEDUP_MAX_CONTACTS = 50_000;
+
 async function deduplicateContacts(contractorId: string): Promise<{ duplicatesFound: number; contactsMerged: number; contactsDeleted: number }> {
   console.log(`[deduplicateContacts] Starting deduplication for contractor: ${contractorId}`);
+
+  // Pre-flight count check — bail early before loading any rows into memory
+  const [countRow] = await db
+    .select({ total: sql<number>`COUNT(*)::int` })
+    .from(contacts)
+    .where(eq(contacts.contractorId, contractorId));
+  const totalContacts = countRow?.total ?? 0;
+
+  if (totalContacts > DEDUP_MAX_CONTACTS) {
+    const msg = `[deduplicateContacts] Aborted: tenant has ${totalContacts} contacts which exceeds the in-memory deduplication limit of ${DEDUP_MAX_CONTACTS}. Migrate to SQL-side MERGE to lift this restriction.`;
+    console.error(msg);
+    throw new Error(`Contact deduplication is limited to ${DEDUP_MAX_CONTACTS} contacts. This tenant has ${totalContacts}.`);
+  }
 
   const phoneToContacts = new Map<string, string[]>();
   const emailToContacts = new Map<string, string[]>();

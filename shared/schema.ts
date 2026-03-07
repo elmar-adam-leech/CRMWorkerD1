@@ -1,3 +1,32 @@
+/**
+ * Shared Database Schema
+ *
+ * Multi-Tenancy Isolation Strategy:
+ * ─────────────────────────────────
+ * Every business-data table (contacts, leads, jobs, estimates, messages, etc.)
+ * includes a `contractorId` column that references `contractors.id`. This is the
+ * primary mechanism for data isolation between tenants (companies).
+ *
+ * Rules for anyone adding new tables or queries:
+ *   1. Every table that stores business data MUST have a `contractorId` column
+ *      referencing `contractors.id`.
+ *   2. Every query against these tables MUST include `eq(table.contractorId, contractorId)`
+ *      in its WHERE clause. The storage layer enforces this — never query without it.
+ *   3. The `requireAuth` middleware populates `req.user.contractorId` from the JWT.
+ *      Route handlers must pass this value to every storage call.
+ *   4. The `requireContractorAccess` middleware adds a second check that the token's
+ *      contractorId is valid for the tenant being accessed.
+ *
+ * Failure to follow these rules will result in cross-tenant data leakage.
+ *
+ * Insert Schemas:
+ * ───────────────
+ * Each table has a corresponding Zod insert schema (e.g. `insertContactSchema`) created
+ * with `createInsertSchema` from `drizzle-zod`. These omit auto-generated fields like
+ * `id` and `createdAt`. Use `z.infer<typeof insertXxxSchema>` for the insert type and
+ * `typeof xxxTable.$inferSelect` for the full select type.
+ */
+
 import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, integer, timestamp, decimal, pgEnum, boolean, unique, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";

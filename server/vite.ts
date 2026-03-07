@@ -20,9 +20,15 @@ export function log(message: string, source = "express") {
 }
 
 export async function setupVite(app: Express, server: Server) {
+  // clientPort tells the Vite HMR client which port to use when constructing
+  // its WebSocket URL. On Replit (and most reverse-proxy setups) the public
+  // URL has no explicit port (HTTPS on 443), so window.location.port is "".
+  // Without clientPort, Vite's fallback path constructs an invalid URL like
+  // wss://localhost:undefined/... which throws an unhandled rejection on every
+  // page load. Setting clientPort: 443 avoids that fallback entirely.
   const serverOptions = {
     middlewareMode: true,
-    hmr: { server },
+    hmr: { server, clientPort: 443 },
     allowedHosts: true as const,
   };
 
