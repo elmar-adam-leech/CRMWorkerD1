@@ -80,9 +80,10 @@ export function setupWebSocket(server: Server) {
         
         wss!.emit('connection', ws, request);
       });
-    } else {
-      socket.destroy();
     }
+    // Non-/ws paths: do nothing — Vite's HMR upgrade handler (registered earlier)
+    // will process those connections. Destroying them here was breaking Vite HMR,
+    // causing the page to reload every few seconds.
   });
 
   // Handle WebSocket connections

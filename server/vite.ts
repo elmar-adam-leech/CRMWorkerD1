@@ -20,15 +20,17 @@ export function log(message: string, source = "express") {
 }
 
 export async function setupVite(app: Express, server: Server) {
-  // clientPort tells the Vite HMR client which port to use when constructing
-  // its WebSocket URL. On Replit (and most reverse-proxy setups) the public
-  // URL has no explicit port (HTTPS on 443), so window.location.port is "".
-  // Without clientPort, Vite's fallback path constructs an invalid URL like
-  // wss://localhost:undefined/... which throws an unhandled rejection on every
-  // page load. Setting clientPort: 443 avoids that fallback entirely.
+  // HMR is disabled because Replit's reverse proxy strips the
+  // `Sec-WebSocket-Protocol: vite-hmr` header that Vite's HMR handshake
+  // requires. Without it the handshake fails with a dirty close, Vite polls
+  // until the server responds, then calls location.reload() — producing the
+  // "page keeps refreshing every few seconds" symptom the user reported.
+  // Disabling HMR stops the injected client from running at all, so there
+  // are no reconnect loops and no forced reloads. The app's own /ws WebSocket
+  // (for live data updates) is unaffected.
   const serverOptions = {
     middlewareMode: true,
-    hmr: { server, clientPort: 443 },
+    hmr: false,
     allowedHosts: true as const,
   };
 
