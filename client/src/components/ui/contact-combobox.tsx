@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useContact } from "@/hooks/useContact";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -59,17 +60,7 @@ export function ContactCombobox({ value, onChange, error }: ContactComboboxProps
     enabled: open,
   });
 
-  const { data: selectedContact } = useQuery<Contact | null>({
-    queryKey: ['/api/contacts', value],
-    queryFn: async () => {
-      try {
-        return await (await apiRequest('GET', `/api/contacts/${value}`)).json();
-      } catch {
-        return null;
-      }
-    },
-    enabled: !!value,
-  });
+  const { data: selectedContact } = useContact(value || null);
 
   const {
     register,

@@ -57,6 +57,11 @@ export function registerActivityRoutes(app: Express): void {
       res.status(404).json({ message: "Activity not found" });
       return;
     }
+    broadcastToContractor(req.user.contractorId, {
+      type: 'activity_updated',
+      activityId: activity.id,
+      contactId: activity.contactId ?? undefined,
+    });
     res.json(activity);
   }));
 
@@ -66,6 +71,10 @@ export function registerActivityRoutes(app: Express): void {
       res.status(404).json({ message: "Activity not found" });
       return;
     }
+    broadcastToContractor(req.user.contractorId, {
+      type: 'activity_deleted',
+      activityId: req.params.id,
+    });
     res.json({ message: "Activity deleted successfully" });
   }));
 }

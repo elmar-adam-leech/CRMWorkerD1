@@ -82,11 +82,10 @@ export function registerLeadWebhookRoutes(app: Express): void {
       if (validationErrors.length > 0) {
         console.error('[webhook] Validation errors:', validationErrors);
         const detailedMessage = `Validation failed: ${validationErrors.join('; ')}`;
-        res.status(400).json({ 
+        res.status(400).json({
           error: "Validation failed",
           message: detailedMessage,
           validationErrors,
-          receivedData: { name, email, phone, address, source, notes, followUpDate },
           fix: "Review the validation errors above and ensure all required fields are provided with correct data types"
         });
         return;

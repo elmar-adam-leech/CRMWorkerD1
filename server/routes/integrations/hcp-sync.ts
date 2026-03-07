@@ -1,15 +1,15 @@
-import type { Express, Response } from "express";
+import type { Express } from "express";
 import { storage } from "../../storage";
 import { housecallProService } from "../../housecall-pro-service";
-import { requireAuth, requireAdmin, type AuthedRequest } from "../../auth-service";
+import { requireAuth, requireAdmin } from "../../auth-service";
 import { syncStatus } from "../../sync-status-store";
 import { mapHcpEstimateStatus } from "../../sync/housecall-pro";
 import crypto from "crypto";
 import { asyncHandler } from "../../utils/async-handler";
 
 export function registerHcpSyncRoutes(app: Express): void {
-  app.post("/api/housecall-pro/sync", asyncHandler(async (req: AuthedRequest, res: Response) => {
-    const contractorId = req.user!.contractorId;
+  app.post("/api/housecall-pro/sync", asyncHandler(async (req, res) => {
+    const contractorId = req.user.contractorId;
     const syncType = (req.query.type as string) || 'all';
 
     const isIntegrationEnabled = await storage.isIntegrationEnabled(contractorId, 'housecall-pro');
@@ -31,7 +31,7 @@ export function registerHcpSyncRoutes(app: Express): void {
 
     console.log(`[housecall-pro-sync] Starting manual sync (type=${syncType}) for tenant ${contractorId}`);
 
-    const syncStartDate = await storage.getHousecallProSyncStartDate(req.user!.contractorId);
+    const syncStartDate = await storage.getHousecallProSyncStartDate(contractorId);
     console.log(`[housecall-pro-sync] Using sync start date filter: ${syncStartDate ? syncStartDate.toISOString() : 'none'}`);
 
     let newEstimates = 0;
@@ -81,7 +81,7 @@ export function registerHcpSyncRoutes(app: Express): void {
           startTime: new Date()
         });
 
-        const estimatesResult = await housecallProService.getEstimates(req.user!.contractorId, estimatesParams);
+        const estimatesResult = await housecallProService.getEstimates(contractorId, estimatesParams);
         if (!estimatesResult.success) {
           console.error(`[housecall-pro-sync] Failed to fetch estimates page ${page}: ${estimatesResult.error}`);
           res.status(400).json({ message: estimatesResult.error });
@@ -130,7 +130,7 @@ export function registerHcpSyncRoutes(app: Express): void {
 
       for (const hcpEstimate of allHousecallProEstimates) {
         try {
-          const existingEstimate = await storage.getEstimateByHousecallProEstimateId(hcpEstimate.id, req.user!.contractorId);
+          const existingEstimate = await storage.getEstimateByHousecallProEstimateId(hcpEstimate.id, contractorId);
 
           if (existingEstimate) {
             const updateData = {
@@ -140,7 +140,7 @@ export function registerHcpSyncRoutes(app: Express): void {
               scheduledStart: hcpEstimate.scheduled_start ? new Date(hcpEstimate.scheduled_start) : null,
             };
 
-            await storage.updateEstimate(existingEstimate.id, updateData, req.user!.contractorId);
+            await storage.updateEstimate(existingEstimate.id, updateData, contractorId);
             updatedEstimates++;
             console.log(`[housecall-pro-sync] Updated estimate ${existingEstimate.id} from HCP ${hcpEstimate.id}`);
           } else {
@@ -150,7 +150,7 @@ export function registerHcpSyncRoutes(app: Express): void {
               continue;
             }
 
-            let localCustomer = await storage.getContactByExternalId(customerData.id, 'housecall-pro', req.user!.contractorId);
+            let localCustomer = await storage.getContactByExternalId(customerData.id, 'housecall-pro', contractorId);
 
             if (!localCustomer) {
               const extractEmail = (customer?: any) => {
@@ -171,7 +171,7 @@ export function registerHcpSyncRoutes(app: Express): void {
                 updatedAt: hcpEstimate.modified_at ? new Date(hcpEstimate.modified_at) : new Date(),
               };
 
-              localCustomer = await storage.createContact(newCustomerData, req.user!.contractorId);
+              localCustomer = await storage.createContact(newCustomerData, contractorId);
               console.log(`[housecall-pro-sync] Created customer ${localCustomer.id} from embedded data in estimate ${hcpEstimate.id}`);
             }
 
@@ -209,7 +209,7 @@ export function registerHcpSyncRoutes(app: Express): void {
               externalSource: 'housecall-pro' as const,
             };
 
-            await storage.createEstimate(estimateData, req.user!.contractorId);
+            await storage.createEstimate(estimateData, contractorId);
             newEstimates++;
             console.log(`[housecall-pro-sync] Created estimate ${estimateData.id} from HCP ${hcpEstimate.id}`);
           }
@@ -260,8 +260,8 @@ export function registerHcpSyncRoutes(app: Express): void {
     });
   }));
 
-  app.get("/api/sync-status", asyncHandler(async (req: AuthedRequest, res: Response) => {
-    const contractorId = req.user!.contractorId;
+  app.get("/api/sync-status", asyncHandler(async (req, res) => {
+    const contractorId = req.user.contractorId;
     const status = syncStatus.get(contractorId) || {
       isRunning: false,
       progress: null,
@@ -278,15 +278,15 @@ export function registerHcpSyncRoutes(app: Express): void {
     });
   }));
 
-  app.get("/api/housecall-pro/sync-start-date", requireAuth, requireAdmin, asyncHandler(async (req: AuthedRequest, res: Response) => {
-    const syncStartDate = await storage.getHousecallProSyncStartDate(req.user!.contractorId);
+  app.get("/api/housecall-pro/sync-start-date", requireAuth, requireAdmin, asyncHandler(async (req, res) => {
+    const syncStartDate = await storage.getHousecallProSyncStartDate(req.user.contractorId);
     res.json({ syncStartDate: syncStartDate ? syncStartDate.toISOString() : null });
   }));
 
-  app.post("/api/housecall-pro/sync-start-date", requireAuth, requireAdmin, asyncHandler(async (req: AuthedRequest, res: Response) => {
+  app.post("/api/housecall-pro/sync-start-date", requireAuth, requireAdmin, asyncHandler(async (req, res) => {
     const { syncStartDate } = req.body;
     const parsedDate = syncStartDate ? new Date(syncStartDate) : null;
-    await storage.setHousecallProSyncStartDate(req.user!.contractorId, parsedDate);
+    await storage.setHousecallProSyncStartDate(req.user.contractorId, parsedDate);
     res.json({
       message: "Sync start date updated successfully",
       syncStartDate: parsedDate ? parsedDate.toISOString() : null

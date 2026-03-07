@@ -10,28 +10,25 @@ import bcrypt from "bcrypt";
 
 export function registerUserRoutes(app: Express): void {
   app.get("/api/users", requireAuth, requireManagerOrAdmin, asyncHandler(async (req, res) => {
-    // Join with user_contractors to get all users associated with this contractor
-    // This supports multi-contractor users who may have a different primary contractorId
     const contractorUsers = await db
       .select({
         id: users.id,
         username: users.username,
         name: users.name,
         email: users.email,
-        role: userContractors.role, // Use role from junction table (per-contractor)
+        role: userContractors.role,
         contractorId: userContractors.contractorId,
-        dialpadDefaultNumber: userContractors.dialpadDefaultNumber, // Use per-contractor default number
+        dialpadDefaultNumber: userContractors.dialpadDefaultNumber,
         canManageIntegrations: userContractors.canManageIntegrations,
         createdAt: users.createdAt
       })
       .from(userContractors)
       .innerJoin(users, eq(userContractors.userId, users.id))
-      .where(eq(userContractors.contractorId, req.user!.contractorId));
-    
+      .where(eq(userContractors.contractorId, req.user.contractorId));
+
     res.json(contractorUsers);
   }));
 
-  // Create new user (admin only)
   app.post("/api/users", requireAuth, requireAdmin, asyncHandler(async (req, res) => {
     const { name, email, password, role, username } = req.body;
 
@@ -40,65 +37,53 @@ export function registerUserRoutes(app: Express): void {
       return;
     }
 
-    // Check if this email already exists for THIS contractor
-    const existingUserForContractor = await storage.getUserByEmailAndContractor(email, req.user!.contractorId);
+    const existingUserForContractor = await storage.getUserByEmailAndContractor(email, req.user.contractorId);
     if (existingUserForContractor) {
       res.status(400).json({ message: "User with this email already exists in your organization" });
       return;
     }
 
-    // Check username and email globally in parallel — both are independent existence checks
     const [existingUsername, existingGlobalUser] = await Promise.all([
       storage.getUserByUsername(username),
       storage.getUserByEmail(email),
     ]);
-    
-    // Multi-contractor scenario: Username and email both exist and match the same user
+
     if (existingUsername && existingGlobalUser && existingUsername.id === existingGlobalUser.id) {
-      // This is an existing user trying to join a second company - add them
       const newUser = existingGlobalUser;
-      
-      // Verify the password matches (security)
       const isPasswordValid = await bcrypt.compare(password, newUser.password);
       if (!isPasswordValid) {
         res.status(401).json({ message: "Invalid password for existing account" });
         return;
       }
-      
-      // Add user to contractor
       await storage.addUserToContractor({
         userId: newUser.id,
-        contractorId: req.user!.contractorId,
+        contractorId: req.user.contractorId,
         role: role || 'user',
         canManageIntegrations: role === 'admin',
       });
-      
       res.status(201).json({
         id: newUser.id,
         username: newUser.username,
         name: newUser.name,
         email: newUser.email,
         role: role || 'user',
-        contractorId: req.user!.contractorId,
+        contractorId: req.user.contractorId,
         createdAt: newUser.createdAt,
         message: "Existing user added to organization"
       });
       return;
     }
-    
-    // Username exists but with different email - true conflict
+
     if (existingUsername && (!existingGlobalUser || existingUsername.id !== existingGlobalUser.id)) {
       res.status(400).json({ message: "Username already taken" });
       return;
     }
-    
-    // Email exists but username doesn't match - shouldn't happen but handle gracefully
+
     if (existingGlobalUser && !existingUsername) {
       res.status(400).json({ message: "User with this email exists but username doesn't match" });
       return;
     }
-    
-    // Neither username nor email exist - create new user
+
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const newUser = await db.insert(users).values({
@@ -107,13 +92,12 @@ export function registerUserRoutes(app: Express): void {
       username,
       password: hashedPassword,
       role: role || 'user',
-      contractorId: req.user!.contractorId
+      contractorId: req.user.contractorId
     }).returning().then(result => result[0]);
-    
-    // Add user to contractor in user_contractors table
+
     await storage.addUserToContractor({
       userId: newUser.id,
-      contractorId: req.user!.contractorId,
+      contractorId: req.user.contractorId,
       role: role || 'user',
       canManageIntegrations: role === 'admin',
     });
@@ -124,17 +108,16 @@ export function registerUserRoutes(app: Express): void {
       name: newUser.name,
       email: newUser.email,
       role: role || 'user',
-      contractorId: req.user!.contractorId,
+      contractorId: req.user.contractorId,
       createdAt: newUser.createdAt
     });
   }));
 
-  // Update user role (admin only; only super_admin can assign admin role)
   app.patch("/api/users/:userId/role", requireAuth, requireAdmin, asyncHandler(async (req, res) => {
     const { userId } = req.params;
     const { role } = req.body;
 
-    const isSuperAdmin = req.user!.role === 'super_admin';
+    const isSuperAdmin = req.user.role === 'super_admin';
     const allowedRoles = isSuperAdmin ? ['user', 'manager', 'admin'] : ['user', 'manager'];
 
     if (!role || !allowedRoles.includes(role)) {
@@ -143,9 +126,8 @@ export function registerUserRoutes(app: Express): void {
       return;
     }
 
-    // Verify user belongs to same contractor via junction table (supports multi-contractor users)
     const userContractor = await db.select().from(userContractors)
-      .where(and(eq(userContractors.userId, userId), eq(userContractors.contractorId, req.user!.contractorId)))
+      .where(and(eq(userContractors.userId, userId), eq(userContractors.contractorId, req.user.contractorId)))
       .limit(1);
 
     if (userContractor.length === 0) {
@@ -153,10 +135,9 @@ export function registerUserRoutes(app: Express): void {
       return;
     }
 
-    // Update the user's role in the junction table (per-contractor role)
     const updated = await db.update(userContractors)
       .set({ role })
-      .where(and(eq(userContractors.userId, userId), eq(userContractors.contractorId, req.user!.contractorId)))
+      .where(and(eq(userContractors.userId, userId), eq(userContractors.contractorId, req.user.contractorId)))
       .returning();
 
     res.json({
@@ -167,14 +148,12 @@ export function registerUserRoutes(app: Express): void {
     });
   }));
 
-  // Update user's Dialpad phone number (admin only)
   app.patch("/api/users/:userId/dialpad-number", requireAuth, requireAdmin, asyncHandler(async (req, res) => {
     const { userId } = req.params;
     const { dialpadDefaultNumber } = req.body;
 
-    // Verify the user belongs to the same contractor
     const targetUser = await db.select().from(users)
-      .where(and(eq(users.id, userId), eq(users.contractorId, req.user!.contractorId)))
+      .where(and(eq(users.id, userId), eq(users.contractorId, req.user.contractorId)))
       .limit(1);
 
     if (!targetUser[0]) {
@@ -182,32 +161,24 @@ export function registerUserRoutes(app: Express): void {
       return;
     }
 
-    // Update the Dialpad phone number
     const updated = await db.update(users)
       .set({ dialpadDefaultNumber })
       .where(eq(users.id, userId))
       .returning();
 
-    // If a phone number was set, automatically grant permissions for non-admin users
     if (dialpadDefaultNumber && targetUser[0].role !== 'admin' && targetUser[0].role !== 'manager') {
-      // Find the phone number in the database
-      const phoneNumber = await storage.getDialpadPhoneNumberByNumber(req.user!.contractorId, dialpadDefaultNumber);
-      
+      const phoneNumber = await storage.getDialpadPhoneNumberByNumber(req.user.contractorId, dialpadDefaultNumber);
       if (phoneNumber) {
-        // Check if permission already exists
         const existingPermission = await storage.getUserPhoneNumberPermission(userId, phoneNumber.id);
-        
         if (existingPermission) {
-          // Update existing permission to ensure both SMS and call are enabled
           await storage.updateUserPhoneNumberPermission(existingPermission.id, {
             canSendSms: true,
             canMakeCalls: true,
             isActive: true
           });
         } else {
-          // Create new permission with both SMS and call enabled
           await storage.createUserPhoneNumberPermission({
-            contractorId: req.user!.contractorId,
+            contractorId: req.user.contractorId,
             userId: userId,
             phoneNumberId: phoneNumber.id,
             canSendSms: true,
@@ -230,12 +201,10 @@ export function registerUserRoutes(app: Express): void {
     });
   }));
 
-  // Get single user by ID
   app.get("/api/users/:userId", requireAuth, asyncHandler(async (req, res) => {
     const { userId } = req.params;
-    const contractorId = req.user!.contractorId;
-    
-    // Get user if they belong to the same contractor
+    const contractorId = req.user.contractorId;
+
     const user = await db.select({
       id: users.id,
       name: users.name,
@@ -247,20 +216,18 @@ export function registerUserRoutes(app: Express): void {
         eq(users.contractorId, contractorId)
       ))
       .limit(1);
-    
+
     if (user.length === 0) {
       res.status(404).json({ message: "User not found" });
       return;
     }
-    
+
     res.json(user[0]);
   }));
 
-  // Get users with Gmail connected (for workflow sender selection)
   app.get("/api/users/gmail-connected", requireAuth, asyncHandler(async (req, res) => {
-    const contractorId = req.user!.contractorId;
-    
-    // Get all users for this contractor who have Gmail connected
+    const contractorId = req.user.contractorId;
+
     const gmailUsers = await db.select({
       id: users.id,
       name: users.name,
@@ -271,11 +238,10 @@ export function registerUserRoutes(app: Express): void {
         eq(users.contractorId, contractorId),
         isNotNull(users.gmailRefreshToken)
       ));
-    
+
     res.json(gmailUsers);
   }));
 
-  // Update user's integration permission (admin only)
   app.patch("/api/users/:userId/integration-permission", requireAuth, requireAdmin, asyncHandler(async (req, res) => {
     const { userId } = req.params;
     const { canManageIntegrations } = req.body;
@@ -285,9 +251,8 @@ export function registerUserRoutes(app: Express): void {
       return;
     }
 
-    // Verify the user belongs to the same contractor
     const targetUser = await db.select().from(users)
-      .where(and(eq(users.id, userId), eq(users.contractorId, req.user!.contractorId)))
+      .where(and(eq(users.id, userId), eq(users.contractorId, req.user.contractorId)))
       .limit(1);
 
     if (!targetUser[0]) {
@@ -295,7 +260,6 @@ export function registerUserRoutes(app: Express): void {
       return;
     }
 
-    // Update the integration permission
     const updated = await db.update(users)
       .set({ canManageIntegrations })
       .where(eq(users.id, userId))
@@ -314,7 +278,7 @@ export function registerUserRoutes(app: Express): void {
   }));
 
   app.get("/api/users/me/dialpad-default-number", requireAuth, asyncHandler(async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, req.user!.userId)).limit(1);
+    const user = await db.select().from(users).where(eq(users.id, req.user.userId)).limit(1);
     if (!user[0]) {
       res.status(404).json({ message: "User not found" });
       return;
@@ -322,11 +286,9 @@ export function registerUserRoutes(app: Express): void {
     res.json({ dialpadDefaultNumber: user[0].dialpadDefaultNumber || null });
   }));
 
-  // Update user's default Dialpad phone number
   app.put("/api/users/me/dialpad-default-number", requireAuth, asyncHandler(async (req, res) => {
     const { dialpadDefaultNumber } = req.body;
-    
-    // Validate that it's either null or a valid phone number string
+
     if (dialpadDefaultNumber !== null && typeof dialpadDefaultNumber !== 'string') {
       res.status(400).json({ message: "Invalid phone number format" });
       return;
@@ -335,39 +297,36 @@ export function registerUserRoutes(app: Express): void {
     const result = await db
       .update(users)
       .set({ dialpadDefaultNumber: dialpadDefaultNumber || null })
-      .where(eq(users.id, req.user!.userId))
+      .where(eq(users.id, req.user.userId))
       .returning();
-    
+
     if (!result[0]) {
       res.status(404).json({ message: "User not found" });
       return;
     }
 
-    res.json({ 
+    res.json({
       dialpadDefaultNumber: result[0].dialpadDefaultNumber,
       message: dialpadDefaultNumber ? "Default number updated successfully" : "Default number cleared successfully"
     });
   }));
 
-  // Update any user's default Dialpad phone number (admin/manager only)
   app.put("/api/users/:userId/dialpad-default-number", requireAuth, requireManagerOrAdmin, asyncHandler(async (req, res) => {
     const { userId } = req.params;
     const { dialpadDefaultNumber } = req.body;
-    
-    // Validate that it's either null or a valid phone number string
+
     if (dialpadDefaultNumber !== null && typeof dialpadDefaultNumber !== 'string') {
       res.status(400).json({ message: "Invalid phone number format" });
       return;
     }
 
-    // Verify the user belongs to the same contractor
     const targetUser = await db.select().from(users).where(eq(users.id, userId)).limit(1);
     if (!targetUser[0]) {
       res.status(404).json({ message: "User not found" });
       return;
     }
 
-    if (targetUser[0].contractorId !== req.user!.contractorId) {
+    if (targetUser[0].contractorId !== req.user.contractorId) {
       res.status(403).json({ message: "Cannot modify users from other contractors" });
       return;
     }
@@ -377,32 +336,29 @@ export function registerUserRoutes(app: Express): void {
       .set({ dialpadDefaultNumber: dialpadDefaultNumber || null })
       .where(eq(users.id, userId))
       .returning();
-    
-    res.json({ 
+
+    res.json({
       dialpadDefaultNumber: result[0].dialpadDefaultNumber,
       message: dialpadDefaultNumber ? "Default number updated successfully" : "Default number cleared successfully"
     });
   }));
 
-  // Get contractor's default Dialpad phone number (accessible to all authenticated users)
   app.get("/api/contractor/dialpad-default-number", requireAuth, asyncHandler(async (req, res) => {
     const contractor = await db.select().from(contractors)
-      .where(eq(contractors.id, req.user!.contractorId))
+      .where(eq(contractors.id, req.user.contractorId))
       .limit(1);
-    
+
     if (!contractor[0]) {
       res.status(404).json({ message: "Contractor not found" });
       return;
     }
-    
+
     res.json({ defaultDialpadNumber: contractor[0].defaultDialpadNumber || null });
   }));
 
-  // Update contractor's default Dialpad phone number (admin only)
   app.put("/api/contractor/dialpad-default-number", requireAuth, requireAdmin, asyncHandler(async (req, res) => {
     const { defaultDialpadNumber } = req.body;
-    
-    // Validate that it's either null or a valid phone number string
+
     if (defaultDialpadNumber !== null && typeof defaultDialpadNumber !== 'string') {
       res.status(400).json({ message: "Invalid phone number format" });
       return;
@@ -411,21 +367,20 @@ export function registerUserRoutes(app: Express): void {
     const result = await db
       .update(contractors)
       .set({ defaultDialpadNumber: defaultDialpadNumber || null })
-      .where(eq(contractors.id, req.user!.contractorId))
+      .where(eq(contractors.id, req.user.contractorId))
       .returning();
-    
+
     if (!result[0]) {
       res.status(404).json({ message: "Contractor not found" });
       return;
     }
 
-    res.json({ 
+    res.json({
       defaultDialpadNumber: result[0].defaultDialpadNumber,
       message: defaultDialpadNumber ? "Organization default number updated successfully" : "Organization default number cleared successfully"
     });
   }));
-  
-  // Update current user's call preference (integration vs personal phone)
+
   app.patch("/api/user/call-preference", requireAuth, asyncHandler(async (req, res) => {
     const { callPreference } = req.body;
     if (callPreference !== 'integration' && callPreference !== 'personal') {
@@ -437,8 +392,8 @@ export function registerUserRoutes(app: Express): void {
       .update(userContractors)
       .set({ callPreference })
       .where(and(
-        eq(userContractors.userId, req.user!.userId),
-        eq(userContractors.contractorId, req.user!.contractorId)
+        eq(userContractors.userId, req.user.userId),
+        eq(userContractors.contractorId, req.user.contractorId)
       ))
       .returning();
 
@@ -449,7 +404,4 @@ export function registerUserRoutes(app: Express): void {
 
     res.json({ callPreference: result[0].callPreference, message: "Call preference updated" });
   }));
-
-  // Multi-tenant user operations
-  // Get all contractors a user belongs to
 }

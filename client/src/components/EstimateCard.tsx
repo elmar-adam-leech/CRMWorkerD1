@@ -18,7 +18,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useQuery } from "@tanstack/react-query";
+import { useContact } from "@/hooks/useContact";
 import type { Contact } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { getInitials, formatCurrency } from "@/lib/utils";
@@ -61,12 +61,7 @@ export const EstimateCard = memo(function EstimateCard({ estimate, onSend: _onSe
   const showSendButton = isMobile && estimate.status === "draft" && !!_onSend;
   const [tagsDialogOpen, setTagsDialogOpen] = useState(false);
   
-  const { data: contact, isLoading: contactLoading } = useQuery<Contact>({
-    // Array-style queryKey so invalidateQueries({ queryKey: ['/api/contacts'] })
-    // correctly busts this cache entry via hierarchical key matching.
-    queryKey: ['/api/contacts', estimate.contactId],
-    enabled: !!estimate.contactId,
-  });
+  const { data: contact, isLoading: contactLoading } = useContact(estimate.contactId);
 
   const isHousecallProEstimate = estimate.externalSource === 'housecall-pro';
 

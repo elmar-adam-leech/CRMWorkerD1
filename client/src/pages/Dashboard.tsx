@@ -3,13 +3,28 @@ import { FollowUpsWidget } from "@/components/FollowUpsWidget";
 import { RecentActivityTimeline } from "@/components/RecentActivityTimeline";
 import { PageHeader } from "@/components/ui/page-header-v2";
 import { PageLayout } from "@/components/ui/page-layout";
-import { LayoutDashboard } from "lucide-react";
+import { useWebSocketInvalidation } from "@/hooks/useWebSocketInvalidation";
 
 export default function Dashboard() {
+  useWebSocketInvalidation([
+    {
+      events: ['contact_updated', 'contact_created', 'contact_deleted'],
+      queryKeys: [['/api/dashboard/metrics'], ['/api/contacts/follow-ups'], ['/api/estimates/follow-ups']],
+    },
+    {
+      events: ['activity_created', 'activity_updated', 'activity_deleted'],
+      queryKeys: [['/api/activities'], ['/api/dashboard/metrics']],
+    },
+    {
+      events: ['estimate_created', 'estimate_updated'],
+      queryKeys: [['/api/dashboard/metrics']],
+    },
+  ]);
+
   return (
     <PageLayout>
-      <PageHeader 
-        title="Dashboard" 
+      <PageHeader
+        title="Dashboard"
         description="Overview of your business performance and recent activity"
       />
 

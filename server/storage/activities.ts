@@ -33,6 +33,9 @@ async function getActivities(contractorId: string, options: {
     .where(and(...conditions))
     .orderBy(desc(activities.createdAt))
     .limit(options.limit || 50)
+    // SCALE NOTE: OFFSET N requires the DB to scan and discard N rows, making this O(N) at the
+    // database level. For large contractors (10k+ activities) or high request rates, migrate to
+    // cursor-based pagination: use `WHERE id < lastSeenId ORDER BY id DESC LIMIT N` instead.
     .offset(options.offset || 0);
 
   return result as unknown as Activity[];

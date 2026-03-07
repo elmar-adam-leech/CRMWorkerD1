@@ -90,12 +90,19 @@ export function RecentActivityTimeline({ limit = 10, className }: RecentActivity
     },
   });
 
-  // Subscribe to deletion events to refresh activity feed
+  // Subscribe to relevant WebSocket events to refresh the activity feed.
+  // activity_created/updated/deleted are also handled by Dashboard.tsx's
+  // useWebSocketInvalidation hook when this component is rendered there.
   useEffect(() => {
     const unsubscribe = subscribe((message) => {
-      if (message.type === 'contact_deleted' || 
-          message.type === 'estimate_deleted' || 
-          message.type === 'job_deleted') {
+      if (
+        message.type === 'activity_created' ||
+        message.type === 'activity_updated' ||
+        message.type === 'activity_deleted' ||
+        message.type === 'contact_deleted' ||
+        message.type === 'estimate_deleted' ||
+        message.type === 'job_deleted'
+      ) {
         queryClient.invalidateQueries({ queryKey: ['/api/activities'] });
       }
     });

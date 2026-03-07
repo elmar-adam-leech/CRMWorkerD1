@@ -11,7 +11,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { ViewDetailsButton } from "./ViewDetailsButton";
 import { InlineEdit } from "./InlineEdit";
 import { TagsDialog } from "./TagsDialog";
-import { useQuery } from "@tanstack/react-query";
+import { useContact } from "@/hooks/useContact";
 import { useToast } from "@/hooks/use-toast";
 import { getInitials, formatCurrency } from "@/lib/utils";
 import { getPriorityColor, updateContactTags } from "@/lib/card-utils";
@@ -51,12 +51,7 @@ export const JobCard = memo(function JobCard({ job, onStatusChange: _onStatusCha
     && !!_onStatusChange;
   const [tagsDialogOpen, setTagsDialogOpen] = useState(false);
   
-  const { data: contact, isLoading: contactLoading } = useQuery<Contact>({
-    // Array-style queryKey so invalidateQueries({ queryKey: ['/api/contacts'] })
-    // correctly busts this cache entry via hierarchical key matching.
-    queryKey: ['/api/contacts', job.contactId],
-    enabled: !!job.contactId,
-  });
+  const { data: contact, isLoading: contactLoading } = useContact(job.contactId);
 
   const isHousecallProJob = job.externalSource === 'housecall-pro';
   

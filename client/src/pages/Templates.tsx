@@ -11,7 +11,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Plus, Search, Edit2, Trash2, MessageSquare, Mail, FileText, CheckCircle, XCircle, Clock, AlertTriangle } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header-v2";
 import { PageLayout } from "@/components/ui/page-layout";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
+import { useTemplates } from "@/hooks/useTemplates";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -39,10 +40,13 @@ export default function Templates() {
   
   const { toast } = useToast();
 
-  // Fetch templates from API
-  const { data: templates = [], isLoading: templatesLoading } = useQuery<Template[]>({
-    queryKey: ['/api/templates', filterType === "all" ? undefined : filterType],
-  });
+  // Fetch templates — use two typed hooks and merge when "all" is selected,
+  // or use a single hook when a type filter is active. This shares cache entries
+  // with TextingModal and EmailComposerModal (same queryKey per type).
+  const { data: textTemplates = [], isLoading: textLoading } = useTemplates('text', filterType === 'all' || filterType === 'text');
+  const { data: emailTemplates = [], isLoading: emailLoading } = useTemplates('email', filterType === 'all' || filterType === 'email');
+  const templates: Template[] = filterType === 'text' ? textTemplates : filterType === 'email' ? emailTemplates : [...textTemplates, ...emailTemplates];
+  const templatesLoading = textLoading || emailLoading;
 
   const form = useForm<TemplateFormData>({
     resolver: zodResolver(templateFormSchema),

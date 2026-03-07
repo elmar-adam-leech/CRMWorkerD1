@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, memo, type ElementType } from "react";
+import { useState, useEffect, useMemo, useCallback, memo, type ElementType } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -199,9 +199,13 @@ export default function Messages() {
     return true;
   }), [conversations, dateFrom, dateTo]);
 
-  const handleStartConversation = (conversation: Conversation) => {
+  const handleStartConversation = useCallback((conversation: Conversation) => {
     setTextingModal({ isOpen: true, conversation });
-  };
+  }, []);
+
+  const handleOpenConversation = useCallback((c: Conversation) => {
+    setConversationModal({ isOpen: true, conversation: c });
+  }, []);
 
   return (
     <PageLayout>
@@ -336,7 +340,7 @@ export default function Messages() {
                         formatTimestamp={formatTimestamp}
                         getMessageTypeIcon={getMessageTypeIcon}
                         getStatusBadgeVariant={getStatusBadgeVariant}
-                        onOpen={(c) => setConversationModal({ isOpen: true, conversation: c })}
+                        onOpen={handleOpenConversation}
                         onText={handleStartConversation}
                       />
                     ))}

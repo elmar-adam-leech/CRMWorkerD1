@@ -1,4 +1,4 @@
-import type { Express, Response } from "express";
+import type { Express } from "express";
 import { asyncHandler } from "../utils/async-handler";
 import { parseBody } from "../utils/validate-body";
 import { storage } from "../storage";
@@ -6,7 +6,6 @@ import { activities, users } from "@shared/schema";
 import { db } from "../db";
 import { eq, and, inArray } from "drizzle-orm";
 import { gmailService } from "../gmail-service";
-import { type AuthenticatedRequest } from "../auth-service";
 import { broadcastToContractor } from "../websocket";
 import { z } from "zod";
 
@@ -15,15 +14,15 @@ const fetchGmailSchema = z.object({
 });
 
 export function registerEmailSyncRoutes(app: Express): void {
-  app.post("/api/emails/fetch-gmail", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/emails/fetch-gmail", asyncHandler(async (req, res) => {
     const validatedData = parseBody(fetchGmailSchema, req, res);
     if (!validatedData) return;
 
     const { sinceDate } = validatedData;
 
     const userResult = await db.select().from(users).where(and(
-      eq(users.id, req.user!.userId),
-      eq(users.contractorId, req.user!.contractorId)
+      eq(users.id, req.user.userId),
+      eq(users.contractorId, req.user.contractorId)
     ));
     const user = userResult[0];
     if (!user || !user.gmailConnected || !user.gmailRefreshToken) {
@@ -55,7 +54,7 @@ export function registerEmailSyncRoutes(app: Express): void {
         .where(and(
           inArray(activities.externalId, emailIds),
           eq(activities.externalSource, 'gmail'),
-          eq(activities.contractorId, req.user!.contractorId)
+          eq(activities.contractorId, req.user.contractorId)
         ));
       existingActivities.forEach((a: any) => { if (a.externalId) existingIds.add(a.externalId); });
     }
@@ -78,11 +77,11 @@ export function registerEmailSyncRoutes(app: Express): void {
 
       if (emailToMatch && typeof emailToMatch === 'string') {
         const matchedId = await storage.findMatchingContact(
-          req.user!.contractorId,
+          req.user.contractorId,
           [emailToMatch]
         );
         if (matchedId) {
-          matchingContact = await storage.getContact(matchedId, req.user!.contractorId) ?? null;
+          matchingContact = await storage.getContact(matchedId, req.user.contractorId) ?? null;
         }
       }
 
@@ -103,13 +102,13 @@ export function registerEmailSyncRoutes(app: Express): void {
         content: email.body || email.snippet,
         metadata: JSON.stringify(emailMetadata),
         contactId: matchingContact?.id || null,
-        userId: req.user!.userId,
+        userId: req.user.userId,
         externalId: email.id,
         externalSource: 'gmail',
-      }, req.user!.contractorId);
+      }, req.user.contractorId);
 
       if (matchingContact) {
-        broadcastToContractor(req.user!.contractorId, {
+        broadcastToContractor(req.user.contractorId, {
           type: 'activity',
           contactId: matchingContact.id,
           ...(matchingLead ? { leadId: matchingLead.id } : {}),
@@ -124,8 +123,8 @@ export function registerEmailSyncRoutes(app: Express): void {
     await db.update(users)
       .set({ gmailLastSyncAt: new Date() })
       .where(and(
-        eq(users.id, req.user!.userId),
-        eq(users.contractorId, req.user!.contractorId)
+        eq(users.id, req.user.userId),
+        eq(users.contractorId, req.user.contractorId)
       ));
 
     res.json({
