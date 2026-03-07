@@ -17,6 +17,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { AddressAutocomplete, AddressComponents } from "@/components/ui/AddressAutocomplete";
+import type { SchedulingLead } from "@/hooks/useCommunicationActions";
 
 interface Salesperson {
   userId: string;
@@ -121,20 +122,11 @@ const generateTimeSlots = (
   return slots;
 };
 
-interface Lead {
-  id: string;
-  name: string;
-  email?: string;
-  phone?: string;
-  address?: string;
-  description?: string;
-}
-
 interface LocalSchedulingModalProps {
-  lead: Lead | null;
+  lead: SchedulingLead | null;
   isOpen: boolean;
   onClose: () => void;
-  onScheduled?: (lead: Lead) => void;
+  onScheduled?: (lead: SchedulingLead) => void;
 }
 
 const scheduleFormSchema = z.object({

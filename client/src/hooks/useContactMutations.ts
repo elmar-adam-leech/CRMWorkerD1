@@ -3,19 +3,24 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
 /**
- * Shared contact mutation hook — provides pre-wired delete and status-update
- * mutations that are duplicated across Leads, Follow-ups, and other pages.
- *
- * Both mutations share the same cache-invalidation strategy:
+ * Shared contact mutation hook — provides pre-wired mutations for all common
+ * contact operations. Every mutation shares the same cache-invalidation strategy:
  *   - /api/contacts/paginated  — updates the paginated lead list
  *   - /api/contacts/status-counts — updates the status bar counters
  *   - /api/contacts            — updates any full-list consumers
- *   - /api/contacts/follow-ups — clears follow-up widgets when a lead is deleted/moved
+ *   - /api/contacts/follow-ups — keeps follow-up widgets in sync
  *
  * Usage:
- *   const { deleteContact, updateContactStatus } = useContactMutations();
+ *   const { deleteContact, updateContactStatus, archiveLead, restoreLead, updateFollowUpDate } = useContactMutations();
  *   deleteContact.mutate(contactId);
  *   updateContactStatus.mutate({ contactId, status: 'contacted' });
+ *   archiveLead.mutate(leadId);
+ *   restoreLead.mutate(leadId);
+ *   updateFollowUpDate.mutate({ contactId, followUpDate: new Date() });
+ *
+ * Per-call callbacks: All mutations accept an optional second argument with
+ * per-call onSuccess/onError callbacks (standard TanStack Query pattern):
+ *   deleteContact.mutate(id, { onSuccess: () => closeDialog() });
  */
 export function useContactMutations() {
   const queryClient = useQueryClient();
@@ -65,5 +70,58 @@ export function useContactMutations() {
     },
   });
 
-  return { deleteContact, updateContactStatus };
+  const archiveLead = useMutation({
+    mutationFn: async (leadId: string) => {
+      return apiRequest("PATCH", `/api/leads/${leadId}/archive`);
+    },
+    onSuccess: () => {
+      toast({ title: "Lead Archived", description: "Lead has been archived and is hidden from the main view." });
+      invalidateContactQueries();
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to Archive Lead",
+        description: error.message || "Something went wrong.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const restoreLead = useMutation({
+    mutationFn: async (leadId: string) => {
+      return apiRequest("PATCH", `/api/leads/${leadId}/restore`);
+    },
+    onSuccess: () => {
+      toast({ title: "Lead Restored", description: "Lead has been restored and is visible again." });
+      invalidateContactQueries();
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to Restore Lead",
+        description: error.message || "Something went wrong.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateFollowUpDate = useMutation({
+    mutationFn: async (data: { contactId: string; followUpDate: Date | null }) => {
+      return apiRequest("PATCH", `/api/contacts/${data.contactId}/follow-up`, {
+        followUpDate: data.followUpDate ? data.followUpDate.toISOString() : null,
+      });
+    },
+    onSuccess: () => {
+      toast({ title: "Follow-Up Date Set", description: "Follow-up date has been successfully updated." });
+      invalidateContactQueries();
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to Update Follow-Up Date",
+        description: error.message || "Something went wrong.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  return { deleteContact, updateContactStatus, archiveLead, restoreLead, updateFollowUpDate };
 }

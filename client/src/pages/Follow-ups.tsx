@@ -10,7 +10,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useContactMutations } from "@/hooks/useContactMutations";
 import { format } from "date-fns";
-import { Calendar, Clock, Filter } from "lucide-react";
+import { Calendar, Filter } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
@@ -216,33 +216,6 @@ export default function FollowUps() {
     });
   };
 
-  // Update lead follow-up date mutation
-  const updateLeadFollowUpMutation = useMutation({
-    mutationFn: async (data: { leadId: string; followUpDate: Date | null }) => {
-      const response = await apiRequest('PATCH', `/api/contacts/${data.leadId}/follow-up`, { 
-        followUpDate: data.followUpDate ? data.followUpDate.toISOString() : null 
-      });
-      return response;
-    },
-    onSuccess: () => {
-      toast({
-        title: "Follow-Up Date Updated",
-        description: "Follow-up date has been successfully updated.",
-      });
-      queryClient.invalidateQueries({ queryKey: ['/api/contacts/paginated'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/contacts/follow-ups'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/contacts/status-counts'] });
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Failed to Update Follow-Up Date",
-        description: error.message || "Something went wrong.",
-        variant: "destructive",
-      });
-    },
-  });
-
   // Update estimate follow-up date mutation
   const updateEstimateFollowUpMutation = useMutation({
     mutationFn: async ({ estimateId, followUpDate }: { estimateId: string; followUpDate: Date | null }) => {
@@ -259,16 +232,16 @@ export default function FollowUps() {
       queryClient.invalidateQueries({ queryKey: ['/api/estimates'] });
       queryClient.invalidateQueries({ queryKey: ['/api/estimates/follow-ups'] });
     },
-    onError: (error) => {
+    onError: (error: Error) => {
       toast({
         title: "Error updating follow-up date",
-        description: error instanceof Error ? error.message : "Failed to update follow-up date. Please try again.",
+        description: error.message || "Failed to update follow-up date. Please try again.",
         variant: "destructive",
       });
     },
   });
 
-  const { deleteContact: deleteLeadMutation } = useContactMutations();
+  const { deleteContact: deleteLeadMutation, updateFollowUpDate: updateLeadFollowUpMutation } = useContactMutations();
 
   const handleEdit = (item: FollowUpItem) => {
     if (item.type === 'lead') {
@@ -291,7 +264,7 @@ export default function FollowUps() {
     
     if (followUpModal.item.type === 'lead') {
       updateLeadFollowUpMutation.mutate({
-        leadId: followUpModal.item.id,
+        contactId: followUpModal.item.id,
         followUpDate: date || null
       }, {
         onSuccess: () => {

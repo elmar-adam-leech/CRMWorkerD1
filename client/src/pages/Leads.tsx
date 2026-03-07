@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { useLocation } from "wouter";
 import { LeadCard } from "@/components/LeadCard";
 import { CardSkeleton } from "@/components/CardSkeleton";
 import { TextingModal } from "@/components/TextingModal";
@@ -9,9 +8,9 @@ import { FollowUpDateModal } from "@/components/FollowUpDateModal";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header-v2";
 import { PageLayout } from "@/components/ui/page-layout";
-import { Plus, Filter, UserPlus, Users, AlertCircle, Archive, ArchiveRestore } from "lucide-react";
+import { Plus, Filter, UserPlus, AlertCircle, Archive, ArchiveRestore } from "lucide-react";
 import { LeadKanbanBoard } from "@/components/LeadKanbanBoard";
-import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useContactMutations } from "@/hooks/useContactMutations";
@@ -43,7 +42,6 @@ import { useAddModalFromUrl } from "@/hooks/use-add-modal-from-url";
 const LEAD_STATUSES = ["new", "contacted", "scheduled", "disqualified"] as const;
 
 export default function Leads({ externalSearch = "" }: { externalSearch?: string }) {
-  useLocation();
   const [searchQuery, setSearchQuery] = useState(externalSearch);
   const [showArchived, setShowArchived] = useState(false);
 
@@ -73,34 +71,16 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
 
   const [addContactModal, setAddContactModal] = useState(false);
 
-  const [contactDetailsModal, setContactDetailsModal] = useState<{
-    isOpen: boolean;
-    contact?: Contact;
-  }>({ isOpen: false });
-
-  const [editContactModal, setEditContactModal] = useState<{
-    isOpen: boolean;
-    contact?: Contact;
-  }>({ isOpen: false });
-
-  const [editStatusModal, setEditStatusModal] = useState<{
-    isOpen: boolean;
-    contact?: Contact;
-  }>({ isOpen: false });
-
-  const [followUpModal, setFollowUpModal] = useState<{
-    isOpen: boolean;
-    contact?: Contact;
-  }>({ isOpen: false });
-
-  const [deleteConfirmDialog, setDeleteConfirmDialog] = useState<{
-    isOpen: boolean;
-    contactId?: string;
-    contactName?: string;
-  }>({ isOpen: false });
+  type ActiveModal =
+    | { type: "details"; contact: Contact }
+    | { type: "edit"; contact: Contact }
+    | { type: "editStatus"; contact: Contact }
+    | { type: "followUp"; contact: Contact }
+    | { type: "delete"; contactId: string; contactName: string }
+    | null;
+  const [activeModal, setActiveModal] = useState<ActiveModal>(null);
 
   const { toast } = useToast();
-  const queryClient = useQueryClient();
 
   const terminology = useTerminologyContext();
   const { data: usersData } = useUsers();
@@ -176,77 +156,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
   );
   const totalLeads = leadsData?.pages[0]?.pagination.total || 0;
 
-  const { deleteContact: deleteContactMutationBase, updateContactStatus } = useContactMutations();
-
-  const updateStatusMutation = {
-    ...updateContactStatus,
-    mutate: (data: { contactId: string; status: string }) => {
-      updateContactStatus.mutate(data, {
-        onSuccess: () => {
-          invalidateContacts(data.contactId);
-          setEditStatusModal({ isOpen: false });
-        },
-      });
-    },
-    isPending: updateContactStatus.isPending,
-  };
-
-  const deleteContactMutation = {
-    ...deleteContactMutationBase,
-    mutate: (contactId: string) => {
-      deleteContactMutationBase.mutate(contactId, {
-        onSuccess: () => setDeleteConfirmDialog({ isOpen: false }),
-      });
-    },
-    isPending: deleteContactMutationBase.isPending,
-  };
-
-  const archiveLeadMutation = useMutation({
-    mutationFn: async (leadId: string) => {
-      return apiRequest("PATCH", `/api/leads/${leadId}/archive`);
-    },
-    onSuccess: () => {
-      toast({ title: "Lead Archived", description: "Lead has been archived and is hidden from the main view." });
-      queryClient.invalidateQueries({ queryKey: ["/api/contacts/paginated"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/contacts/status-counts"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/contacts/follow-ups"] });
-    },
-    onError: (error: Error) => {
-      toast({ title: "Failed to Archive Lead", description: error.message || "Something went wrong.", variant: "destructive" });
-    },
-  });
-
-  const restoreLeadMutation = useMutation({
-    mutationFn: async (leadId: string) => {
-      return apiRequest("PATCH", `/api/leads/${leadId}/restore`);
-    },
-    onSuccess: () => {
-      toast({ title: "Lead Restored", description: "Lead has been restored and is visible again." });
-      queryClient.invalidateQueries({ queryKey: ["/api/contacts/paginated"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/contacts/status-counts"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/contacts/follow-ups"] });
-    },
-    onError: (error: Error) => {
-      toast({ title: "Failed to Restore Lead", description: error.message || "Something went wrong.", variant: "destructive" });
-    },
-  });
-
-  const updateFollowUpDateMutation = useMutation({
-    mutationFn: async (data: { contactId: string; followUpDate: Date | null }) => {
-      return apiRequest("PATCH", `/api/contacts/${data.contactId}/follow-up`, {
-        followUpDate: data.followUpDate ? data.followUpDate.toISOString() : null,
-      });
-    },
-    onSuccess: () => {
-      toast({ title: "Follow-Up Date Set", description: "Follow-up date has been successfully updated." });
-      queryClient.invalidateQueries({ queryKey: ["/api/contacts/paginated"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/contacts/follow-ups"] });
-    },
-    onError: (error: Error) => {
-      toast({ title: "Failed to Update Follow-Up Date", description: error.message || "Something went wrong.", variant: "destructive" });
-    },
-  });
+  const { deleteContact, updateContactStatus, archiveLead, restoreLead, updateFollowUpDate } = useContactMutations();
 
   const { data: statusCountsData, isLoading: statusCountsLoading } = useQuery<{
     all: number;
@@ -286,46 +196,38 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
 
   const handleEdit = useCallback((contactId: string) => {
     const contact = leads.find((l: Contact) => l.id === contactId);
-    if (contact) setEditContactModal({ isOpen: true, contact });
+    if (contact) setActiveModal({ type: "edit", contact });
   }, [leads]);
 
   const handleDelete = useCallback((contactId: string) => {
     const contact = leads.find((l: Contact) => l.id === contactId);
     if (!contact) return;
-    setDeleteConfirmDialog({ isOpen: true, contactId, contactName: contact.name });
+    setActiveModal({ type: "delete", contactId, contactName: contact.name });
   }, [leads]);
-
-  const handleArchive = useCallback((leadId: string) => {
-    archiveLeadMutation.mutate(leadId);
-  }, [archiveLeadMutation]);
-
-  const handleRestore = useCallback((leadId: string) => {
-    restoreLeadMutation.mutate(leadId);
-  }, [restoreLeadMutation]);
 
   const handleViewDetails = useCallback((contactId: string) => {
     const contact = leads.find((l: Contact) => l.id === contactId);
-    if (contact) setContactDetailsModal({ isOpen: true, contact });
+    if (contact) setActiveModal({ type: "details", contact });
   }, [leads]);
 
   const handleEditStatus = useCallback((contactId: string) => {
     const contact = leads.find((l: Contact) => l.id === contactId);
-    if (contact) setEditStatusModal({ isOpen: true, contact });
+    if (contact) setActiveModal({ type: "editStatus", contact });
   }, [leads]);
 
-  const handleSetFollowUp = useCallback((contact: Contact) => setFollowUpModal({ isOpen: true, contact }), []);
+  const handleSetFollowUp = useCallback((contact: Contact) => setActiveModal({ type: "followUp", contact }), []);
 
   const handleFollowUpSubmit = useCallback((date: Date | undefined) => {
-    if (!followUpModal.contact) return;
-    updateFollowUpDateMutation.mutate(
-      { contactId: followUpModal.contact.id, followUpDate: date || null },
-      { onSuccess: () => setFollowUpModal({ isOpen: false }) }
+    if (activeModal?.type !== "followUp") return;
+    updateFollowUpDate.mutate(
+      { contactId: activeModal.contact.id, followUpDate: date || null },
+      { onSuccess: () => setActiveModal(null) }
     );
-  }, [followUpModal.contact, updateFollowUpDateMutation]);
+  }, [activeModal, updateFollowUpDate]);
 
   const handleStatusChange = useCallback((contactId: string, newStatus: string) => {
-    updateStatusMutation.mutate({ contactId, status: newStatus });
-  }, [updateStatusMutation]);
+    updateContactStatus.mutate({ contactId, status: newStatus });
+  }, [updateContactStatus]);
 
   const handleUpdateLead = useCallback(async (contactId: string, updates: Partial<Contact>) => {
     try {
@@ -442,8 +344,8 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
               onSendEmail={handleSendEmailByEntity}
               onEdit={handleEdit}
               onDelete={handleDelete}
-              onArchive={showArchived ? undefined : handleArchive}
-              onRestore={showArchived ? handleRestore : undefined}
+              onArchive={showArchived ? undefined : archiveLead.mutate}
+              onRestore={showArchived ? restoreLead.mutate : undefined}
               onEditStatus={handleEditStatus}
               onViewDetails={handleViewDetails}
               onSetFollowUp={handleSetFollowUp}
@@ -548,60 +450,60 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
       <CreateLeadModal
         isOpen={addContactModal}
         onClose={() => setAddContactModal(false)}
-        onSuccess={() => {
-          queryClient.invalidateQueries({ queryKey: ["/api/contacts/paginated"] });
-          queryClient.invalidateQueries({ queryKey: ["/api/contacts/status-counts"] });
-        }}
+        onSuccess={() => invalidateContacts()}
         leads={leads}
         onViewDuplicate={handleViewDetails}
       />
 
       <EditLeadModal
-        isOpen={editContactModal.isOpen}
-        contact={editContactModal.contact}
-        onClose={() => setEditContactModal({ isOpen: false })}
-        onSuccess={() => {
-          queryClient.invalidateQueries({ queryKey: ["/api/contacts/paginated"] });
-        }}
+        isOpen={activeModal?.type === "edit"}
+        contact={activeModal?.type === "edit" ? activeModal.contact : undefined}
+        onClose={() => setActiveModal(null)}
+        onSuccess={() => invalidateContacts()}
       />
 
       <LeadDetailsModal
-        isOpen={contactDetailsModal.isOpen}
-        contact={contactDetailsModal.contact}
-        onClose={() => setContactDetailsModal({ isOpen: false })}
+        isOpen={activeModal?.type === "details"}
+        contact={activeModal?.type === "details" ? activeModal.contact : undefined}
+        onClose={() => setActiveModal(null)}
       />
 
       <EditStatusModal
-        isOpen={editStatusModal.isOpen}
-        onOpenChange={(open) => setEditStatusModal((prev) => ({ ...prev, isOpen: open }))}
-        contactName={editStatusModal.contact?.name}
-        currentStatus={editStatusModal.contact?.status ?? undefined}
+        isOpen={activeModal?.type === "editStatus"}
+        onOpenChange={(open) => { if (!open) setActiveModal(null); }}
+        contactName={activeModal?.type === "editStatus" ? activeModal.contact.name : undefined}
+        currentStatus={activeModal?.type === "editStatus" ? activeModal.contact.status ?? undefined : undefined}
         statuses={LEAD_STATUSES}
         onStatusChange={(status) => {
-          if (editStatusModal.contact) {
-            updateStatusMutation.mutate({ contactId: editStatusModal.contact.id, status });
+          if (activeModal?.type === "editStatus") {
+            updateContactStatus.mutate(
+              { contactId: activeModal.contact.id, status },
+              { onSuccess: () => { invalidateContacts(activeModal.contact.id); setActiveModal(null); } }
+            );
           }
         }}
-        isPending={updateStatusMutation.isPending}
+        isPending={updateContactStatus.isPending}
       />
 
       <FollowUpDateModal
-        isOpen={followUpModal.isOpen}
-        onClose={() => setFollowUpModal({ isOpen: false })}
+        isOpen={activeModal?.type === "followUp"}
+        onClose={() => setActiveModal(null)}
         onSave={handleFollowUpSubmit}
-        entityName={followUpModal.contact?.name}
-        defaultDate={followUpModal.contact?.followUpDate ? new Date(followUpModal.contact.followUpDate) : undefined}
-        isSaving={updateFollowUpDateMutation.isPending}
+        entityName={activeModal?.type === "followUp" ? activeModal.contact.name : undefined}
+        defaultDate={activeModal?.type === "followUp" && activeModal.contact.followUpDate ? new Date(activeModal.contact.followUpDate) : undefined}
+        isSaving={updateFollowUpDate.isPending}
       />
 
       <DeleteConfirmDialog
-        isOpen={deleteConfirmDialog.isOpen}
-        onOpenChange={(open) => setDeleteConfirmDialog((prev) => ({ ...prev, isOpen: open }))}
+        isOpen={activeModal?.type === "delete"}
+        onOpenChange={(open) => { if (!open) setActiveModal(null); }}
         title="Delete Lead"
-        description={`Are you sure you want to delete "${deleteConfirmDialog.contactName}"? This action cannot be undone.`}
+        description={`Are you sure you want to delete "${activeModal?.type === "delete" ? activeModal.contactName : ""}"? This action cannot be undone.`}
         onConfirm={() => {
-          if (deleteConfirmDialog.contactId) {
-            deleteContactMutation.mutate(deleteConfirmDialog.contactId);
+          if (activeModal?.type === "delete") {
+            deleteContact.mutate(activeModal.contactId, {
+              onSuccess: () => setActiveModal(null),
+            });
           }
         }}
         confirmTestId="button-confirm-delete-lead"
