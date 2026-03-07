@@ -12,11 +12,21 @@ import { housecallProService } from "../housecall-pro-service";
 import { z } from "zod";
 
 export function registerContactRoutes(app: Express): void {
+  // Legacy endpoint: bounded to 100 rows by default.
+  // Prefer /api/contacts/paginated for any paginated or search-driven UI.
+  // This endpoint is kept for backwards compat with cache-invalidation queryKeys
+  // that fire after mutations (they re-fetch the current page, not a full dump).
   app.get("/api/contacts", asyncHandler(async (req, res) => {
-    const { type } = req.query;
+    const { type, search, limit } = req.query;
     const contactType = type as 'lead' | 'customer' | 'inactive' | undefined;
-    const contacts = await storage.getContacts(req.user!.contractorId, contactType);
-    res.json(contacts);
+    const pageLimit = Math.min(parseInt(limit as string || '100', 10), 100);
+    const result = await storage.getContactsPaginated(req.user!.contractorId, {
+      type: contactType,
+      search: search as string | undefined,
+      limit: pageLimit,
+      includeAll: true,
+    });
+    res.json(result.data);
   }));
 
   app.get("/api/contacts/paginated", asyncHandler(async (req, res) => {

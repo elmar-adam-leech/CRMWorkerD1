@@ -7,8 +7,8 @@ import { getUserContractorCached } from './services/cache';
 const JWT_SECRET = (() => {
   const secret = process.env.JWT_SECRET;
   
-  if (process.env.NODE_ENV === 'production' && (!secret || secret === 'your-default-secret-key-replace-in-production')) {
-    console.error('CRITICAL SECURITY ERROR: JWT_SECRET must be set to a secure value in production!');
+  if (process.env.NODE_ENV !== 'development' && (!secret || secret === 'your-default-secret-key-replace-in-production')) {
+    console.error('CRITICAL SECURITY ERROR: JWT_SECRET must be set to a secure value in non-development environments!');
     console.error('Generate a secure secret with: node -e "console.log(require(\'crypto\').randomBytes(64).toString(\'hex\'))"');
     process.exit(1);
   }

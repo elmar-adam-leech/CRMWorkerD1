@@ -10,6 +10,21 @@ import { authLoginRateLimiter, authRegisterRateLimiter, authForgotPasswordRateLi
 import { asyncHandler } from "../utils/async-handler";
 
 export function registerAuthRoutes(app: Express): void {
+  // Why we issue BOTH a JWT in the response body AND an httpOnly cookie:
+  //
+  //  • The httpOnly cookie is consumed by the browser SPA. It survives page
+  //    reloads without any JavaScript storage (no localStorage / sessionStorage)
+  //    and is immune to XSS because JS cannot read httpOnly cookies. The SPA
+  //    sends it automatically with every same-origin fetch.
+  //
+  //  • The body token serves programmatic/API clients (mobile apps, third-party
+  //    integrations, curl) that cannot or should not rely on browser cookie jars.
+  //    These clients store the token themselves and pass it as a Bearer header.
+  //
+  // Both tokens are identical JWTs signed with the same secret; the two delivery
+  // mechanisms are simply different transport channels for different consumers.
+  // The middleware in auth-service.ts accepts either form (cookie first, then
+  // Authorization: Bearer fallback) so both client types work transparently.
   app.post("/api/auth/login", authLoginRateLimiter, asyncHandler(async (req: Request, res: Response) => {
     const { email, password } = req.body;
     if (!email || !password) {

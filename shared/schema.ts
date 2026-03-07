@@ -204,6 +204,11 @@ export const contacts = pgTable("contacts", {
   // Without GIN, `WHERE emails @> ARRAY['x']` causes a full table scan.
   emailsGinIdx: index("contacts_emails_gin_idx").using("gin", table.emails),
   phonesGinIdx: index("contacts_phones_gin_idx").using("gin", table.phones),
+  // Trigram GIN index for ILIKE '%substring%' name search. Requires pg_trgm
+  // extension (enabled in server/db.ts on startup). Without this index,
+  // `WHERE name ILIKE '%john%'` performs a full sequential scan on every
+  // search keystroke; with it, Postgres uses a Bitmap Index Scan.
+  nameTrgmIdx: index("contacts_name_trgm_idx").using("gin", sql`name gin_trgm_ops`),
 }));
 
 // Leads table - tracks individual lead submissions
@@ -283,6 +288,8 @@ export const jobs = pgTable("jobs", {
   // Composite index supporting paginated title search queries:
   // WHERE contractor_id = ? AND title ILIKE ? ORDER BY created_at DESC
   contractorTitleIdx: index("jobs_contractor_title_idx").on(table.contractorId, table.title),
+  // Trigram GIN index for ILIKE '%substring%' title search (requires pg_trgm).
+  titleTrgmIdx: index("jobs_title_trgm_idx").using("gin", sql`title gin_trgm_ops`),
 }));
 
 // Estimates table
@@ -325,6 +332,8 @@ export const estimates = pgTable("estimates", {
   // Composite index supporting paginated title search queries:
   // WHERE contractor_id = ? AND title ILIKE ? ORDER BY created_at DESC
   contractorTitleIdx: index("estimates_contractor_title_idx").on(table.contractorId, table.title),
+  // Trigram GIN index for ILIKE '%substring%' title search (requires pg_trgm).
+  titleTrgmIdx: index("estimates_title_trgm_idx").using("gin", sql`title gin_trgm_ops`),
 }));
 
 // Messages table for texting functionality

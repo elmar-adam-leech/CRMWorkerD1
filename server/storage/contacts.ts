@@ -46,6 +46,42 @@ async function getLeadTrend(contractorId: string, since: Date): Promise<{ date: 
  * Prefer this over getContacts() for any UI that renders large lists. The
  * cursor is the ISO timestamp of the last-seen record's createdAt field.
  * Results are capped at 100 per page regardless of the `limit` option.
+ *
+ * FILTER MODES
+ * ------------
+ * The filter logic has four modes, applied in priority order:
+ *
+ *  1. includeAll: true — bypasses ALL status filtering entirely.
+ *     Used by admin views (Settings, employee management) that need every
+ *     contact regardless of pipeline state, including archived/disqualified.
+ *
+ *  2. Explicit status (status !== 'all') — shows only contacts with that
+ *     exact status value. Used by status-specific tabs on the Leads page.
+ *
+ *  3. status === 'all' or status is omitted, WITH type === 'lead' (or no type)
+ *     — excludes 'disqualified' contacts. Disqualified leads are excluded by
+ *     default to keep the main lead board uncluttered; they can be surfaced
+ *     explicitly via status='disqualified'.
+ *
+ *  4. type === 'customer' or 'inactive' with no status filter — no status
+ *     exclusion is applied, since customers and inactive contacts don't have
+ *     a meaningful "disqualified" state.
+ *
+ * CURSOR DESIGN
+ * -------------
+ * Pagination uses createdAt as the cursor key rather than an offset. Offset
+ * pagination (LIMIT n OFFSET m) requires the DB to scan and discard m rows on
+ * every page, which is O(m) cost per page and degrades for large datasets.
+ * Cursor pagination using an indexed timestamp column is O(1) regardless of
+ * page number, because Postgres can seek directly to the next page boundary
+ * via the contacts_contractor_date_idx composite index on (contractor_id, created_at).
+ *
+ * A subtle risk: if two contacts share the exact same createdAt value at a
+ * page boundary, one may be skipped or duplicated. In practice, contacts are
+ * created one at a time (user input or webhook), so timestamp collisions are
+ * rare. If this becomes a problem, switch to a composite cursor of
+ * (createdAt, id) and use a WHERE (created_at, id) < ($cursor_ts, $cursor_id)
+ * keyset condition for fully stable pagination.
  */
 async function getContactsPaginated(contractorId: string, options: {
   cursor?: string;

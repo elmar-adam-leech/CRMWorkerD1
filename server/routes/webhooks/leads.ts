@@ -1,74 +1,21 @@
 import type { Express, Request, Response } from "express";
 import { storage } from "../../storage";
-import { CredentialService } from "../../credential-service";
 import { housecallProService } from "../../housecall-pro-service";
 import { webhookRateLimiter } from "../../middleware/rate-limiter";
 import { normalizePhoneForStorage, normalizePhoneArrayForStorage } from "../../utils/phone-normalizer";
 import { asyncHandler } from "../../utils/async-handler";
+import { validateWebhookAuth, parseWebhookPayload } from "../../utils/webhook-auth";
 
 export function registerLeadWebhookRoutes(app: Express): void {
   app.post("/api/webhooks/:contractorId/leads", webhookRateLimiter, asyncHandler(async (req: Request, res: Response) => {
     try {
       const { contractorId } = req.params;
-      
-      console.log('[webhook] Incoming request:', {
-        contractorId,
-        headers: {
-          'content-type': req.headers['content-type'],
-          'x-api-key': req.headers['x-api-key'] ? '[REDACTED]' : 'missing'
-        },
-      });
-      
-      const contractor = await storage.getContractor(contractorId);
-      if (!contractor) {
-        console.error('[webhook] Invalid contractor ID:', contractorId);
-        res.status(404).json({ 
-          error: "Contractor not found",
-          message: "The specified contractor ID does not exist"
-        });
-        return;
-      }
-      
-      const apiKey = req.headers['x-api-key'] as string;
-      if (!apiKey) {
-        res.status(401).json({ 
-          error: "Missing API key",
-          message: "Include your API key in the 'X-API-Key' header"
-        });
-        return;
-      }
-      
-      let storedApiKey: string | null;
-      try {
-        storedApiKey = await CredentialService.getCredential(contractorId, 'webhook', 'api_key');
-      } catch {
-        storedApiKey = null;
-      }
 
-      // If no key has been configured yet, reject and instruct the contractor
-      // to generate their key via the authenticated settings panel.
-      // Never auto-generate a key in response to an unauthenticated request.
-      if (!storedApiKey) {
-        res.status(401).json({
-          error: "Webhook not configured",
-          message: "No webhook API key has been set up for this contractor. Log in and generate your key from Settings > Webhooks."
-        });
-        return;
-      }
+      const auth = await validateWebhookAuth(req, res, contractorId, 'webhook-leads');
+      if (!auth) return;
+      const { contractor } = auth;
 
-      if (storedApiKey !== apiKey) {
-        res.status(401).json({ 
-          error: "Invalid API key",
-          message: "The provided API key is not valid for this contractor"
-        });
-        return;
-      }
-      
-      let requestData = req.body.data || req.body;
-      if (Array.isArray(requestData) && requestData.length > 0) {
-        requestData = requestData[0];
-      }
-      
+      const requestData = parseWebhookPayload(req);
       console.log('[webhook] Extracted data:', JSON.stringify(requestData, null, 2));
       
       const { 

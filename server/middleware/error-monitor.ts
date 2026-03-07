@@ -19,7 +19,7 @@ const MAX_ERROR_LOGS = 1000;
  */
 export function aiErrorHandler(err: Error, req: Request, res: Response, _next: NextFunction) {
   const errorId = `err_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  const context = `${req.method} ${req.path} - User: ${(req as any).user?.id || 'anonymous'}`;
+  const context = `${req.method} ${req.path} - User: ${req.user?.userId || 'anonymous'}`;
   
   // Store error log
   const errorLog: ErrorLog = {
@@ -27,7 +27,7 @@ export function aiErrorHandler(err: Error, req: Request, res: Response, _next: N
     timestamp: new Date(),
     error: err,
     context,
-    contractorId: (req as any).user?.contractorId
+    contractorId: req.user?.contractorId
   };
   
   errorLogs.push(errorLog);

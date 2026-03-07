@@ -7,6 +7,14 @@ interface RateLimitEntry {
 
 const rateLimitStore = new Map<string, RateLimitEntry>();
 
+// Hard upper bound on in-memory store size. Without this, a DDoS flood of
+// unique IPs would grow the Map unboundedly until the process OOMs.
+// When the cap is reached we fail open (pass the request through) rather than
+// crash. Operators should scale horizontally or switch to a Redis-backed store
+// if this warning fires in production.
+const MAX_RATE_LIMIT_STORE_SIZE = 100_000;
+let storeCapWarningLogged = false;
+
 const CLEANUP_INTERVAL = 60 * 1000;
 setInterval(() => {
   const now = Date.now();
@@ -16,6 +24,7 @@ setInterval(() => {
       rateLimitStore.delete(key);
     }
   }
+  storeCapWarningLogged = false; // Reset warning flag after cleanup
 }, CLEANUP_INTERVAL);
 
 interface RateLimitOptions {
@@ -39,6 +48,15 @@ export function createRateLimiter(options: RateLimitOptions) {
     let entry = rateLimitStore.get(key);
 
     if (!entry || entry.resetAt < now) {
+      // Fail open when the store is at capacity rather than OOM the process.
+      if (!entry && rateLimitStore.size >= MAX_RATE_LIMIT_STORE_SIZE) {
+        if (!storeCapWarningLogged) {
+          console.warn(`[rate-limiter] Store size cap (${MAX_RATE_LIMIT_STORE_SIZE}) reached. New IPs will bypass rate limiting until next cleanup.`);
+          storeCapWarningLogged = true;
+        }
+        next();
+        return;
+      }
       entry = {
         count: 1,
         resetAt: now + windowMs,

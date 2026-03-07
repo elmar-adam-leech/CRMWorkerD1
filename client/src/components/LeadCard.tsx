@@ -14,51 +14,43 @@ import { useBulkSelection } from "@/contexts/BulkSelectionContext";
 import { InlineEdit } from "./InlineEdit";
 import { TagsDialog } from "./TagsDialog";
 import { getInitials } from "@/lib/utils";
+import type { Contact } from "@shared/schema";
+
+// hasJobs is a virtual computed column added by the paginated contacts query,
+// not part of the base Contact schema row.
+type LeadCardContact = Contact & { hasJobs?: boolean };
 
 type LeadCardProps = {
-  lead: any; // Accept both real Lead type and mock data structure
+  lead: LeadCardContact;
   onContact?: (leadId: string, method: "phone" | "email") => void;
   onSchedule?: (leadId: string) => void;
-  onSendText?: (lead: any) => void;
-  onSendEmail?: (lead: any) => void;
+  onSendText?: (lead: LeadCardContact) => void;
+  onSendEmail?: (lead: LeadCardContact) => void;
   onEdit?: (leadId: string) => void;
   onDelete?: (leadId: string) => void;
   onEditStatus?: (leadId: string) => void;
   onViewDetails?: (leadId: string) => void;
-  onSetFollowUp?: (lead: any) => void;
-  onUpdateLead?: (leadId: string, updates: Partial<any>) => Promise<void>;
+  onSetFollowUp?: (lead: LeadCardContact) => void;
+  onUpdateLead?: (leadId: string, updates: Partial<Contact>) => Promise<void>;
   selectable?: boolean;
 };
 
 export const LeadCard = memo(function LeadCard({ lead, onContact: _onContact, onSchedule, onSendText, onSendEmail, onEdit, onDelete, onEditStatus, onViewDetails, onSetFollowUp, onUpdateLead, selectable = false }: LeadCardProps) {
   const { toggleItem, isSelected } = useBulkSelection();
   const [tagsDialogOpen, setTagsDialogOpen] = useState(false);
-  
-  // Handle both real and mock data structures
-  const leadName = lead.name || lead.customerName || '';
+
+  const leadName = lead.name || '';
   const leadEmail = (lead.emails && lead.emails.length > 0) ? lead.emails[0] : '';
   const leadPhone = (lead.phones && lead.phones.length > 0) ? lead.phones[0] : '';
   const leadAddress = lead.address || '';
   const leadSource = lead.source || '';
-  const leadStatus = lead.status || 'new';
-  const leadPriority = lead.priority || 'medium';
-  const leadScheduledDate = lead.scheduledDate;
+  const leadScheduledDate = lead.scheduledAt ? new Date(lead.scheduledAt).toLocaleDateString() : undefined;
   const leadTags = lead.tags || [];
 
   const handleSchedule = () => {
     onSchedule?.(lead.id);
   };
 
-  const getPriorityDotClass = (priority: string) => {
-    switch (priority) {
-      case "high":
-        return "bg-destructive";
-      case "medium":
-        return "bg-chart-3";
-      default:
-        return "bg-chart-2";
-    }
-  };
 
   return (
     <div className={`${lead.hasJobs ? 'border-l-4 border-l-green-600' : ''} rounded-xl`}>
@@ -85,7 +77,7 @@ export const LeadCard = memo(function LeadCard({ lead, onContact: _onContact, on
                 <InlineEdit
                   value={leadName}
                   onSave={async (newValue) => {
-                    await onUpdateLead(lead.id, { name: newValue });
+                    await onUpdateLead(lead.id, { name: String(newValue) });
                   }}
                   placeholder="Lead name"
                   showEditIcon
@@ -96,9 +88,8 @@ export const LeadCard = memo(function LeadCard({ lead, onContact: _onContact, on
               <CardTitle className="text-base font-medium truncate">{leadName}</CardTitle>
             )}
             <div className="flex items-center gap-2 mt-1 flex-wrap">
-              <StatusBadge status={leadStatus} />
+              <StatusBadge status={lead.status as Parameters<typeof StatusBadge>[0]['status']} />
               <CustomerBadge hasJobs={lead.hasJobs} />
-              <div className={`w-2 h-2 rounded-full shrink-0 ${getPriorityDotClass(leadPriority)}`} title={`${leadPriority} priority`} />
               <span className="text-xs text-muted-foreground truncate">{leadSource}</span>
             </div>
           </div>

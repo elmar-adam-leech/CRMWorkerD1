@@ -15,7 +15,7 @@ import type { UpdateCall } from "../storage-types";
 // individual tenant call volumes reliably exceed these thresholds.
 const CONVERSATION_MESSAGE_LIMIT = 500;  // per conversation view
 const CALLS_LIMIT = 500;                 // safety cap on calls list
-const MESSAGES_BULK_LIMIT = 2000;        // bulk messaging inbox queries
+const CONVERSATIONS_PAGE_LIMIT = 50;     // max conversations shown on the list page
 
 async function getMessages(contractorId: string, contactId?: string, estimateId?: string): Promise<Message[]> {
   const conditions = [eq(messages.contractorId, contractorId)];
@@ -90,32 +90,24 @@ function emailActivityToMessage(activity: {
   } as Message;
 }
 
-// FUTURE (scale): getConversations performs two separate DB queries (SMS messages and
-// email activities), each capped at CONVERSATION_MESSAGE_LIMIT (500 rows), then merges
-// and deduplicates them in-memory using a Map keyed by contactId.
+// DONE (scale refactored 2026): getConversations now uses a single DB-side UNION ALL
+// query to discover the top N conversations, replacing the old approach of fetching up
+// to 2000 rows (500 SMS + 500 email × 2 code paths) and merging them in-memory.
 //
-// Scale risks at high message volume:
-//   1. The 500-row cap silently drops older messages for high-volume tenants — the most
-//      recent conversation thread may be missing older activity.
-//   2. In-memory merge means Node.js heap grows linearly with message+activity volume
-//      across all contacts for a contractor, not just the page being shown.
+// Architecture:
+//   1. UNION ALL SQL — groups messages + email-activities by contact_id, returning
+//      MAX(created_at) per contact. Postgres returns at most CONVERSATIONS_PAGE_LIMIT
+//      rows over the wire. The existing contractor_contact_created index covers both branches.
+//   2. Two Drizzle ORM batch queries (inArray on the ≤50 contact_ids) fetch the recent
+//      messages for last-message preview. Results are already ordered DESC, so Node just
+//      picks the first occurrence per contactId in a single O(n) pass.
+//   3. One contact info lookup (inArray).
+//   = 4 DB round-trips total, O(CONVERSATIONS_PAGE_LIMIT) rows over the wire for step 1.
 //
-// Concrete migration path:
-//   SHORT TERM: Replace the two queries with a single SQL UNION ALL query:
-//     SELECT contact_id, MAX(created_at) AS last_ts, ... FROM messages WHERE contractor_id = $1
-//       GROUP BY contact_id
-//     UNION ALL
-//     SELECT contact_id, MAX(created_at) AS last_ts, ... FROM activities WHERE contractor_id = $1 AND type = 'email'
-//       GROUP BY contact_id
-//     ORDER BY last_ts DESC LIMIT 50;
-//   This pushes sort+dedup into Postgres, uses the existing contractor_contact_created index,
-//   and supports cursor-based pagination (keyset on last_ts + contact_id).
-//
-//   LONG TERM: Introduce a denormalized `conversations` table updated by triggers or
-//   background jobs — one row per (contractor_id, contact_id) with last_message_at and
-//   unread_count. The conversations list page reads only this table (tiny scan), while the
-//   detail view still reads messages/activities. This is the approach used by most messaging
-//   platforms at scale (e.g. SendBird, Twilio Conversations).
+// LONG TERM: Introduce a denormalized `conversations` table (one row per contractor_id +
+// contact_id with last_message_at and unread_count) updated by triggers or background
+// jobs. The list page then reads only that table (tiny scan). See SendBird / Twilio
+// Conversations for reference implementations.
 async function getConversations(contractorId: string, options: {
   search?: string;
   type?: 'text' | 'email';
@@ -129,123 +121,120 @@ async function getConversations(contractorId: string, options: {
   unreadCount: number;
   totalMessages: number;
 }>> {
-  const smsConditions = [eq(messages.contractorId, contractorId)];
-  if (options.type !== 'email') {
-    if (options.type) smsConditions.push(eq(messages.type, options.type));
-    if (options.status) smsConditions.push(eq(messages.status, options.status));
-    if (options.search) smsConditions.push(like(sql`lower(${messages.content})`, `%${options.search.toLowerCase()}%`));
-  }
+  const { search, type, status } = options;
 
-  const emailConditions = [eq(activities.contractorId, contractorId), eq(activities.type, 'email')];
-  if (options.type !== 'text' && options.search) {
-    emailConditions.push(like(sql`lower(${activities.content})`, `%${options.search.toLowerCase()}%`));
-  }
+  // Build each UNION branch with its WHERE conditions. Skip a branch entirely
+  // when the type filter makes it irrelevant (emit a no-row placeholder).
+  const smsBranch = type === 'email'
+    ? sql`SELECT NULL::varchar AS contact_id, NULL::timestamptz AS last_ts WHERE FALSE`
+    : sql`SELECT contact_id, MAX(created_at) AS last_ts FROM messages WHERE contractor_id = ${contractorId} AND contact_id IS NOT NULL ${status ? sql`AND status = ${status}` : sql``} ${search ? sql`AND lower(content) LIKE ${`%${search.toLowerCase()}%`}` : sql``} GROUP BY contact_id`;
 
-  const [smsMessages, emailActivities] = await Promise.all([
-    options.type === 'email' ? Promise.resolve([]) : db.select().from(messages).where(and(...smsConditions)).orderBy(desc(messages.createdAt)).limit(CONVERSATION_MESSAGE_LIMIT),
-    options.type === 'text' ? Promise.resolve([]) : db.select({
-      id: activities.id,
-      content: activities.content,
-      contactId: activities.contactId,
-      estimateId: activities.estimateId,
-      userId: activities.userId,
-      contractorId: activities.contractorId,
-      createdAt: activities.createdAt,
-      metadata: activities.metadata,
-      userName: users.name,
-    }).from(activities).leftJoin(users, eq(activities.userId, users.id)).where(and(...emailConditions)).orderBy(desc(activities.createdAt)).limit(CONVERSATION_MESSAGE_LIMIT)
+  const emailBranch = type === 'text'
+    ? sql`SELECT NULL::varchar AS contact_id, NULL::timestamptz AS last_ts WHERE FALSE`
+    : sql`SELECT contact_id, MAX(created_at) AS last_ts FROM activities WHERE contractor_id = ${contractorId} AND type = 'email' AND contact_id IS NOT NULL ${search ? sql`AND lower(content) LIKE ${`%${search.toLowerCase()}%`}` : sql``} GROUP BY contact_id`;
+
+  // Single DB round-trip: find the top N contacts by most recent activity.
+  type TopConvRow = { contact_id: string; last_ts: string };
+  const topConvResult = await db.execute<TopConvRow>(sql`
+    SELECT contact_id, MAX(last_ts) AS last_ts
+    FROM (${smsBranch} UNION ALL ${emailBranch}) combined
+    WHERE contact_id IS NOT NULL
+    GROUP BY contact_id
+    ORDER BY last_ts DESC
+    LIMIT ${CONVERSATIONS_PAGE_LIMIT}
+  `);
+
+  const topContactIds = topConvResult.rows.map((r) => r.contact_id);
+  if (topContactIds.length === 0) return [];
+
+  // Batch-fetch recent messages for the top contacts. Rows are already sorted
+  // DESC so the first row per contactId is the most recent message.
+  // Bounded by inArray(≤50 contactIds) × CONVERSATION_MESSAGE_LIMIT.
+  const [smsRows, emailActivityRows, contactRows] = await Promise.all([
+    type === 'email' ? Promise.resolve([]) :
+      db.select({
+        id: messages.id, type: messages.type, status: messages.status,
+        direction: messages.direction, content: messages.content,
+        toNumber: messages.toNumber, fromNumber: messages.fromNumber,
+        contactId: messages.contactId, estimateId: messages.estimateId,
+        userId: messages.userId, externalMessageId: messages.externalMessageId,
+        contractorId: messages.contractorId, createdAt: messages.createdAt,
+        userName: users.name,
+      })
+      .from(messages)
+      .leftJoin(users, eq(messages.userId, users.id))
+      .where(and(eq(messages.contractorId, contractorId), inArray(messages.contactId, topContactIds)))
+      .orderBy(desc(messages.createdAt))
+      .limit(CONVERSATION_MESSAGE_LIMIT),
+
+    type === 'text' ? Promise.resolve([]) :
+      db.select({
+        id: activities.id, content: activities.content,
+        contactId: activities.contactId, estimateId: activities.estimateId,
+        userId: activities.userId, contractorId: activities.contractorId,
+        createdAt: activities.createdAt, metadata: activities.metadata,
+        userName: users.name,
+      })
+      .from(activities)
+      .leftJoin(users, eq(activities.userId, users.id))
+      .where(and(
+        eq(activities.contractorId, contractorId),
+        eq(activities.type, 'email'),
+        inArray(activities.contactId, topContactIds),
+      ))
+      .orderBy(desc(activities.createdAt))
+      .limit(CONVERSATION_MESSAGE_LIMIT),
+
+    db.select({ id: contacts.id, name: contacts.name, phones: contacts.phones, emails: contacts.emails })
+      .from(contacts)
+      .where(and(inArray(contacts.id, topContactIds), eq(contacts.contractorId, contractorId))),
   ]);
 
-  const emailMessages = emailActivities.map(emailActivityToMessage);
-
-  const filteredMessages = [...smsMessages, ...emailMessages as Message[]];
-  filteredMessages.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
-  let allMessages: Message[];
-  if (options.search || options.type || options.status) {
-    const conversationKeys = new Set<string>();
-    filteredMessages.forEach(msg => { if (msg.contactId) conversationKeys.add(msg.contactId); });
-
-    if (conversationKeys.size === 0) return [];
-
-    const contactIds = Array.from(conversationKeys);
-
-    // Batch fetch — 2 queries total regardless of how many contactIds
-    const [batchSms, batchEmails] = await Promise.all([
-      db.select().from(messages)
-        .where(and(eq(messages.contractorId, contractorId), inArray(messages.contactId, contactIds)))
-        .orderBy(desc(messages.createdAt))
-        .limit(CONVERSATION_MESSAGE_LIMIT),
-      db.select({
-        id: activities.id, content: activities.content, contactId: activities.contactId,
-        estimateId: activities.estimateId, userId: activities.userId, contractorId: activities.contractorId,
-        createdAt: activities.createdAt, metadata: activities.metadata, userName: users.name,
-      }).from(activities).leftJoin(users, eq(activities.userId, users.id))
-        .where(and(
-          eq(activities.contractorId, contractorId),
-          eq(activities.type, 'email'),
-          inArray(activities.contactId, contactIds)
-        ))
-        .orderBy(desc(activities.createdAt))
-        .limit(CONVERSATION_MESSAGE_LIMIT)
-    ]);
-
-    const batchEmailMessages = batchEmails.map(emailActivityToMessage);
-    allMessages = [...batchSms, ...batchEmailMessages as Message[]];
-  } else {
-    const [allSms, allEmailActivities] = await Promise.all([
-      db.select().from(messages).where(eq(messages.contractorId, contractorId)).orderBy(desc(messages.createdAt)).limit(MESSAGES_BULK_LIMIT),
-      db.select({
-        id: activities.id, content: activities.content, contactId: activities.contactId,
-        estimateId: activities.estimateId, userId: activities.userId, contractorId: activities.contractorId,
-        createdAt: activities.createdAt, metadata: activities.metadata, userName: users.name,
-      }).from(activities).leftJoin(users, eq(activities.userId, users.id))
-        .where(and(eq(activities.contractorId, contractorId), eq(activities.type, 'email')))
-        .orderBy(desc(activities.createdAt))
-        .limit(MESSAGES_BULK_LIMIT)
-    ]);
-
-    const allEmailMessages = allEmailActivities.map(emailActivityToMessage);
-
-    allMessages = [...allSms, ...allEmailMessages as Message[]];
-  }
-
-  const conversationMap = new Map<string, { contactId: string; messages: Message[] }>();
-  for (const message of allMessages) {
-    if (!message.contactId) continue;
-    if (!conversationMap.has(message.contactId)) {
-      conversationMap.set(message.contactId, { contactId: message.contactId, messages: [] });
+  // O(n) pass: pick the first (most recent) message per contactId.
+  const lastSmsPerContact = new Map<string, Message>();
+  for (const row of smsRows) {
+    if (row.contactId && !lastSmsPerContact.has(row.contactId)) {
+      lastSmsPerContact.set(row.contactId, row as Message);
     }
-    conversationMap.get(message.contactId)!.messages.push(message);
   }
 
-  const conversationContactIds = Array.from(conversationMap.keys());
-  const contactRows = conversationContactIds.length > 0
-    ? await db.select({ id: contacts.id, name: contacts.name, phones: contacts.phones, emails: contacts.emails })
-        .from(contacts)
-        .where(and(inArray(contacts.id, conversationContactIds), eq(contacts.contractorId, contractorId)))
-    : [];
-  const contactLookup = new Map(contactRows.map(c => [c.id, c]));
+  const lastEmailPerContact = new Map<string, Message>();
+  for (const row of emailActivityRows) {
+    if (row.contactId && !lastEmailPerContact.has(row.contactId)) {
+      lastEmailPerContact.set(row.contactId, emailActivityToMessage(row as Parameters<typeof emailActivityToMessage>[0]));
+    }
+  }
 
-  const conversations = [];
-  for (const [contactId, conversation] of Array.from(conversationMap.entries())) {
-    const contact = contactLookup.get(contactId);
-    const contactName = contact?.name ?? 'Unknown';
-    const contactPhone = contact?.phones?.[0] ?? undefined;
-    const contactEmail = contact?.emails?.[0] ?? undefined;
+  const contactLookup = new Map(contactRows.map((c) => [c.id, c]));
 
-    const sorted = conversation.messages.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  // Build result in the sort order determined by the UNION query (most recent first).
+  const conversations: Array<{
+    contactId: string; contactName: string; contactPhone?: string;
+    contactEmail?: string; lastMessage: Message; unreadCount: number; totalMessages: number;
+  }> = [];
+
+  for (const { contact_id } of topConvResult.rows) {
+    const contact = contactLookup.get(contact_id);
+    const lastSms = lastSmsPerContact.get(contact_id);
+    const lastEmail = lastEmailPerContact.get(contact_id);
+
+    const candidates = [lastSms, lastEmail].filter((m): m is Message => m !== undefined);
+    if (candidates.length === 0) continue;
+
+    const lastMessage = candidates.sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    )[0];
+
     conversations.push({
-      contactId, contactName, contactPhone, contactEmail,
-      lastMessage: sorted[0],
+      contactId: contact_id,
+      contactName: contact?.name ?? 'Unknown',
+      contactPhone: contact?.phones?.[0] ?? undefined,
+      contactEmail: contact?.emails?.[0] ?? undefined,
+      lastMessage,
       unreadCount: 0,
-      totalMessages: conversation.messages.length
+      totalMessages: (lastSms ? 1 : 0) + (lastEmail ? 1 : 0),
     });
   }
-
-  conversations.sort((a, b) =>
-    new Date(b.lastMessage.createdAt).getTime() - new Date(a.lastMessage.createdAt).getTime()
-  );
 
   return conversations;
 }
