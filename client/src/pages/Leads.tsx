@@ -396,6 +396,8 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
           onSendEmail={handleSendEmailByEntity}
           onEditStatus={handleEditStatus}
           onSetFollowUp={handleSetFollowUp}
+          onDelete={handleDelete}
+          onUpdateLead={handleUpdateLead}
         />
       )}
 

@@ -43,6 +43,8 @@ interface LeadKanbanBoardProps {
   onSendEmail?: (lead: Contact) => void;
   onEditStatus?: (leadId: string) => void;
   onSetFollowUp?: (lead: Contact) => void;
+  onDelete?: (leadId: string) => void;
+  onUpdateLead?: (leadId: string, updates: Partial<Contact>) => Promise<void>;
 }
 
 function SortableLeadCard({
@@ -55,6 +57,8 @@ function SortableLeadCard({
   onSendEmail,
   onEditStatus,
   onSetFollowUp,
+  onDelete,
+  onUpdateLead,
 }: {
   lead: Contact;
   onViewDetails: (leadId: string) => void;
@@ -65,6 +69,8 @@ function SortableLeadCard({
   onSendEmail?: (lead: Contact) => void;
   onEditStatus?: (leadId: string) => void;
   onSetFollowUp?: (lead: Contact) => void;
+  onDelete?: (leadId: string) => void;
+  onUpdateLead?: (leadId: string, updates: Partial<Contact>) => Promise<void>;
 }) {
   const {
     attributes,
@@ -99,6 +105,8 @@ function SortableLeadCard({
         onSendEmail={onSendEmail}
         onEditStatus={onEditStatus}
         onSetFollowUp={onSetFollowUp}
+        onDelete={onDelete}
+        onUpdateLead={onUpdateLead}
         selectable={false}
       />
     </div>
@@ -115,6 +123,8 @@ function KanbanColumnComponent({
   onSendEmail,
   onEditStatus,
   onSetFollowUp,
+  onDelete,
+  onUpdateLead,
 }: {
   column: KanbanColumn;
   onViewDetails: (leadId: string) => void;
@@ -125,6 +135,8 @@ function KanbanColumnComponent({
   onSendEmail?: (lead: Contact) => void;
   onEditStatus?: (leadId: string) => void;
   onSetFollowUp?: (lead: Contact) => void;
+  onDelete?: (leadId: string) => void;
+  onUpdateLead?: (leadId: string, updates: Partial<Contact>) => Promise<void>;
 }) {
   const { setNodeRef: setDropRef } = useDroppable({ id: column.id });
 
@@ -156,6 +168,8 @@ function KanbanColumnComponent({
                     onSendEmail={onSendEmail}
                     onEditStatus={onEditStatus}
                     onSetFollowUp={onSetFollowUp}
+                    onDelete={onDelete}
+                    onUpdateLead={onUpdateLead}
                   />
                 ))}
               </div>
@@ -183,6 +197,8 @@ export function LeadKanbanBoard({
   onSendEmail,
   onEditStatus,
   onSetFollowUp,
+  onDelete,
+  onUpdateLead,
 }: LeadKanbanBoardProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [columns, setColumns] = useState<KanbanColumn[]>([
@@ -313,6 +329,8 @@ export function LeadKanbanBoard({
               onSendEmail={onSendEmail}
               onEditStatus={onEditStatus}
               onSetFollowUp={onSetFollowUp}
+              onDelete={onDelete}
+              onUpdateLead={onUpdateLead}
             />
           </div>
         ))}
@@ -330,6 +348,8 @@ export function LeadKanbanBoard({
               onSendEmail={onSendEmail}
               onEditStatus={onEditStatus}
               onSetFollowUp={onSetFollowUp}
+              onDelete={onDelete}
+              onUpdateLead={onUpdateLead}
               selectable={false}
             />
           </div>
