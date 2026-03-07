@@ -1,11 +1,11 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Users, Briefcase, MessageSquare, Menu } from "lucide-react";
+import { LayoutDashboard, Users, FileText, MessageSquare, Menu } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 const tabs = [
   { href: "/", icon: LayoutDashboard, label: "Dashboard" },
   { href: "/leads", icon: Users, label: "Leads" },
-  { href: "/jobs", icon: Briefcase, label: "Jobs" },
+  { href: "/estimates", icon: FileText, label: "Estimates" },
   { href: "/messages", icon: MessageSquare, label: "Messages" },
 ];
 
