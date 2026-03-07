@@ -12,7 +12,6 @@ import { Plus, Filter, UserPlus, AlertCircle, Archive, ArchiveRestore } from "lu
 import { LeadKanbanBoard } from "@/components/LeadKanbanBoard";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
 import { useContactMutations } from "@/hooks/useContactMutations";
 import type { Contact, PaginatedContacts } from "@shared/schema";
 import { useTerminologyContext } from "@/contexts/TerminologyContext";
@@ -40,6 +39,14 @@ import { usePagePreferences } from "@/hooks/use-page-preferences";
 import { useAddModalFromUrl } from "@/hooks/use-add-modal-from-url";
 
 const LEAD_STATUSES = ["new", "contacted", "scheduled", "disqualified"] as const;
+
+type ActiveModal =
+  | { type: "details"; contact: Contact }
+  | { type: "edit"; contact: Contact }
+  | { type: "editStatus"; contact: Contact }
+  | { type: "followUp"; contact: Contact }
+  | { type: "delete"; contactId: string; contactName: string }
+  | null;
 
 export default function Leads({ externalSearch = "" }: { externalSearch?: string }) {
   const [searchQuery, setSearchQuery] = useState(externalSearch);
@@ -70,17 +77,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
   const { isSelectionMode, selectedIds, toggleItem } = useBulkSelection();
 
   const [addContactModal, setAddContactModal] = useState(false);
-
-  type ActiveModal =
-    | { type: "details"; contact: Contact }
-    | { type: "edit"; contact: Contact }
-    | { type: "editStatus"; contact: Contact }
-    | { type: "followUp"; contact: Contact }
-    | { type: "delete"; contactId: string; contactName: string }
-    | null;
   const [activeModal, setActiveModal] = useState<ActiveModal>(null);
-
-  const { toast } = useToast();
 
   const terminology = useTerminologyContext();
   const { data: usersData } = useUsers();
@@ -229,20 +226,6 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
     updateContactStatus.mutate({ contactId, status: newStatus });
   }, [updateContactStatus]);
 
-  const handleUpdateLead = useCallback(async (contactId: string, updates: Partial<Contact>) => {
-    try {
-      await apiRequest("PATCH", `/api/contacts/${contactId}`, updates);
-      invalidateContacts(contactId);
-      toast({ title: "Lead Updated", description: "Lead has been updated successfully." });
-    } catch (error) {
-      toast({
-        title: "Error updating lead",
-        description: error instanceof Error ? error.message : "Failed to update lead",
-        variant: "destructive",
-      });
-    }
-  }, [toast]);
-
   const { handleBulkDelete, handleBulkStatusChange, handleBulkExport } = useBulkActions({
     entityType: "contact",
     deleteEndpoint: (id) => `/api/contacts/${id}`,
@@ -349,7 +332,6 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
               onEditStatus={handleEditStatus}
               onViewDetails={handleViewDetails}
               onSetFollowUp={handleSetFollowUp}
-              onUpdateLead={handleUpdateLead}
               selectable={!showArchived}
               isSelected={selectedIds.has(lead.id)}
               onToggleSelect={() => toggleItem(lead.id, "leads")}
@@ -369,7 +351,6 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
           onEditStatus={handleEditStatus}
           onSetFollowUp={handleSetFollowUp}
           onDelete={handleDelete}
-          onUpdateLead={handleUpdateLead}
         />
       )}
 

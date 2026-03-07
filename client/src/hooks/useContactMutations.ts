@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import type { Contact } from "@shared/schema";
 
 /**
  * Shared contact mutation hook — provides pre-wired mutations for all common
@@ -11,12 +12,13 @@ import { useToast } from "@/hooks/use-toast";
  *   - /api/contacts/follow-ups — keeps follow-up widgets in sync
  *
  * Usage:
- *   const { deleteContact, updateContactStatus, archiveLead, restoreLead, updateFollowUpDate } = useContactMutations();
+ *   const { deleteContact, updateContactStatus, archiveLead, restoreLead, updateFollowUpDate, updateContact } = useContactMutations();
  *   deleteContact.mutate(contactId);
  *   updateContactStatus.mutate({ contactId, status: 'contacted' });
  *   archiveLead.mutate(leadId);
  *   restoreLead.mutate(leadId);
  *   updateFollowUpDate.mutate({ contactId, followUpDate: new Date() });
+ *   updateContact.mutate({ contactId, updates: { name: 'New Name' } });
  *
  * Per-call callbacks: All mutations accept an optional second argument with
  * per-call onSuccess/onError callbacks (standard TanStack Query pattern):
@@ -123,5 +125,22 @@ export function useContactMutations() {
     },
   });
 
-  return { deleteContact, updateContactStatus, archiveLead, restoreLead, updateFollowUpDate };
+  const updateContact = useMutation({
+    mutationFn: async (data: { contactId: string; updates: Partial<Contact> }) => {
+      return apiRequest("PATCH", `/api/contacts/${data.contactId}`, data.updates);
+    },
+    onSuccess: (_result, data) => {
+      toast({ title: "Lead Updated", description: "Lead has been updated successfully." });
+      invalidateContactQueries(data.contactId);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error Updating Lead",
+        description: error.message || "Something went wrong.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  return { deleteContact, updateContactStatus, archiveLead, restoreLead, updateFollowUpDate, updateContact };
 }

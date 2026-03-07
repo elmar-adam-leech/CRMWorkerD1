@@ -1,5 +1,5 @@
 import { memo, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +13,7 @@ import { ViewDetailsButton } from "./ViewDetailsButton";
 import { InlineEdit } from "./InlineEdit";
 import { TagsDialog } from "./TagsDialog";
 import { getInitials } from "@/lib/utils";
+import { useContactMutations } from "@/hooks/useContactMutations";
 import type { Contact } from "@shared/schema";
 
 // hasJobs is a virtual computed column added by the paginated contacts query,
@@ -32,14 +33,14 @@ type LeadCardProps = {
   onEditStatus?: (leadId: string) => void;
   onViewDetails?: (leadId: string) => void;
   onSetFollowUp?: (lead: LeadCardContact) => void;
-  onUpdateLead?: (leadId: string, updates: Partial<Contact>) => Promise<void>;
   selectable?: boolean;
   isSelected?: boolean;
   onToggleSelect?: () => void;
 };
 
-export const LeadCard = memo(function LeadCard({ lead, onContact: _onContact, onSchedule, onSendText, onSendEmail, onEdit, onDelete, onArchive, onRestore, onEditStatus, onViewDetails, onSetFollowUp, onUpdateLead, selectable = false, isSelected = false, onToggleSelect }: LeadCardProps) {
+export const LeadCard = memo(function LeadCard({ lead, onContact: _onContact, onSchedule, onSendText, onSendEmail, onEdit, onDelete, onArchive, onRestore, onEditStatus, onViewDetails, onSetFollowUp, selectable = false, isSelected = false, onToggleSelect }: LeadCardProps) {
   const [tagsDialogOpen, setTagsDialogOpen] = useState(false);
+  const { updateContact } = useContactMutations();
 
   const leadName = lead.name || '';
   const leadEmail = (lead.emails && lead.emails.length > 0) ? lead.emails[0] : '';
@@ -74,21 +75,17 @@ export const LeadCard = memo(function LeadCard({ lead, onContact: _onContact, on
             <AvatarFallback>{getInitials(leadName)}</AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
-            {onUpdateLead ? (
-              <div className="text-base font-medium">
-                <InlineEdit
-                  value={leadName}
-                  onSave={async (newValue) => {
-                    await onUpdateLead(lead.id, { name: String(newValue) });
-                  }}
-                  placeholder="Lead name"
-                  showEditIcon
-                  displayClassName="font-medium"
-                />
-              </div>
-            ) : (
-              <CardTitle className="text-base font-medium truncate">{leadName}</CardTitle>
-            )}
+            <div className="text-base font-medium">
+              <InlineEdit
+                value={leadName}
+                onSave={async (newValue) => {
+                  updateContact.mutate({ contactId: lead.id, updates: { name: String(newValue) } });
+                }}
+                placeholder="Lead name"
+                showEditIcon
+                displayClassName="font-medium"
+              />
+            </div>
             <div className="flex items-center gap-2 mt-1 flex-wrap">
               <StatusBadge status={lead.status as Parameters<typeof StatusBadge>[0]['status']} />
               <CustomerBadge hasJobs={lead.hasJobs} />
@@ -120,12 +117,10 @@ export const LeadCard = memo(function LeadCard({ lead, onContact: _onContact, on
               <Settings className="h-4 w-4 mr-2" />
               Edit Status
             </DropdownMenuItem>
-            {onUpdateLead && (
-              <DropdownMenuItem onClick={() => setTagsDialogOpen(true)} data-testid={`menu-add-tags-${lead.id}`}>
-                <Tag className="h-4 w-4 mr-2" />
-                Add Tags
-              </DropdownMenuItem>
-            )}
+            <DropdownMenuItem onClick={() => setTagsDialogOpen(true)} data-testid={`menu-add-tags-${lead.id}`}>
+              <Tag className="h-4 w-4 mr-2" />
+              Add Tags
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             {onRestore && (
               <DropdownMenuItem onClick={() => onRestore(lead.id)} data-testid={`menu-restore-lead-${lead.id}`}>
@@ -225,18 +220,16 @@ export const LeadCard = memo(function LeadCard({ lead, onContact: _onContact, on
       </CardContent>
       
       {/* Tags Dialog */}
-      {onUpdateLead && (
-        <TagsDialog
-          open={tagsDialogOpen}
-          onOpenChange={setTagsDialogOpen}
-          tags={leadTags}
-          onSave={async (newTags) => {
-            await onUpdateLead(lead.id, { tags: newTags });
-          }}
-          entityName={leadName}
-          entityType="lead"
-        />
-      )}
+      <TagsDialog
+        open={tagsDialogOpen}
+        onOpenChange={setTagsDialogOpen}
+        tags={leadTags}
+        onSave={(newTags) => {
+          updateContact.mutate({ contactId: lead.id, updates: { tags: newTags } });
+        }}
+        entityName={leadName}
+        entityType="lead"
+      />
     </Card>
     </div>
   );

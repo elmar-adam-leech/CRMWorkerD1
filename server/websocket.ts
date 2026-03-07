@@ -46,9 +46,10 @@ function extractToken(request: IncomingMessage): string | null {
 }
 
 export function setupWebSocket(server: Server) {
-  wss = new WebSocketServer({ 
-    noServer: true,
-    path: '/ws'
+  wss = new WebSocketServer({ noServer: true });
+
+  wss.on('error', (err) => {
+    log(`[WebSocket] Server error: ${err.message}`);
   });
 
   // Handle upgrade requests
