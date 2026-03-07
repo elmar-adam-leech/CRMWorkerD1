@@ -81,6 +81,7 @@ export default function Contacts() {
       queryClient.invalidateQueries({ queryKey: ["/api/contacts/with-counts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/contacts/paginated"] });
       queryClient.invalidateQueries({ queryKey: ["/api/contacts/status-counts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
       setDeleteConfirm({ isOpen: false });
       setDetailContact(null);
     },
