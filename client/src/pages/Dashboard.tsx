@@ -11,7 +11,6 @@ export default function Dashboard() {
       <PageHeader 
         title="Dashboard" 
         description="Overview of your business performance and recent activity"
-        icon={<LayoutDashboard className="h-6 w-6" />}
       />
 
       <DashboardMetrics />
