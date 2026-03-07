@@ -2,6 +2,9 @@ import { storage } from "../storage";
 import { providerService } from "../providers/provider-service";
 import type { ExecutionContext, StepResult } from "./types";
 import { normalizePhoneForStorage } from "../utils/phone-normalizer";
+import { logger } from "../utils/logger";
+
+const log = logger('WorkflowAction:SendSMS');
 
 export async function handleSendSMS(
   config: Record<string, unknown>,
@@ -67,6 +70,12 @@ export async function handleSendSMS(
       return { success: false, error: result.error || 'Failed to send SMS' };
     }
 
+    // The SMS was sent successfully. Now attempt to persist a message record
+    // so it appears in the conversation thread. This is best-effort: a DB
+    // failure here must NOT mark the step as failed (the message was already
+    // delivered). Instead, record a saveWarning in the returned data so the
+    // workflow execution audit log captures it for operator review.
+    let saveWarning: string | undefined;
     try {
       const contactId = await storage.findMatchingContact(context.contractorId, [], [processedTo]);
       const msg = await storage.createMessage(
@@ -84,7 +93,7 @@ export async function handleSendSMS(
         context.contractorId
       );
 
-      console.log(`[Workflow Engine] Saved SMS to messages (contactId: ${contactId}, messageId: ${msg.id})`);
+      log.info(`Saved SMS to messages (contactId: ${contactId}, messageId: ${msg.id})`);
 
       const { broadcastToContractor } = await import('../websocket');
       broadcastToContractor(context.contractorId, {
@@ -94,7 +103,9 @@ export async function handleSendSMS(
         contactType: 'lead',
       });
     } catch (error) {
-      console.error('[Workflow Engine] Failed to save SMS to messages:', error);
+      const msg = error instanceof Error ? error.message : String(error);
+      saveWarning = `Failed to save message record: ${msg}`;
+      log.error('Failed to save SMS to messages — message was sent but will not appear in conversation thread', { error });
     }
 
     if (updateStatus && context.triggerData?.id) {
@@ -108,7 +119,7 @@ export async function handleSendSMS(
 
     return {
       success: true,
-      data: { to: processedTo, message: processedMessage, messageId: result.messageId },
+      data: { to: processedTo, message: processedMessage, messageId: result.messageId, ...(saveWarning ? { saveWarning } : {}) },
     };
   } catch (error) {
     return {

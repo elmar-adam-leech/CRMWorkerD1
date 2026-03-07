@@ -1,6 +1,9 @@
 import { storage } from "../storage";
 import { gmailService } from "../gmail-service";
 import type { ExecutionContext, StepResult } from "./types";
+import { logger } from "../utils/logger";
+
+const log = logger('WorkflowAction:SendEmail');
 
 export async function handleSendEmail(
   config: Record<string, unknown>,
@@ -52,6 +55,12 @@ export async function handleSendEmail(
       return { success: false, error: result.error || 'Failed to send email' };
     }
 
+    // The email was sent successfully. Now attempt to persist an activity record
+    // so it appears in the contact's history. This is best-effort: a DB failure
+    // here must NOT mark the step as failed (the email was already delivered).
+    // Instead, record a saveWarning in the returned data so the workflow
+    // execution audit log captures it for operator review.
+    let saveWarning: string | undefined;
     try {
       const emails = processedTo.split(',').map((e: string) => e.trim());
       let contactId: string | null = null;
@@ -82,9 +91,11 @@ export async function handleSendEmail(
         context.contractorId
       );
 
-      console.log(`[Workflow Engine] Saved email to activities (contactId: ${contactId})`);
+      log.info(`Saved email to activities (contactId: ${contactId})`);
     } catch (error) {
-      console.error('[Workflow Engine] Failed to save email to activities:', error);
+      const msg = error instanceof Error ? error.message : String(error);
+      saveWarning = `Failed to save activity record: ${msg}`;
+      log.error('Failed to save email to activities — email was sent but will not appear in contact history', { error });
     }
 
     if (updateStatus && context.triggerData?.id) {
@@ -98,7 +109,7 @@ export async function handleSendEmail(
 
     return {
       success: true,
-      data: { to: processedTo, subject: processedSubject, messageId: result.messageId },
+      data: { to: processedTo, subject: processedSubject, messageId: result.messageId, ...(saveWarning ? { saveWarning } : {}) },
     };
   } catch (error) {
     return {

@@ -31,17 +31,20 @@ export function registerHousecallProWebhookRoutes(app: Express): void {
       
       const signature = (req.headers['x-housecall-pro-signature'] || req.headers['x-housecall-signature']) as string;
       
+      // Each contractor must have their own webhook secret configured through
+      // the Housecall Pro integration setup flow. There is intentionally no
+      // fallback to a shared environment variable: a single leaked global secret
+      // would compromise signature validation for every tenant simultaneously.
       let webhookSecret: string | undefined;
       try {
-        const contractorSecret = await CredentialService.getCredential(contractorId, 'housecallpro', 'webhook_secret');
-        webhookSecret = contractorSecret || process.env.HOUSECALL_PRO_WEBHOOK_SECRET;
-      } catch {
-        webhookSecret = process.env.HOUSECALL_PRO_WEBHOOK_SECRET;
+        webhookSecret = await CredentialService.getCredential(contractorId, 'housecallpro', 'webhook_secret') || undefined;
+      } catch (err) {
+        log.error('Failed to load webhook secret for contractor', { contractorId, err });
       }
-      
+
       if (!webhookSecret) {
-        log.error('HOUSECALL_PRO_WEBHOOK_SECRET not configured');
-        res.status(500).json({ message: "Webhook secret not configured" });
+        log.error('No webhook secret configured for contractor — rejecting request', { contractorId });
+        res.status(401).json({ message: "Webhook not configured for this contractor" });
         return;
       }
       

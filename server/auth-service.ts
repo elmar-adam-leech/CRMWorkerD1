@@ -7,21 +7,25 @@ import { db } from './db';
 import { revokedTokens, users } from '@shared/schema';
 import { eq, lt } from 'drizzle-orm';
 
-// Critical security check for production
+// JWT_SECRET must always be set to a non-default value — in every environment.
+// Relying on NODE_ENV to gate this check is unsafe because misconfigured
+// deployments commonly leave NODE_ENV=development while serving real traffic.
+//
+// To generate a strong secret:
+//   node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+//
+// Set it as the JWT_SECRET environment variable before starting the server.
+const KNOWN_WEAK_SECRET = 'your-default-secret-key-replace-in-production';
 const JWT_SECRET = (() => {
   const secret = process.env.JWT_SECRET;
-  
-  if (process.env.NODE_ENV !== 'development' && (!secret || secret === 'your-default-secret-key-replace-in-production')) {
-    console.error('CRITICAL SECURITY ERROR: JWT_SECRET must be set to a secure value in non-development environments!');
-    console.error('Generate a secure secret with: node -e "console.log(require(\'crypto\').randomBytes(64).toString(\'hex\'))"');
+
+  if (!secret || secret === KNOWN_WEAK_SECRET) {
+    console.error('CRITICAL SECURITY ERROR: JWT_SECRET is missing or still set to the default placeholder.');
+    console.error('Set a strong random value in the JWT_SECRET environment variable before starting the server.');
+    console.error('Generate one with: node -e "console.log(require(\'crypto\').randomBytes(64).toString(\'hex\'))"');
     process.exit(1);
   }
-  
-  if (!secret) {
-    console.warn('WARNING: Using default JWT_SECRET for development. Set JWT_SECRET environment variable for security.');
-    return 'your-default-secret-key-replace-in-production';
-  }
-  
+
   return secret;
 })();
 
