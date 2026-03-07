@@ -28,7 +28,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ContractorSwitcher } from "./TenantSwitcher";
 import { useLocation, Link } from "wouter";
-import { useTerminology } from "@/hooks/useTerminology";
+import { useTerminologyContext } from "@/contexts/TerminologyContext";
 import type { TerminologySettings } from "@shared/schema";
 
 export interface SidebarContractor {
@@ -136,7 +136,7 @@ export function AppSidebar({
   const { setOpenMobile, isMobile } = useSidebar();
 
   // Shared terminology hook — single cache entry for the whole app
-  const { data: terminology } = useTerminology();
+  const terminology = useTerminologyContext();
 
   // Get menu items with custom terminology
   const menuItems = getMenuItems(terminology);

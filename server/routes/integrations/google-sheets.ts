@@ -4,8 +4,12 @@ import { insertContactSchema } from "@shared/schema";
 import { type AuthenticatedRequest, requireManagerOrAdmin } from "../../auth-service";
 import { CredentialService } from "../../credential-service";
 import { GoogleSheetsService, suggestColumnMappings } from "../../google-sheets-service";
+import { broadcastToContractor } from "../../websocket";
+import { logger } from "../../utils/logger";
 import { z } from "zod";
 import { asyncHandler } from "../../utils/async-handler";
+
+const log = logger('GoogleSheets');
 
 export function registerGoogleSheetsRoutes(app: Express): void {
   // Validation schemas for secure Google Sheets import
@@ -200,7 +204,7 @@ export function registerGoogleSheetsRoutes(app: Express): void {
       importConfig.startRow
     );
 
-    console.log(`Starting Google Sheets import for contractor ${contractorId}: ${rawLeads.length} leads to process`);
+    log.info(`Starting Google Sheets import for contractor ${contractorId}: ${rawLeads.length} leads to process`);
 
     const results = {
       total: rawLeads.length,
@@ -269,7 +273,8 @@ export function registerGoogleSheetsRoutes(app: Express): void {
           }
         }
         
-        await storage.createContact(validationResult.data, contractorId);
+        const newContact = await storage.createContact(validationResult.data, contractorId);
+        broadcastToContractor(contractorId, { type: 'contact_created', contactId: newContact.id });
         results.imported++;
         
       } catch (error) {
@@ -281,7 +286,7 @@ export function registerGoogleSheetsRoutes(app: Express): void {
       }
     }
     
-    console.log(`Google Sheets import completed for contractor ${contractorId}: ${results.imported}/${results.total} leads imported, ${results.skipped} skipped (duplicates)`);
+    log.info(`Google Sheets import completed for contractor ${contractorId}: ${results.imported}/${results.total} leads imported, ${results.skipped} skipped (duplicates)`);
     
     const statusCode = results.errors.length > 0 ? 207 : 200;
     

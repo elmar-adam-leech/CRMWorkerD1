@@ -15,7 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { formatStatusLabel, cn } from "@/lib/utils";
 import { useBulkActions } from "@/hooks/useBulkActions";
 import type { PaginatedEstimates, Contact, EstimateSummary } from "@shared/schema";
-import { useTerminology } from "@/hooks/useTerminology";
+import { useTerminologyContext } from "@/contexts/TerminologyContext";
 import { useUsers } from "@/hooks/useUsers";
 import { useCommunicationActions } from "@/hooks/useCommunicationActions";
 import { useGlobalShortcuts } from "@/hooks/use-keyboard-shortcuts";
@@ -95,7 +95,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
     estimateTitle?: string;
   }>({ isOpen: false });
 
-  const { data: terminology } = useTerminology();
+  const terminology = useTerminologyContext();
   const { data: usersData } = useUsers();
 
   const estimateStatusOptions = useMemo(

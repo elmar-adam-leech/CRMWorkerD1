@@ -1,7 +1,22 @@
 import type { Express, Request, Response } from "express";
 import { storage } from "../storage";
 import { publicBookingRateLimiter, publicBookingSubmitRateLimiter } from "../middleware/rate-limiter";
+import { broadcastToContractor } from "../websocket";
+import { logger } from "../utils/logger";
 import { asyncHandler } from "../utils/async-handler";
+
+const log = logger('PublicRoutes');
+
+interface PlacesAutocompleteResponse {
+  suggestions?: Array<Record<string, unknown>>;
+  error?: { message?: string };
+}
+
+interface PlacesDetailsResponse {
+  formattedAddress?: string;
+  addressComponents?: Array<Record<string, unknown>>;
+  error?: { message?: string };
+}
 
 export function registerPublicRoutes(app: Express): void {
   app.get('/sw-unregister', (_req, res) => {
@@ -96,9 +111,9 @@ export function registerPublicRoutes(app: Express): void {
         includedRegionCodes: ['us'],
       }),
     });
-    const data = await response.json() as any;
+    const data = await response.json() as PlacesAutocompleteResponse;
     if (!response.ok) {
-      console.error('[Places Autocomplete Public] API error:', data);
+      log.error('Places Autocomplete API error: ' + JSON.stringify(data));
       res.status(502).json({ error: 'Places API error', details: data });
       return;
     }
@@ -127,9 +142,9 @@ export function registerPublicRoutes(app: Express): void {
         },
       }
     );
-    const data = await response.json() as any;
+    const data = await response.json() as PlacesDetailsResponse;
     if (!response.ok) {
-      console.error('[Places Details Public] API error:', data);
+      log.error('Places Details API error: ' + JSON.stringify(data));
       res.status(502).json({ error: 'Places API error', details: data });
       return;
     }
@@ -275,6 +290,7 @@ export function registerPublicRoutes(app: Express): void {
         phones,
         address,
       }, contractor.id);
+      broadcastToContractor(contractor.id, { type: 'contact_updated', contactId: existingContactId });
     } else {
       // Create new contact
       const newContact = await storage.createContact({
@@ -287,6 +303,7 @@ export function registerPublicRoutes(app: Express): void {
         source: source || 'public_booking',
       }, contractor.id);
       contactId = newContact.id;
+      broadcastToContractor(contractor.id, { type: 'contact_created', contactId: newContact.id });
     }
 
     // Book the appointment using the scheduling service
@@ -309,6 +326,7 @@ export function registerPublicRoutes(app: Express): void {
 
     // Update contact status
     await storage.updateContact(contactId, { status: 'scheduled', isScheduled: true }, contractor.id);
+    broadcastToContractor(contractor.id, { type: 'contact_updated', contactId });
 
     res.json({ 
       success: true,

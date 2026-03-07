@@ -12,7 +12,7 @@ import { SecurityTab } from "@/components/settings/SecurityTab";
 import { TargetsTab } from "@/components/settings/TargetsTab";
 import { WebhooksTab } from "@/components/settings/WebhooksTab";
 import { SalespeopleTab } from "@/components/settings/SalespeopleTab";
-import { useTerminology } from "@/hooks/useTerminology";
+import { useTerminologyContext } from "@/contexts/TerminologyContext";
 import { useProviderConfig } from "@/hooks/use-provider-config";
 import { useUsers } from "@/hooks/useUsers";
 
@@ -74,7 +74,7 @@ export default function Settings() {
     speedToLeadMinutes: number; followUpRatePercent: string; setRatePercent: string; closeRatePercent: string;
   }>({ queryKey: ['/api/business-targets'], enabled: canManageIntegrations });
 
-  const { data: currentTerminology } = useTerminology();
+  const currentTerminology = useTerminologyContext();
 
   const { data: bookingSlugData } = useQuery<{ bookingSlug: string | null; bookingUrl: string | null }>({
     queryKey: ['/api/booking-slug'],

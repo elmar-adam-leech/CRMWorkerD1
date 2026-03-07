@@ -1,7 +1,7 @@
 import type { Express, Response } from "express";
 import { asyncHandler } from "../utils/async-handler";
 import { storage } from "../storage";
-import { insertContactSchema } from "@shared/schema";
+import { insertContactSchema, type InsertContact } from "@shared/schema";
 import { housecallProService } from "../housecall-pro-service";
 import { type AuthenticatedRequest } from "../auth-service";
 import { z } from "zod";
@@ -203,7 +203,7 @@ export function registerContactActionRoutes(app: Express): void {
         errors: [] as Array<{ row: number; error: string; data: any }>
       };
 
-      const validContacts: Array<ReturnType<typeof insertContactSchema.omit> extends { parse: (v: any) => infer T } ? T : never> = [];
+      const validContacts: Array<Omit<InsertContact, 'contractorId'>> = [];
 
       for (let i = 1; i < lines.length; i++) {
         try {
@@ -267,7 +267,7 @@ export function registerContactActionRoutes(app: Express): void {
             continue;
           }
 
-          (validContacts as any[]).push(validationResult.data);
+          validContacts.push(validationResult.data);
         } catch (error) {
           results.errors.push({
             row: i + 1,
@@ -278,7 +278,7 @@ export function registerContactActionRoutes(app: Express): void {
       }
 
       if (validContacts.length > 0) {
-        const bulkResult = await storage.bulkCreateContacts(validContacts as any[], contractorId);
+        const bulkResult = await storage.bulkCreateContacts(validContacts, contractorId);
         results.imported = bulkResult.inserted;
       }
 

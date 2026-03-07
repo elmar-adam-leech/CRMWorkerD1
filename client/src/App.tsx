@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { SyncStatusProvider } from "@/hooks/use-sync-status";
 import { WebSocketProvider } from "@/contexts/WebSocketContext";
 import { BulkSelectionProvider } from "@/contexts/BulkSelectionContext";
+import { TerminologyProvider } from "@/contexts/TerminologyContext";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { LoginForm } from "@/components/LoginForm";
 import { RefreshBanner } from "@/components/ui/refresh-banner";
@@ -313,6 +314,7 @@ function App() {
         <WebSocketProvider>
           {isAuthenticated && user ? (
             <SyncStatusProvider>
+              <TerminologyProvider>
               <BulkSelectionProvider>
                 {/* Refresh banner for cached content detection */}
                 {showRefreshBanner && (
@@ -352,6 +354,7 @@ function App() {
               <MobileBottomNav />
               <Toaster />
               </BulkSelectionProvider>
+              </TerminologyProvider>
             </SyncStatusProvider>
           ) : (
             <>

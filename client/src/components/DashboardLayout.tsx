@@ -3,7 +3,7 @@ import { AppSidebar } from "./AppSidebar";
 import { Header } from "./Header";
 import { ThemeProvider } from "./ThemeProvider";
 import { CommandPalette } from "./CommandPalette";
-import { useTerminology } from "@/hooks/useTerminology";
+import { useTerminologyContext } from "@/contexts/TerminologyContext";
 import { useWebSocketContext } from "@/contexts/WebSocketContext";
 import { WifiOff } from "lucide-react";
 
@@ -55,7 +55,7 @@ export function DashboardLayout({
   };
 
   // Shared terminology hook — single cache entry for the whole app
-  const { data: terminology } = useTerminology();
+  const terminology = useTerminologyContext();
 
   return (
     <ThemeProvider defaultTheme="light" storageKey="crm-theme">

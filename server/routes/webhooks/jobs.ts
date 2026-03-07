@@ -5,10 +5,12 @@ import { webhookRateLimiter } from "../../middleware/rate-limiter";
 import { parseWebhookDate } from "../../utils/parse-webhook-date";
 import { asyncHandler } from "../../utils/async-handler";
 import { validateWebhookAuth, parseWebhookPayload } from "../../utils/webhook-auth";
+import { logger } from "../../utils/logger";
+
+const log = logger('WebhookJobs');
 
 export function registerJobWebhookRoutes(app: Express): void {
   app.post("/api/webhooks/:contractorId/jobs", webhookRateLimiter, asyncHandler(async (req: Request, res: Response) => {
-    console.log('[webhook-job] === WEBHOOK CALLED ===');
     try {
       const { contractorId } = req.params;
 
@@ -16,8 +18,9 @@ export function registerJobWebhookRoutes(app: Express): void {
       if (!auth) return;
       const { contractor } = auth;
 
+      log.debug('Webhook called');
       const requestData = parseWebhookPayload(req);
-      console.log('[webhook-job] Extracted data:', JSON.stringify(requestData, null, 2));
+      log.debug('Extracted data: ' + JSON.stringify(requestData, null, 2));
       
       const extractField = (fieldName: string): any => {
         if (requestData[fieldName] !== undefined) return requestData[fieldName];
@@ -61,7 +64,7 @@ export function registerJobWebhookRoutes(app: Express): void {
       let customerId: string;
       if (existingCustomer) {
         customerId = existingCustomer.id;
-        console.log('[webhook-job] Using existing customer:', customerId);
+        log.info(`Using existing customer: ${customerId}`);
       } else {
         const newCustomer = await storage.createContact({
           name: String(customerName).trim(),
@@ -71,7 +74,7 @@ export function registerJobWebhookRoutes(app: Express): void {
           address: customerAddress ? String(customerAddress).trim() : undefined,
         }, contractorId);
         customerId = newCustomer.id;
-        console.log('[webhook-job] Created new customer:', customerId);
+        log.info(`Created new customer: ${customerId}`);
       }
       
       
@@ -116,11 +119,11 @@ export function registerJobWebhookRoutes(app: Express): void {
         notes: notes ? String(notes).trim() : null,
       };
       
-      console.log('[webhook-job] Creating job with data:', jobData);
+      log.debug('Creating job with data: ' + JSON.stringify(jobData));
       
       const newJob = await storage.createJob(jobData, contractorId);
       
-      console.log(`[webhook-job] ✓ Job created successfully for contractor ${contractor.name}:`, newJob.title);
+      log.info(`Job created for contractor ${contractor.name}: ${newJob.title}`);
       
       broadcastToContractor(contractorId, {
         type: 'new_job',
@@ -143,7 +146,7 @@ export function registerJobWebhookRoutes(app: Express): void {
       });
       
     } catch (error) {
-      console.error('[webhook-job] Processing error:', error);
+      log.error('Processing error:', error);
       res.status(500).json({ 
         error: "Internal server error",
         message: "Failed to process job webhook",

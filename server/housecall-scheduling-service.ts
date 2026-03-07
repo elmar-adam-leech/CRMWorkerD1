@@ -830,7 +830,7 @@ export class HousecallSchedulingService {
           console.log('[scheduling] Created HCP estimate:', hcpEstimateId);
           
           // Step 2: Get the option ID from the created estimate and update its schedule
-          const estimateData = estimateResult.data as any;
+          const estimateData = estimateResult.data as { id: string; options?: Array<{ id: string }> };
           const optionId = estimateData.options?.[0]?.id;
           
           if (optionId && selectedSalesperson.housecallProUserId) {

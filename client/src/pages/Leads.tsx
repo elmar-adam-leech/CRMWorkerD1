@@ -15,7 +15,7 @@ import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tansta
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Contact, PaginatedContacts } from "@shared/schema";
-import { useTerminology } from "@/hooks/useTerminology";
+import { useTerminologyContext } from "@/contexts/TerminologyContext";
 import { useUsers } from "@/hooks/useUsers";
 import { cn, formatStatusLabel } from "@/lib/utils";
 import { useWebSocketInvalidation } from "@/hooks/useWebSocketInvalidation";
@@ -100,7 +100,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const { data: terminology } = useTerminology();
+  const terminology = useTerminologyContext();
   const { data: usersData } = useUsers();
 
   const leadStatusOptions = useMemo(

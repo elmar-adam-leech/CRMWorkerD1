@@ -14,7 +14,7 @@ import { formatStatusLabel } from "@/lib/utils";
 import { useBulkActions } from "@/hooks/useBulkActions";
 import { useBulkSelection } from "@/contexts/BulkSelectionContext";
 import type { PaginatedJobs } from "@shared/schema";
-import { useTerminology } from "@/hooks/useTerminology";
+import { useTerminologyContext } from "@/contexts/TerminologyContext";
 import { useUsers } from "@/hooks/useUsers";
 import { useGlobalShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useHousecallProIntegration } from "@/hooks/useHousecallProIntegration";
@@ -75,7 +75,7 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
 
   useAddModalFromUrl(() => setAddModalOpen());
 
-  const { data: terminology } = useTerminology();
+  const terminology = useTerminologyContext();
   const { data: usersData } = useUsers();
 
   // Paginated jobs list

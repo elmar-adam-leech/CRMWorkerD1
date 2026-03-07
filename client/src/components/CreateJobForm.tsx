@@ -98,6 +98,8 @@ export function CreateJobForm({ onSuccess, onCancel }: CreateJobFormProps) {
       queryClient.invalidateQueries({ queryKey: ['/api/jobs'] });
       queryClient.invalidateQueries({ queryKey: ['/api/jobs/paginated'] });
       queryClient.invalidateQueries({ queryKey: ['/api/jobs/status-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/contacts/paginated'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/contacts/status-counts'] });
       onSuccess();
     },
     onError: (error: any) => {

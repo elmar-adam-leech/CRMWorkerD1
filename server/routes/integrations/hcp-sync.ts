@@ -4,8 +4,12 @@ import { housecallProService } from "../../housecall-pro-service";
 import { requireAuth, requireAdmin } from "../../auth-service";
 import { syncStatus } from "../../sync-status-store";
 import { mapHcpEstimateStatus } from "../../sync/housecall-pro";
+import { broadcastToContractor } from "../../websocket";
+import { logger } from "../../utils/logger";
 import crypto from "crypto";
 import { asyncHandler } from "../../utils/async-handler";
+
+const log = logger('HcpSync');
 
 export function registerHcpSyncRoutes(app: Express): void {
   app.post("/api/housecall-pro/sync", asyncHandler(async (req, res) => {
@@ -29,10 +33,10 @@ export function registerHcpSyncRoutes(app: Express): void {
       startTime: new Date()
     });
 
-    console.log(`[housecall-pro-sync] Starting manual sync (type=${syncType}) for tenant ${contractorId}`);
+    log.info(`Starting manual sync (type=${syncType}) for tenant ${contractorId}`);
 
     const syncStartDate = await storage.getHousecallProSyncStartDate(contractorId);
-    console.log(`[housecall-pro-sync] Using sync start date filter: ${syncStartDate ? syncStartDate.toISOString() : 'none'}`);
+    log.info(`Using sync start date filter: ${syncStartDate ? syncStartDate.toISOString() : 'none'}`);
 
     let newEstimates = 0;
     let updatedEstimates = 0;
@@ -66,12 +70,12 @@ export function registerHcpSyncRoutes(app: Express): void {
 
       while (keepGoing) {
         if (Date.now() - startTime > maxRunTime) {
-          console.log(`[housecall-pro-sync] Time limit reached at page ${page}, aborting pagination`);
+          log.warn(`Time limit reached at page ${page}, aborting pagination`);
           break;
         }
 
         const estimatesParams = { ...baseEstimatesParams, page };
-        console.log(`[housecall-pro-sync] Fetching estimates page ${page}...`);
+        log.info(`Fetching estimates page ${page}...`);
 
         syncStatus.set(contractorId, {
           isRunning: true,
@@ -83,30 +87,30 @@ export function registerHcpSyncRoutes(app: Express): void {
 
         const estimatesResult = await housecallProService.getEstimates(contractorId, estimatesParams);
         if (!estimatesResult.success) {
-          console.error(`[housecall-pro-sync] Failed to fetch estimates page ${page}: ${estimatesResult.error}`);
+          log.error(`Failed to fetch estimates page ${page}: ${estimatesResult.error}`);
           res.status(400).json({ message: estimatesResult.error });
           return;
         }
 
         const pageEstimates = estimatesResult.data || [];
-        console.log(`[housecall-pro-sync] Page ${page}: fetched ${pageEstimates.length} estimates`);
+        log.info(`Page ${page}: fetched ${pageEstimates.length} estimates`);
 
         if (!pageEstimates.length) {
-          console.log(`[housecall-pro-sync] No more estimates found, stopping pagination`);
+          log.info(`No more estimates found, stopping pagination`);
           break;
         }
 
         allHousecallProEstimates = allHousecallProEstimates.concat(pageEstimates);
 
         if (pageEstimates.length < baseEstimatesParams.page_size) {
-          console.log(`[housecall-pro-sync] Page ${page} returned ${pageEstimates.length} estimates (< ${baseEstimatesParams.page_size}), stopping pagination`);
+          log.info(`Page ${page} returned ${pageEstimates.length} estimates (< ${baseEstimatesParams.page_size}), stopping pagination`);
           keepGoing = false;
         } else {
           page++;
         }
       }
 
-      console.log(`[housecall-pro-sync] Fetched ${allHousecallProEstimates.length} total estimates from Housecall Pro across ${page} pages`);
+      log.info(`Fetched ${allHousecallProEstimates.length} total estimates from Housecall Pro across ${page} pages`);
 
       const extractPhone = (customer?: any) => {
         if (!customer) return '';
@@ -141,12 +145,13 @@ export function registerHcpSyncRoutes(app: Express): void {
             };
 
             await storage.updateEstimate(existingEstimate.id, updateData, contractorId);
+            broadcastToContractor(contractorId, { type: 'estimate_updated', estimateId: existingEstimate.id });
             updatedEstimates++;
-            console.log(`[housecall-pro-sync] Updated estimate ${existingEstimate.id} from HCP ${hcpEstimate.id}`);
+            log.info(`Updated estimate ${existingEstimate.id} from HCP ${hcpEstimate.id}`);
           } else {
             const customerData = hcpEstimate.customer;
             if (!customerData) {
-              console.warn(`[housecall-pro-sync] Skipping estimate ${hcpEstimate.id} - no customer data`);
+              log.warn(`Skipping estimate ${hcpEstimate.id} - no customer data`);
               continue;
             }
 
@@ -172,7 +177,8 @@ export function registerHcpSyncRoutes(app: Express): void {
               };
 
               localCustomer = await storage.createContact(newCustomerData, contractorId);
-              console.log(`[housecall-pro-sync] Created customer ${localCustomer.id} from embedded data in estimate ${hcpEstimate.id}`);
+              broadcastToContractor(contractorId, { type: 'contact_created', contactId: localCustomer.id });
+              log.info(`Created customer ${localCustomer.id} from embedded data in estimate ${hcpEstimate.id}`);
             }
 
             let amount = hcpEstimate.total_amount ?? hcpEstimate.total ?? hcpEstimate.total_price ?? hcpEstimate.amount ?? null;
@@ -210,11 +216,12 @@ export function registerHcpSyncRoutes(app: Express): void {
             };
 
             await storage.createEstimate(estimateData, contractorId);
+            broadcastToContractor(contractorId, { type: 'estimate_created', estimateId: estimateData.id });
             newEstimates++;
-            console.log(`[housecall-pro-sync] Created estimate ${estimateData.id} from HCP ${hcpEstimate.id}`);
+            log.info(`Created estimate ${estimateData.id} from HCP ${hcpEstimate.id}`);
           }
         } catch (itemError) {
-          console.error(`[housecall-pro-sync] Failed to process estimate ${hcpEstimate.id}:`, itemError);
+          log.error(`Failed to process estimate ${hcpEstimate.id}:`, itemError);
         }
       }
     }
@@ -228,7 +235,7 @@ export function registerHcpSyncRoutes(app: Express): void {
         startTime: new Date()
       });
 
-      console.log(`[housecall-pro-sync] Starting jobs sync for tenant ${contractorId}`);
+      log.info(`Starting jobs sync for tenant ${contractorId}`);
 
       const jobsCountBefore = await storage.getJobsCount(contractorId);
 
@@ -238,10 +245,10 @@ export function registerHcpSyncRoutes(app: Express): void {
       const jobsCountAfter = await storage.getJobsCount(contractorId);
       newJobs = Math.max(0, jobsCountAfter - jobsCountBefore);
 
-      console.log(`[housecall-pro-sync] Jobs sync complete. New jobs: ${newJobs}`);
+      log.info(`Jobs sync complete. New jobs: ${newJobs}`);
     }
 
-    console.log(`[housecall-pro-sync] Sync (type=${syncType}) completed for tenant ${contractorId}`);
+    log.info(`Sync (type=${syncType}) completed for tenant ${contractorId}`);
 
     syncStatus.set(contractorId, {
       isRunning: false,

@@ -5,6 +5,9 @@ import { webhookRateLimiter } from "../../middleware/rate-limiter";
 import { normalizePhoneForStorage, normalizePhoneArrayForStorage } from "../../utils/phone-normalizer";
 import { asyncHandler } from "../../utils/async-handler";
 import { validateWebhookAuth, parseWebhookPayload } from "../../utils/webhook-auth";
+import { logger } from "../../utils/logger";
+
+const log = logger('WebhookLeads');
 
 export function registerLeadWebhookRoutes(app: Express): void {
   app.post("/api/webhooks/:contractorId/leads", webhookRateLimiter, asyncHandler(async (req: Request, res: Response) => {
@@ -16,7 +19,7 @@ export function registerLeadWebhookRoutes(app: Express): void {
       const { contractor } = auth;
 
       const requestData = parseWebhookPayload(req);
-      console.log('[webhook] Extracted data:', JSON.stringify(requestData, null, 2));
+      log.debug('Extracted data: ' + JSON.stringify(requestData, null, 2));
       
       const { 
         name, 
@@ -80,7 +83,7 @@ export function registerLeadWebhookRoutes(app: Express): void {
       }
       
       if (validationErrors.length > 0) {
-        console.error('[webhook] Validation errors:', validationErrors);
+        log.warn('Validation errors: ' + JSON.stringify(validationErrors));
         const detailedMessage = `Validation failed: ${validationErrors.join('; ')}`;
         res.status(400).json({
           error: "Validation failed",
@@ -133,7 +136,7 @@ export function registerLeadWebhookRoutes(app: Express): void {
                 const match = dateStr.match(pattern);
                 if (match) {
                   const extractedDate = match[0];
-                  console.log(`[webhook] Extracted date pattern: "${extractedDate}" from "${dateStr}"`);
+                  log.debug(`Extracted date pattern: "${extractedDate}" from "${dateStr}"`);
                   
                   for (const format of formats) {
                     try {
@@ -156,9 +159,9 @@ export function registerLeadWebhookRoutes(app: Express): void {
           
           if (isValid(parsedDate)) {
             parsedFollowUpDate = parsedDate;
-            console.log(`[webhook] Successfully parsed date: "${dateStr}" -> ${parsedDate.toISOString()}`);
+            log.debug(`Successfully parsed date: "${dateStr}" -> ${parsedDate.toISOString()}`);
           } else {
-            console.error(`[webhook] Failed to parse date: "${dateStr}"`);
+            log.warn(`Failed to parse date: "${dateStr}"`);
             res.status(400).json({ 
               error: "Invalid date format",
               message: `Could not parse followUpDate: "${dateStr}". Please use ISO format (2025-10-16T10:00:00Z) or common formats like "October 16, 2025" or "10/16/2025"`,
@@ -167,7 +170,7 @@ export function registerLeadWebhookRoutes(app: Express): void {
             return;
           }
         } catch (dateError) {
-          console.error('[webhook] Date parsing error:', dateError);
+          log.error('Date parsing error:', dateError);
           res.status(400).json({ 
             error: "Date parsing failed",
             message: `Error parsing followUpDate: "${dateStr}"`,
@@ -199,7 +202,7 @@ export function registerLeadWebhookRoutes(app: Express): void {
       
       if (existingContactId) {
         contactId = existingContactId;
-        console.log(`[webhook-lead] Found existing contact: ${contactId}`);
+        log.info(`Found existing contact: ${contactId}`);
       } else {
         const contactData = {
           name: name.trim(),
@@ -219,11 +222,11 @@ export function registerLeadWebhookRoutes(app: Express): void {
           utmContent: utmContent ? String(utmContent).trim() : undefined,
         };
         
-        console.log('[webhook-lead] Creating new contact with data:', contactData);
+        log.debug('Creating new contact with data: ' + JSON.stringify(contactData));
         const newContact = await storage.createContact(contactData, contractorId);
         contactId = newContact.id;
         isNewContact = true;
-        console.log(`[webhook-lead] ✓ New contact created: ${contactId}`);
+        log.info(`New contact created: ${contactId}`);
       }
       
       const leadData = {
@@ -241,9 +244,9 @@ export function registerLeadWebhookRoutes(app: Express): void {
         followUpDate: parsedFollowUpDate,
       };
       
-      console.log('[webhook-lead] Creating new lead record with data:', leadData);
+      log.debug('Creating new lead record with data: ' + JSON.stringify(leadData));
       const newLead = await storage.createLead(leadData, contractorId);
-      console.log(`[webhook-lead] ✓ Lead created successfully for contractor ${contractor.name}: ${newLead.id} (${isNewContact ? 'new contact' : 'existing contact'})`);
+      log.info(`Lead created for contractor ${contractor.name}: ${newLead.id} (${isNewContact ? 'new contact' : 'existing contact'})`);
 
       // Respond immediately — HCP sync runs in the background via setImmediate so it
       // cannot block or time out the webhook caller. See MEDIUM/LONG TERM migration notes
@@ -280,19 +283,19 @@ export function registerLeadWebhookRoutes(app: Express): void {
             const searchPhone = contact.phones?.[0];
             
             if (searchEmail || searchPhone) {
-              console.log('[HCP Sync] Searching for existing HCP customer:', { email: searchEmail, phone: searchPhone });
+              log.debug(`HCP: Searching for existing customer (email=${searchEmail}, phone=${searchPhone})`);
               const searchResult = await housecallProService.searchCustomers(contractorId, {
                 email: searchEmail,
                 phone: searchPhone
               });
               if (searchResult.success && searchResult.data && searchResult.data.length > 0) {
                 hcpCustomerId = searchResult.data[0].id;
-                console.log('[HCP Sync] Found existing HCP customer:', hcpCustomerId);
+                log.info(`HCP: Found existing customer ${hcpCustomerId}`);
               }
             }
             
             if (!hcpCustomerId) {
-              console.log('[HCP Sync] No existing customer found, creating new one');
+              log.debug('HCP: No existing customer found, creating new one');
               const hcpCustomerResult = await housecallProService.createCustomer(contractorId, {
                 first_name: firstName,
                 last_name: lastName,
@@ -304,15 +307,15 @@ export function registerLeadWebhookRoutes(app: Express): void {
               });
               if (hcpCustomerResult.success && hcpCustomerResult.data?.id) {
                 hcpCustomerId = hcpCustomerResult.data.id;
-                console.log('[HCP Sync] Created HCP customer:', hcpCustomerId);
+                log.info(`HCP: Created customer ${hcpCustomerId}`);
               } else {
-                console.warn('[HCP Sync] Failed to create HCP customer:', hcpCustomerResult.error);
+                log.warn(`HCP: Failed to create customer: ${hcpCustomerResult.error}`);
               }
             }
             
             if (hcpCustomerId) {
               await storage.updateContact(contact.id, { housecallProCustomerId: hcpCustomerId }, contractorId);
-              console.log('[HCP Sync] Stored HCP customer ID:', hcpCustomerId, 'for contact:', contact.id);
+              log.info(`HCP: Stored customer ID ${hcpCustomerId} for contact ${contact.id}`);
               const hcpLeadResult = await housecallProService.createLead(contractorId, {
                 customer_id: hcpCustomerId,
                 lead_source: source || 'Webhook',
@@ -320,9 +323,9 @@ export function registerLeadWebhookRoutes(app: Express): void {
               });
               if (hcpLeadResult.success && hcpLeadResult.data?.id) {
                 await storage.updateLead(newLead.id, { housecallProLeadId: hcpLeadResult.data.id }, contractorId);
-                console.log('[HCP Sync] Created HCP lead:', hcpLeadResult.data.id, 'for CRM lead:', newLead.id);
+                log.info(`HCP: Created lead ${hcpLeadResult.data.id} for CRM lead ${newLead.id}`);
               } else {
-                console.warn('[HCP Sync] Failed to create HCP lead:', hcpLeadResult.error);
+                log.warn(`HCP: Failed to create lead: ${hcpLeadResult.error}`);
               }
             }
           } else if (contact?.housecallProCustomerId) {
@@ -333,18 +336,18 @@ export function registerLeadWebhookRoutes(app: Express): void {
             });
             if (hcpLeadResult.success && hcpLeadResult.data?.id) {
               await storage.updateLead(newLead.id, { housecallProLeadId: hcpLeadResult.data.id }, contractorId);
-              console.log('[HCP Sync] Created HCP lead:', hcpLeadResult.data.id, 'for CRM lead:', newLead.id);
+              log.info(`HCP: Created lead ${hcpLeadResult.data.id} for CRM lead ${newLead.id}`);
             } else {
-              console.warn('[HCP Sync] Failed to create HCP lead:', hcpLeadResult.error);
+              log.warn(`HCP: Failed to create lead: ${hcpLeadResult.error}`);
             }
           }
         } catch (hcpError) {
-          console.error('[HCP Sync] Background sync error (lead not lost — already saved to CRM):', hcpError);
+          log.error('HCP background sync error (lead already saved to CRM):', hcpError);
         }
       });
       
     } catch (error) {
-      console.error('[webhook] Processing error:', error);
+      log.error('Processing error:', error);
       res.status(500).json({ 
         error: "Internal server error",
         message: "Failed to process lead webhook",

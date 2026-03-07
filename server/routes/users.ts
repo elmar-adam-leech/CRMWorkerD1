@@ -4,9 +4,18 @@ import { storage } from "../storage";
 import { users, userContractors, contractors } from "@shared/schema";
 import { db } from "../db";
 import { eq, and, isNotNull } from "drizzle-orm";
+import { z } from "zod";
 
 import { requireAuth, requireManagerOrAdmin, requireAdmin } from "../auth-service";
 import bcrypt from "bcrypt";
+
+const createUserBodySchema = z.object({
+  name: z.string().min(1, "Name is required").max(200),
+  email: z.string().email("Invalid email format").max(500),
+  username: z.string().min(2, "Username must be at least 2 characters").max(100),
+  password: z.string().min(8, "Password must be at least 8 characters").max(200),
+  role: z.enum(['user', 'manager', 'admin']).optional(),
+});
 
 export function registerUserRoutes(app: Express): void {
   app.get("/api/users", requireAuth, requireManagerOrAdmin, asyncHandler(async (req, res) => {
@@ -30,12 +39,13 @@ export function registerUserRoutes(app: Express): void {
   }));
 
   app.post("/api/users", requireAuth, requireAdmin, asyncHandler(async (req, res) => {
-    const { name, email, password, role, username } = req.body;
-
-    if (!name || !email || !password || !username) {
-      res.status(400).json({ message: "Name, email, username, and password are required" });
+    const parseResult = createUserBodySchema.safeParse(req.body);
+    if (!parseResult.success) {
+      const errors = parseResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join('; ');
+      res.status(400).json({ message: `Validation failed: ${errors}` });
       return;
     }
+    const { name, email, password, role, username } = parseResult.data;
 
     const existingUserForContractor = await storage.getUserByEmailAndContractor(email, req.user.contractorId);
     if (existingUserForContractor) {

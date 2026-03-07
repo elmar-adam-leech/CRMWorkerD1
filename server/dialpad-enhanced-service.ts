@@ -12,6 +12,9 @@ interface DialpadUser {
   display_name: string;
   emails?: string[];
   state: string;
+  department?: string | null;
+  role?: string | null;
+  extension?: string | null;
 }
 
 interface DialpadNumber {
@@ -250,9 +253,9 @@ export class DialpadEnhancedService {
             firstName: dialpadUser.display_name.split(' ')[0] || '',
             lastName: dialpadUser.display_name.split(' ').slice(1).join(' ') || '',
             displayName: dialpadUser.display_name,
-            department: (dialpadUser as any).department || null,
-            role: (dialpadUser as any).role || null,
-            extension: (dialpadUser as any).extension || null,
+            department: dialpadUser.department || null,
+            role: dialpadUser.role || null,
+            extension: dialpadUser.extension || null,
             isActive: dialpadUser.state === 'active',
             lastSyncAt: new Date(),
           };

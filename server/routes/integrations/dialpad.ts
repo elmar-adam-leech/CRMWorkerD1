@@ -7,6 +7,9 @@ import { dialpadEnhancedService } from "../../dialpad-enhanced-service";
 import { requireAuth, requireManagerOrAdmin } from "../../auth-service";
 import { syncStatus } from "../../sync-status-store";
 import { asyncHandler } from "../../utils/async-handler";
+import { logger } from "../../utils/logger";
+
+const log = logger('Dialpad');
 
 export function registerDialpadRoutes(app: Express): void {
   app.post("/api/dialpad/sync-phone-numbers", requireManagerOrAdmin, asyncHandler(async (req, res) => {
@@ -251,7 +254,7 @@ export function registerDialpadRoutes(app: Express): void {
       startTime: new Date()
     });
 
-    console.log(`[dialpad-sync] Starting manual sync for tenant ${contractorId}`);
+    log.info(`Starting manual sync for tenant ${contractorId}`);
 
     const summary = {
       users: { fetched: 0, cached: 0 },
@@ -267,14 +270,14 @@ export function registerDialpadRoutes(app: Express): void {
       startTime: new Date()
     });
 
-    console.log(`[dialpad-sync] Syncing users...`);
+    log.info('Syncing users...');
     const usersResult = await dialpadEnhancedService.syncUsers(contractorId);
     summary.users.fetched = usersResult.fetched;
     summary.users.cached = usersResult.synced;
-    console.log(`[dialpad-sync] Fetched ${usersResult.fetched} users, synced ${usersResult.synced} to database`);
+    log.info(`Fetched ${usersResult.fetched} users, synced ${usersResult.synced} to database`);
 
     if (usersResult.errors.length > 0) {
-      console.warn(`[dialpad-sync] Encountered ${usersResult.errors.length} errors during user sync:`, usersResult.errors);
+      log.warn(`${usersResult.errors.length} errors during user sync: ${JSON.stringify(usersResult.errors)}`);
     }
 
     syncStatus.set(contractorId, {
@@ -285,14 +288,14 @@ export function registerDialpadRoutes(app: Express): void {
       startTime: new Date()
     });
 
-    console.log(`[dialpad-sync] Syncing departments...`);
+    log.info('Syncing departments...');
     const departmentsResult = await dialpadEnhancedService.syncDepartments(contractorId);
     summary.departments.fetched = departmentsResult.fetched;
     summary.departments.cached = departmentsResult.synced;
-    console.log(`[dialpad-sync] Fetched ${departmentsResult.fetched} departments, synced ${departmentsResult.synced} to database`);
+    log.info(`Fetched ${departmentsResult.fetched} departments, synced ${departmentsResult.synced} to database`);
 
     if (departmentsResult.errors.length > 0) {
-      console.warn(`[dialpad-sync] Encountered ${departmentsResult.errors.length} errors during department sync:`, departmentsResult.errors);
+      log.warn(`${departmentsResult.errors.length} errors during department sync: ${JSON.stringify(departmentsResult.errors)}`);
     }
 
     syncStatus.set(contractorId, {
@@ -303,17 +306,17 @@ export function registerDialpadRoutes(app: Express): void {
       startTime: new Date()
     });
 
-    console.log(`[dialpad-sync] Syncing phone numbers...`);
+    log.info('Syncing phone numbers...');
     const numbersResult = await dialpadEnhancedService.syncPhoneNumbers(contractorId);
     summary.phoneNumbers.fetched = numbersResult.fetched;
     summary.phoneNumbers.cached = numbersResult.synced;
-    console.log(`[dialpad-sync] Fetched ${numbersResult.fetched} phone numbers, synced ${numbersResult.synced} to database`);
+    log.info(`Fetched ${numbersResult.fetched} phone numbers, synced ${numbersResult.synced} to database`);
 
     if (numbersResult.errors.length > 0) {
-      console.warn(`[dialpad-sync] Encountered ${numbersResult.errors.length} errors during phone number sync:`, numbersResult.errors);
+      log.warn(`${numbersResult.errors.length} errors during phone number sync: ${JSON.stringify(numbersResult.errors)}`);
     }
 
-    console.log(`[dialpad-sync] Sync completed:`, summary);
+    log.info('Sync completed: ' + JSON.stringify(summary));
 
     syncStatus.set(contractorId, {
       isRunning: false,

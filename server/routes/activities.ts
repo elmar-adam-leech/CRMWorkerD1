@@ -14,7 +14,7 @@ export function registerActivityRoutes(app: Express): void {
       contactId: resolvedContactId as string,
       estimateId: estimateId as string,
       jobId: jobId as string,
-      type: type as any,
+      type: type as 'note' | 'call' | 'email' | 'sms' | 'meeting' | 'follow_up' | 'status_change' | undefined,
       limit: limit ? parseInt(limit as string) : undefined,
       offset: offset ? parseInt(offset as string) : undefined,
     });

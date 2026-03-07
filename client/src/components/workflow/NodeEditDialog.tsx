@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Node } from 'reactflow';
 import { useQuery } from '@tanstack/react-query';
-import { useTerminology } from '@/hooks/useTerminology';
+import { useTerminologyContext } from '@/contexts/TerminologyContext';
 import { useUsers } from '@/hooks/useUsers';
 import { useDialpadPhoneNumbers } from '@/hooks/useDialpadPhoneNumbers';
 import {
@@ -51,7 +51,7 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
   const { data: usersData = [] } = useUsers();
   const teamUsers = usersData.map(u => ({ id: u.id, name: u.name, email: '' }));
 
-  const { data: terminology } = useTerminology();
+  const terminology = useTerminologyContext();
 
   useEffect(() => {
     if (node) { setFormData(node.data || {}); }

@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useWebSocketContext } from '@/contexts/WebSocketContext';
 import { useRoute } from 'wouter';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -56,6 +57,7 @@ export default function WorkflowExecutions() {
   const [, params] = useRoute('/workflows/:id/executions');
   const workflowId = params?.id || null;
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
   const { data: workflow, isLoading: workflowLoading } = useQuery<Workflow>({
     queryKey: ['/api/workflows', workflowId],
@@ -65,12 +67,21 @@ export default function WorkflowExecutions() {
   const { data: executions, isLoading: executionsLoading } = useQuery<WorkflowExecution[]>({
     queryKey: ['/api/workflows', workflowId, 'executions'],
     enabled: !!workflowId,
-    refetchInterval: (query) => {
-      const data = query.state.data;
-      const hasRunning = Array.isArray(data) && data.some(e => e.status === 'running');
-      return hasRunning ? 5000 : false;
-    },
   });
+
+  const { subscribe } = useWebSocketContext();
+  useEffect(() => {
+    if (!workflowId) return;
+    const unsubscribe = subscribe((message: { type: string; workflowId?: string }) => {
+      if (
+        ['workflow_started', 'workflow_completed', 'workflow_failed'].includes(message.type) &&
+        (!message.workflowId || message.workflowId === workflowId)
+      ) {
+        queryClient.invalidateQueries({ queryKey: ['/api/workflows', workflowId, 'executions'] });
+      }
+    });
+    return unsubscribe;
+  }, [subscribe, queryClient, workflowId]);
 
   if (!workflowId) {
     return (

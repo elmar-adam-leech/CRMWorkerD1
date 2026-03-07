@@ -13,16 +13,11 @@ export function registerTemplateRoutes(app: Express): void {
     const isAdmin = req.user.role === 'admin' || req.user.role === 'super_admin';
     const userId = req.user.userId;
 
-    let query = db.select().from(templates).where(eq(templates.contractorId, req.user.contractorId));
-
-    if (type) {
-      query = (query as any).where(and(
-        eq(templates.contractorId, req.user.contractorId),
-        eq(templates.type, type)
-      ));
-    }
-
-    const allTemplates = await query;
+    const allTemplates = await db.select().from(templates).where(
+      type
+        ? and(eq(templates.contractorId, req.user.contractorId), eq(templates.type, type))
+        : eq(templates.contractorId, req.user.contractorId)
+    );
 
     const filteredTemplates = allTemplates.filter(template => {
       if (isAdmin) return true;

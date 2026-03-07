@@ -54,6 +54,11 @@ export function LogCallDialog({
       
       // Invalidate activities query to refresh the list
       queryClient.invalidateQueries({ queryKey: ['/api/activities'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/contacts/paginated'] });
+      const contactId = leadId || customerId;
+      if (contactId) {
+        queryClient.invalidateQueries({ queryKey: ['/api/contacts', contactId] });
+      }
       
       // Reset form and close dialog
       setCallType('outbound');

@@ -127,7 +127,7 @@ Priority levels: **P0** = Critical bug / security, **P1** = High, **P2** = Mediu
 
 | Status | Priority | Description | File(s) |
 |--------|----------|-------------|---------|
-| ⬜ Open | P2 | **`useTerminology()` fetched in 7+ simultaneous components**. Lift to a React Context so the data is fetched once per session. (Also listed under Performance.) | `client/src/hooks/useTerminology.ts` |
+| ✅ Fixed | P2 | **`useTerminology()` fetched in 7+ simultaneous components**. Lifted to `TerminologyProvider` React Context — single fetch per session shared by all consumers via `useTerminologyContext()`. | `client/src/contexts/TerminologyContext.tsx` |
 | ⬜ Open | P2 | **`useFollowUps` shared hook missing** — `Follow-ups.tsx` and `FollowUpsWidget.tsx` each define their own `useQuery` for the same keys. Extract a shared hook so queryKey stays consistent. | `client/src/pages/Follow-ups.tsx`, `client/src/components/FollowUpsWidget.tsx` |
 | ⬜ Open | P2 | **`useFetchContact` vs `useContact` cache duplication** — see Code Modularity section. | `client/src/hooks/useFetchContact.ts`, `client/src/hooks/useContact.ts` |
 | ⬜ Open | P3 | **`useCurrentUser` and `useUsers` called in many sibling components**. Consider a shared UserContext for the current user. | `client/src/hooks/useCurrentUser.ts` |
@@ -146,3 +146,17 @@ Priority levels: **P0** = Critical bug / security, **P1** = High, **P2** = Mediu
 | ✅ Added | P2 | Contact deduplication OOM guard added with comment. | `server/storage/contacts.ts` |
 | ⬜ Open | P3 | **Workflow engine execution flow lacks section comments**. A new developer cannot follow trigger evaluation and step-group ordering without reading every line. | `server/workflow-engine.ts` |
 | ⬜ Open | P3 | **Salesperson auto-assignment scoring algorithm** in the scheduling service has no inline explanation. | `server/housecall-scheduling-service.ts` |
+
+## New Findings (2026-03-07 Audit)
+
+| Status | Priority | Description | File(s) |
+|--------|----------|-------------|---------|
+| ✅ Fixed | P2 | **6 missing WS broadcasts**: `hcp-sync.ts` (estimate_updated, contact_created, estimate_created), `google-sheets.ts` (contact_created), `public.ts` (contact_updated ×2, contact_created) | `server/routes/integrations/hcp-sync.ts`, `google-sheets.ts`, `public.ts` |
+| ✅ Fixed | P2 | **WorkflowExecutions.tsx polled at 5s** via `refetchInterval`. Replaced with WebSocket invalidation on `workflow_started`/`workflow_completed`/`workflow_failed` events. | `client/src/pages/WorkflowExecutions.tsx` |
+| ✅ Fixed | P2 | **Cache invalidation gaps**: `CreateJobForm.tsx` now invalidates `/api/contacts/paginated` + `/api/contacts/status-counts` on success; `LogCallDialog.tsx` now invalidates `/api/contacts/paginated` + per-contact key. | `client/src/components/CreateJobForm.tsx`, `LogCallDialog.tsx` |
+| ✅ Fixed | P2 | **`users.ts` create route** accepted raw `req.body` without Zod validation. Added `createUserBodySchema` with min/max length and email format checks. | `server/routes/users.ts` |
+| ✅ Fixed | P2 | **console.log migration**: Migrated all calls in `webhooks/leads.ts`, `webhooks/jobs.ts`, `integrations/dialpad.ts`, `integrations/hcp-sync.ts`, `integrations/google-sheets.ts`, `routes/public.ts` to structured logger. | listed files |
+| ✅ Fixed | P2 | **`as any` casts** removed from `dialpad-enhanced-service.ts` (added missing fields to `DialpadUser`), `contact-actions.ts` (typed `validContacts` as `Omit<InsertContact,'contractorId'>[]`), `activities.ts` (literal union type), `templates.ts` (rewrite to avoid chain cast), `public.ts` (typed Places API responses), `housecall-scheduling-service.ts` (inline interface for estimate data). | listed files |
+| ⬜ Open | P3 | **`/api/jobs` and `/api/estimates` unbounded endpoints** have no pagination — will degrade under large datasets. Add `limit`/`offset` or cursor pagination. | `server/routes/jobs.ts`, `server/routes/estimates.ts` |
+| ⬜ Open | P3 | **`weekly-reporter.ts` in-memory report array** is lost on restart. Reports should be persisted to DB or object storage. | `server/weekly-reporter.ts` |
+| ⬜ Open | P2 | **`housecall-scheduling-service.ts` (32 calls) and `dialpad-provider.ts` (14 calls)** still use `console.log`/`warn`/`error`. Migrate to structured logger. | `server/housecall-scheduling-service.ts`, `server/dialpad-provider.ts` |
