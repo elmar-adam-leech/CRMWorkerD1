@@ -70,22 +70,23 @@ async function setTenantProvider(contractorId: string, providerType: 'email' | '
   )).limit(1);
   const existing = existingResult[0];
 
+  const providerField =
+    providerType === 'email' ? { emailProvider: providerName } :
+    providerType === 'sms'   ? { smsProvider: providerName } :
+                               { callingProvider: providerName };
+
   if (existing) {
-    const updateData: any = { isActive: true, updatedAt: new Date() };
-    if (providerType === 'email') updateData.emailProvider = providerName;
-    else if (providerType === 'sms') updateData.smsProvider = providerName;
-    else if (providerType === 'calling') updateData.callingProvider = providerName;
-    const result = await db.update(contractorProviders).set(updateData).where(and(
-      eq(contractorProviders.contractorId, contractorId),
-      eq(contractorProviders.providerType, providerType)
-    )).returning();
+    const result = await db.update(contractorProviders)
+      .set({ isActive: true, updatedAt: new Date(), ...providerField })
+      .where(and(
+        eq(contractorProviders.contractorId, contractorId),
+        eq(contractorProviders.providerType, providerType)
+      )).returning();
     return result[0];
   } else {
-    const insertData: any = { contractorId, providerType, isActive: true };
-    if (providerType === 'email') insertData.emailProvider = providerName;
-    else if (providerType === 'sms') insertData.smsProvider = providerName;
-    else if (providerType === 'calling') insertData.callingProvider = providerName;
-    const result = await db.insert(contractorProviders).values(insertData).returning();
+    const result = await db.insert(contractorProviders)
+      .values({ contractorId, providerType, isActive: true, ...providerField })
+      .returning();
     return result[0];
   }
 }

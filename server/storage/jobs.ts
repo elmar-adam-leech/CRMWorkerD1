@@ -8,8 +8,7 @@ import { eq, and, or, desc, lte, ilike, sql, count } from "drizzle-orm";
 import type { UpdateJob } from "../storage-types";
 
 type PaginatedJobs = {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  data: any[];
+  data: Record<string, unknown>[];
   pagination: { total: number; hasMore: boolean; nextCursor: string | null };
 };
 

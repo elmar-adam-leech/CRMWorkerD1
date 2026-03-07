@@ -20,11 +20,12 @@ import {
   CalendarIcon
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { queryClient } from "@/lib/queryClient";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import type { Message } from "@shared/schema";
 import { useWebSocketContext } from "@/contexts/WebSocketContext";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 interface Conversation {
   contactId: string;
@@ -131,6 +132,9 @@ const getStatusBadgeVariant = (status: "sent" | "delivered" | "failed"): "outlin
 };
 
 export default function Messages() {
+  const { data: currentUserData } = useCurrentUser();
+  const contractorName = currentUserData?.user?.contractorName || '';
+
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState<"all" | "text" | "email">("all");
   const [filterStatus, setFilterStatus] = useState<"all" | "sent" | "delivered" | "failed">("all");
@@ -155,9 +159,6 @@ export default function Messages() {
   useEffect(() => {
     // Subscribe to WebSocket messages
     const unsubscribe = subscribe((message) => {
-      console.log('[Messages] WebSocket message received:', message);
-      
-      // When a new message arrives, invalidate conversations to refresh
       if (message.type === 'new_message' || message.type === 'message_update') {
         queryClient.invalidateQueries({ queryKey: ['/api/conversations'] });
       }
@@ -179,11 +180,8 @@ export default function Messages() {
       if (searchQuery) params.append('search', searchQuery);
       if (filterType !== 'all') params.append('type', filterType);
       if (filterStatus !== 'all') params.append('status', filterStatus);
-      
-      const url = `/api/conversations${params.toString() ? `?${params.toString()}` : ''}`;
-      const response = await fetch(url);
-      if (!response.ok) throw new Error('Failed to fetch conversations');
-      return response.json();
+      const qs = params.toString();
+      return (await apiRequest('GET', `/api/conversations${qs ? `?${qs}` : ''}`)).json();
     },
   });
 
@@ -357,7 +355,7 @@ export default function Messages() {
         onClose={() => setTextingModal({ isOpen: false })}
         recipientName={textingModal.conversation?.contactName || ''}
         recipientPhone={textingModal.conversation?.contactPhone || ''}
-        companyName="Elmar HVAC" // TODO: Get from tenant context
+        companyName={contractorName}
         contactId={textingModal.conversation?.contactId}
       />
 
@@ -367,7 +365,7 @@ export default function Messages() {
         onClose={() => setEmailModal({ isOpen: false })}
         recipientName={emailModal.conversation?.contactName || ''}
         recipientEmail={emailModal.conversation?.contactEmail || ''}
-        companyName="Elmar HVAC" // TODO: Get from tenant context
+        companyName={contractorName}
         contactId={emailModal.conversation?.contactId}
       />
 

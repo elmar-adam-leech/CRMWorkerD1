@@ -7,6 +7,7 @@ export interface CurrentUser {
   email: string;
   role: string;
   contractorId: string;
+  contractorName: string;
   dialpadDefaultNumber?: string;
   callPreference?: 'integration' | 'personal';
   gmailConnected?: boolean;

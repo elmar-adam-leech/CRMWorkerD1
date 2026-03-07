@@ -23,19 +23,31 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { TextingModal } from "@/components/TextingModal";
+import { EmailComposerModal } from "@/components/EmailComposerModal";
 import { HousecallProSchedulingModal } from "@/components/HousecallProSchedulingModal";
 import { FollowUpDateModal } from "@/components/FollowUpDateModal";
 import { FollowUpCard, FollowUpItem, getFollowUpStatus } from "@/components/FollowUpCard";
 import { useState, useMemo } from "react";
+import { useLocation } from "wouter";
 import type { Contact, Estimate } from "@shared/schema";
 import { PageHeader } from "@/components/ui/page-header-v2";
 import { PageLayout } from "@/components/ui/page-layout";
 import { dialPhone } from "@/lib/dialPhone";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 export default function FollowUps() {
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
+  const { data: currentUserData } = useCurrentUser();
+  const contractorName = currentUserData?.user?.contractorName || '';
+
   const [filterView, setFilterView] = useState<string>("all");
   const [textingModal, setTextingModal] = useState<{
+    isOpen: boolean;
+    item?: FollowUpItem;
+  }>({ isOpen: false });
+
+  const [emailModal, setEmailModal] = useState<{
     isOpen: boolean;
     item?: FollowUpItem;
   }>({ isOpen: false });
@@ -170,8 +182,7 @@ export default function FollowUps() {
       }
     } else if (method === 'email') {
       if (item.email) {
-        // Open email client
-        window.location.href = `mailto:${item.email}`;
+        setEmailModal({ isOpen: true, item });
       } else {
         toast({
           title: "No email address",
@@ -288,7 +299,8 @@ export default function FollowUps() {
         setEditLeadModal({ isOpen: true, lead });
       }
     } else {
-      window.location.href = `/estimates?edit=${item.id}`;
+      // Navigate to the Estimates page using SPA routing (no hard browser reload)
+      setLocation('/estimates');
     }
   };
 
@@ -415,6 +427,19 @@ export default function FollowUps() {
           recipientEmail={textingModal.item.email}
           leadId={textingModal.item.type === 'lead' ? textingModal.item.id : undefined}
           estimateId={textingModal.item.type === 'estimate' ? textingModal.item.id : undefined}
+        />
+      )}
+
+      {/* Email Composer Modal */}
+      {emailModal.item && (
+        <EmailComposerModal
+          isOpen={emailModal.isOpen}
+          onClose={() => setEmailModal({ isOpen: false })}
+          recipientName={emailModal.item.name}
+          recipientEmail={emailModal.item.email || ''}
+          companyName={contractorName}
+          contactId={emailModal.item.type === 'lead' ? emailModal.item.id : undefined}
+          estimateId={emailModal.item.type === 'estimate' ? emailModal.item.id : undefined}
         />
       )}
 

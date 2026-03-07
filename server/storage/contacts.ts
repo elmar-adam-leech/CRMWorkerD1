@@ -20,7 +20,7 @@ function computeNormalizedPhone(phones: string[] | null | undefined): string | n
 }
 
 type PaginatedContacts = {
-  data: any[];
+  data: Record<string, unknown>[];
   pagination: { total: number; hasMore: boolean; nextCursor: string | null };
 };
 

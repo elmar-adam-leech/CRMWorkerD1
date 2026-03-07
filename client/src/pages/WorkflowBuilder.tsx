@@ -222,17 +222,7 @@ export default function WorkflowBuilder() {
       parentStepId: null as string | null,
     }));
 
-    const response = await fetch(`/api/workflows/${wfId}/steps`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ steps }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Failed to save workflow steps: ${errorText || response.statusText}`);
-    }
+    await apiRequest('PUT', `/api/workflows/${wfId}/steps`, { steps });
   };
 
   const saveWorkflowMutation = useMutation({

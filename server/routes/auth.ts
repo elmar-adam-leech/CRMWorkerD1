@@ -314,10 +314,12 @@ export function registerAuthRoutes(app: Express): void {
       return;
     }
 
-    const [fullUser, enabledIntegrations, userContractor] = await Promise.all([
+    const { getContractorCached } = await import('../services/cache');
+    const [fullUser, enabledIntegrations, userContractor, contractor] = await Promise.all([
       storage.getUser(req.user.userId),
       storage.getEnabledIntegrations(req.user.contractorId),
       storage.getUserContractor(req.user.userId, req.user.contractorId),
+      getContractorCached(req.user.contractorId),
     ]);
 
     res.json({
@@ -328,6 +330,7 @@ export function registerAuthRoutes(app: Express): void {
         email: req.user.email,
         role: req.user.role,
         contractorId: req.user.contractorId,
+        contractorName: contractor?.name || '',
         canManageIntegrations: req.user.canManageIntegrations,
         dialpadDefaultNumber: fullUser?.dialpadDefaultNumber || undefined,
         gmailConnected: fullUser?.gmailConnected || false,

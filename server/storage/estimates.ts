@@ -9,8 +9,7 @@ import type { UpdateEstimate } from "../storage-types";
 import { deleteContactFull } from "./jobs";
 
 type PaginatedEstimates = {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  data: any[];
+  data: Record<string, unknown>[];
   pagination: { total: number; hasMore: boolean; nextCursor: string | null };
 };
 

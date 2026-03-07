@@ -49,11 +49,11 @@ export class SendGridEmailProvider implements EmailProvider {
         success: true,
         messageId: messageId as string,
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('SendGrid send error:', error);
       return {
         success: false,
-        error: error.message || 'Failed to send email via SendGrid',
+        error: error instanceof Error ? error.message : 'Failed to send email via SendGrid',
       };
     }
   }
@@ -71,10 +71,10 @@ export class SendGridEmailProvider implements EmailProvider {
       }
       
       return { connected: true };
-    } catch (error: any) {
+    } catch (error: unknown) {
       return { 
         connected: false, 
-        error: error.message || 'Failed to connect to SendGrid' 
+        error: error instanceof Error ? error.message : 'Failed to connect to SendGrid',
       };
     }
   }
