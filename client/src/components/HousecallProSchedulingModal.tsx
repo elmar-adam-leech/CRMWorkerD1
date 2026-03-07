@@ -163,10 +163,10 @@ export function HousecallProSchedulingModal({ lead, isOpen, onClose, onScheduled
         description: `${lead?.name} has been scheduled in Housecall Pro.`,
       });
       
-      // Invalidate leads cache to refresh the data
-      queryClient.invalidateQueries({ queryKey: ['/api/leads'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/leads/unscheduled'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/leads/scheduled'] });
+      // Invalidate the contacts/paginated cache — the Leads page uses this key,
+      // not /api/leads. The old /api/leads keys had no effect on that list.
+      queryClient.invalidateQueries({ queryKey: ['/api/contacts/paginated'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/contacts/status-counts'] });
       queryClient.invalidateQueries({ queryKey: ['/api/estimates'] }); // For Follow-ups page
       
       onScheduled?.(data.lead);

@@ -344,16 +344,13 @@ export class WorkflowEngine {
     try {
       switch (entityType) {
         case 'lead':
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await storage.updateContact(entityId, { status: status as any }, contractorId);
+          await storage.updateContact(entityId, { status: status as 'new' | 'contacted' | 'scheduled' | 'active' | 'disqualified' | 'inactive' }, contractorId);
           break;
         case 'estimate':
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await storage.updateEstimate(entityId, { status: status as any }, contractorId);
+          await storage.updateEstimate(entityId, { status: status as 'draft' | 'sent' | 'pending' | 'approved' | 'rejected' }, contractorId);
           break;
         case 'job':
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await storage.updateJob(entityId, { status: status as any }, contractorId);
+          await storage.updateJob(entityId, { status: status as 'scheduled' | 'in_progress' | 'completed' | 'cancelled' }, contractorId);
           break;
         default:
           log.warn(`Unknown entity type for status update: ${entityType}`);

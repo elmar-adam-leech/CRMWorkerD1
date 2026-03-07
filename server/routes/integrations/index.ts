@@ -145,7 +145,13 @@ export function registerIntegrationRoutes(app: Express): void {
         const { syncScheduler } = await import('../../sync-scheduler');
         await syncScheduler.onIntegrationDisabled(req.user!.contractorId, 'housecall-pro');
       } catch (error) {
-        console.error('Failed to cancel scheduled sync for Housecall Pro integration:', error);
+        // Non-fatal: integration is already disabled in the DB. The sync scheduler
+        // will not pick it up on the next run even if the in-memory cancel failed.
+        // Log enough context for an operator to diagnose if syncs keep running.
+        console.error(
+          `[integrations] Failed to cancel scheduled sync after disabling housecall-pro ` +
+          `— contractorId=${req.user!.contractorId}, error: ${error instanceof Error ? error.message : String(error)}`
+        );
       }
     }
     

@@ -46,7 +46,9 @@ export const JobCard = memo(function JobCard({ job, onStatusChange: _onStatusCha
   const [tagsDialogOpen, setTagsDialogOpen] = useState(false);
   
   const { data: contact, isLoading: contactLoading } = useQuery<Contact>({
-    queryKey: [`/api/contacts/${job.contactId}`],
+    // Array-style queryKey so invalidateQueries({ queryKey: ['/api/contacts'] })
+    // correctly busts this cache entry via hierarchical key matching.
+    queryKey: ['/api/contacts', job.contactId],
     enabled: !!job.contactId,
   });
 

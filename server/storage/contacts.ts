@@ -2,6 +2,7 @@ import {
   type Contact, type InsertContact,
   type Lead, type InsertLead,
   contacts, leads, messages, activities, estimates, jobs,
+  contactStatusEnum,
 } from "@shared/schema";
 import { db } from "../db";
 import { eq, and, or, desc, ne, gt, lte, gte, ilike, isNotNull, notInArray, inArray, sql, count } from "drizzle-orm";
@@ -102,7 +103,7 @@ async function getContactsPaginated(contractorId: string, options: {
   }
   if (!options.includeAll) {
     if (options.status && options.status !== 'all') {
-      conditions.push(eq(contacts.status, options.status as any));
+      conditions.push(eq(contacts.status, options.status as typeof contactStatusEnum.enumValues[number]));
     } else if (!options.status || options.status === 'all') {
       if (!options.type || options.type === 'lead') {
         conditions.push(ne(contacts.status, 'disqualified'));
@@ -172,7 +173,7 @@ async function getContactsCount(contractorId: string, options: {
   const conditions = [eq(contacts.contractorId, contractorId)];
   if (options.type) conditions.push(eq(contacts.type, options.type));
   if (options.status && options.status !== 'all') {
-    conditions.push(eq(contacts.status, options.status as any));
+    conditions.push(eq(contacts.status, options.status as typeof contactStatusEnum.enumValues[number]));
   } else if (!options.status || options.status === 'all') {
     if (!options.type || options.type === 'lead') {
       conditions.push(ne(contacts.status, 'disqualified'));

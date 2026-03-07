@@ -289,8 +289,7 @@ export default function Templates() {
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {filteredTemplates.map((template) => {
             const TypeIcon = getTypeIcon(template.type as "text" | "email");
-            const templateAny = template as any;
-            const status = templateAny.status || 'approved';
+            const status = template.status || 'approved';
             const isPending = status === 'pending_approval';
             const isRejected = status === 'rejected';
             

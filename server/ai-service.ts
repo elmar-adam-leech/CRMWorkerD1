@@ -124,8 +124,14 @@ export class AIService {
           details: parsed.details || {}
         };
       } catch (parseError) {
-        // If parsing fails, return a default response
-        console.error('[AI Service] Failed to parse AI response:', content);
+        // The model returned non-JSON despite the json_object response_format directive.
+        // Return a degraded response so callers don't crash, but log enough detail
+        // for a developer to reproduce the failure (analysisType + raw model output).
+        console.warn(
+          `[AI Service] Failed to parse AI response for analysisType="${analysisType}". ` +
+          `parseError=${parseError instanceof Error ? parseError.message : String(parseError)}. ` +
+          `rawContent=${content.substring(0, 500)}`
+        );
         return {
           result: content.trim(),
           confidence: 50,

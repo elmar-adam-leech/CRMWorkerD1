@@ -3,6 +3,7 @@ import {
   type WorkflowStep, type InsertWorkflowStep,
   type WorkflowExecution, type InsertWorkflowExecution,
   workflows, workflowSteps, workflowExecutions, contacts, estimates, jobs, userContractors,
+  workflowApprovalStatusEnum,
 } from "@shared/schema";
 import { db } from "../db";
 import { eq, and, desc, asc } from "drizzle-orm";
@@ -11,7 +12,7 @@ import type { UpdateWorkflow, UpdateWorkflowStep, UpdateWorkflowExecution } from
 async function getWorkflows(contractorId: string, approvalStatus?: string): Promise<Workflow[]> {
   const conditions = [eq(workflows.contractorId, contractorId)];
   if (approvalStatus && approvalStatus !== 'all') {
-    conditions.push(eq(workflows.approvalStatus, approvalStatus as any));
+    conditions.push(eq(workflows.approvalStatus, approvalStatus as typeof workflowApprovalStatusEnum.enumValues[number]));
   }
   return await db.select().from(workflows).where(and(...conditions)).orderBy(desc(workflows.createdAt)).limit(500);
 }

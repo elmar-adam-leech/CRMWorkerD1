@@ -22,10 +22,13 @@ export function NotificationDropdown() {
   const [, setLocation] = useLocation();
   const [open, setOpen] = useState(false);
 
-  // Fetch unread notifications for the badge count
+  // Fetch unread notifications for the badge count.
+  // staleTime is kept short so the badge updates promptly (WebSocket events
+  // will bust the cache immediately; polling is a safety net for missed events).
   const { data: unreadNotifications = [] } = useQuery<Notification[]>({
     queryKey: ['/api/notifications/unread'],
-    refetchInterval: 60000, // Refresh every 60 seconds
+    staleTime: 30_000,
+    refetchInterval: 60_000,
   });
 
   // Fetch all recent notifications

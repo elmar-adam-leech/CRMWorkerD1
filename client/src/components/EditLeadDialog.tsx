@@ -102,6 +102,7 @@ export function EditLeadDialog({ lead, open, onClose }: EditLeadDialogProps) {
         description: "Lead information has been successfully updated.",
       });
       queryClient.invalidateQueries({ queryKey: ['/api/contacts/paginated'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/contacts/status-counts'] });
       queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
       queryClient.invalidateQueries({ queryKey: ['/api/contacts/follow-ups'] });
       form.reset();

@@ -59,7 +59,9 @@ export const EstimateCard = memo(function EstimateCard({ estimate, onSend: _onSe
   const [tagsDialogOpen, setTagsDialogOpen] = useState(false);
   
   const { data: contact, isLoading: contactLoading } = useQuery<Contact>({
-    queryKey: [`/api/contacts/${estimate.contactId}`],
+    // Array-style queryKey so invalidateQueries({ queryKey: ['/api/contacts'] })
+    // correctly busts this cache entry via hierarchical key matching.
+    queryKey: ['/api/contacts', estimate.contactId],
     enabled: !!estimate.contactId,
   });
 

@@ -79,10 +79,12 @@ export function ConversationModal({ isOpen, onClose, conversation }: Conversatio
       toast({ title: "Email sent successfully" });
       setEmailSubject("");
       setEmailBody("");
-      // Refresh the conversation messages
+      // Refresh this contact's message thread and the main conversations list
+      // so the "last message" snippet in Messages.tsx updates immediately.
       queryClient.invalidateQueries({
         queryKey: ['/api/conversations', conversation?.contactId]
       });
+      queryClient.invalidateQueries({ queryKey: ['/api/conversations'] });
     },
     onError: () => {
       toast({

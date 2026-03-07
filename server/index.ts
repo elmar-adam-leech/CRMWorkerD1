@@ -8,7 +8,25 @@ import { syncScheduler } from "./sync-scheduler";
 import { messageCleanupService } from "./services/message-cleanup";
 
 const app = express();
-app.use(helmet({ contentSecurityPolicy: false }));
+// Content Security Policy — permissive-but-defined baseline.
+// 'unsafe-inline' is kept for scripts and styles because the Vite-built SPA
+// injects inline scripts. Tighten incrementally by replacing 'unsafe-inline'
+// with nonces once a nonce-injection pipeline is in place.
+// connect-src includes 'wss:' so the app's /ws WebSocket and Vite HMR both work.
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc:  ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+      styleSrc:   ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc:    ["'self'", "https://fonts.gstatic.com", "data:"],
+      imgSrc:     ["'self'", "data:", "blob:", "https:"],
+      connectSrc: ["'self'", "wss:", "https:"],
+      frameSrc:   ["'none'"],
+      objectSrc:  ["'none'"],
+    },
+  },
+}));
 app.set("trust proxy", 1);
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));

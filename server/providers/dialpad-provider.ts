@@ -289,7 +289,13 @@ export class DialpadCallProvider implements CallProvider {
             }
           }
         } catch (err) {
-          console.log('[DialpadCallProvider] Error looking up user\'s Dialpad ID:', err);
+          // Non-fatal: fall through to the global credential fallback below.
+          // Log user + contractor context so this is diagnosable without a debugger.
+          console.warn(
+            `[DialpadCallProvider] Failed to look up Dialpad user ID — ` +
+            `contractorId=${options.contractorId}, userId=${options.userId}, ` +
+            `error=${err instanceof Error ? err.message : String(err)}`
+          );
         }
       }
       

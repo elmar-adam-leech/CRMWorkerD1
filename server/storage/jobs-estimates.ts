@@ -2,6 +2,7 @@ import {
   type Job, type InsertJob,
   type Estimate, type InsertEstimate,
   jobs, estimates, contacts, activities,
+  jobStatusEnum, estimateStatusEnum,
 } from "@shared/schema";
 import { db } from "../db";
 import { eq, and, or, desc, gt, lte, ilike, sql, count } from "drizzle-orm";
@@ -39,7 +40,7 @@ async function getJobsPaginated(contractorId: string, options: {
     conditions.push(lte(jobs.createdAt, new Date(options.cursor)));
   }
   if (options.status && options.status !== 'all') {
-    conditions.push(eq(jobs.status, options.status as any));
+    conditions.push(eq(jobs.status, options.status as typeof jobStatusEnum.enumValues[number]));
   }
   if (options.search) {
     conditions.push(or(
@@ -90,7 +91,7 @@ async function getJobsCount(contractorId: string, options: {
 } = {}): Promise<number> {
   const conditions = [eq(jobs.contractorId, contractorId)];
   if (options.status && options.status !== 'all') {
-    conditions.push(eq(jobs.status, options.status as any));
+    conditions.push(eq(jobs.status, options.status as typeof jobStatusEnum.enumValues[number]));
   }
   if (options.search) {
     conditions.push(or(
@@ -233,7 +234,7 @@ async function getEstimatesPaginated(contractorId: string, options: {
     conditions.push(gt(estimates.createdAt, new Date(options.cursor)));
   }
   if (options.status) {
-    conditions.push(eq(estimates.status, options.status as any));
+    conditions.push(eq(estimates.status, options.status as typeof estimateStatusEnum.enumValues[number]));
   }
   if (options.search) {
     conditions.push(or(
@@ -277,7 +278,7 @@ async function getEstimatesCount(contractorId: string, options: {
   search?: string;
 } = {}): Promise<number> {
   const conditions = [eq(estimates.contractorId, contractorId)];
-  if (options.status) conditions.push(eq(estimates.status, options.status as any));
+  if (options.status) conditions.push(eq(estimates.status, options.status as typeof estimateStatusEnum.enumValues[number]));
   if (options.search) {
     conditions.push(or(
       ilike(estimates.title, `%${options.search}%`),

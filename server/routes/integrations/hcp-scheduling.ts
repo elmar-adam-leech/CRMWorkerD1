@@ -1,6 +1,6 @@
 import type { Express, Response } from "express";
 import { storage } from "../../storage";
-import { userContractors } from "@shared/schema";
+import { userContractors, type Contractor } from "@shared/schema";
 import { db } from "../../db";
 import { eq, and } from "drizzle-orm";
 import { requireAuth, requireManagerOrAdmin, requireAdmin, type AuthenticatedRequest } from "../../auth-service";
@@ -38,8 +38,8 @@ export function registerHcpSchedulingRoutes(app: Express): void {
 
     const { housecallSchedulingService } = await import('../../housecall-scheduling-service');
 
-    const contractor = await storage.getContractor(req.user!.contractorId);
-    const timezone = (contractor as any)?.timezone || 'America/New_York';
+    const contractor = await storage.getContractor(req.user!.contractorId) as Contractor | null;
+    const timezone = contractor?.timezone || 'America/New_York';
 
     const slots = await housecallSchedulingService.getUnifiedAvailability(req.user!.contractorId, start, end, timezone);
 
