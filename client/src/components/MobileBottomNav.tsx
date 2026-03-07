@@ -1,11 +1,11 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Users, FileText, MessageSquare, Menu } from "lucide-react";
+import { Users, FileText, MessageSquare, Menu, BookUser } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 const tabs = [
-  { href: "/", icon: LayoutDashboard, label: "Dashboard" },
   { href: "/leads", icon: Users, label: "Leads" },
   { href: "/estimates", icon: FileText, label: "Estimates" },
+  { href: "/contacts", icon: BookUser, label: "Contacts" },
   { href: "/messages", icon: MessageSquare, label: "Messages" },
 ];
 
@@ -21,7 +21,6 @@ export function MobileBottomNav() {
   };
 
   const isActive = (href: string) => {
-    if (href === "/") return location === "/" || location === "/login";
     return location.startsWith(href);
   };
 

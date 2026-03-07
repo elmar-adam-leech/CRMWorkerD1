@@ -425,6 +425,31 @@ export function registerUserRoutes(app: Express): void {
     });
   }));
   
+  // Update current user's call preference (integration vs personal phone)
+  app.patch("/api/user/call-preference", requireAuth, asyncHandler(async (req, res) => {
+    const { callPreference } = req.body;
+    if (callPreference !== 'integration' && callPreference !== 'personal') {
+      res.status(400).json({ message: "callPreference must be 'integration' or 'personal'" });
+      return;
+    }
+
+    const result = await db
+      .update(userContractors)
+      .set({ callPreference })
+      .where(and(
+        eq(userContractors.userId, req.user!.userId),
+        eq(userContractors.contractorId, req.user!.contractorId)
+      ))
+      .returning();
+
+    if (!result[0]) {
+      res.status(404).json({ message: "User contractor record not found" });
+      return;
+    }
+
+    res.json({ callPreference: result[0].callPreference, message: "Call preference updated" });
+  }));
+
   // Multi-tenant user operations
   // Get all contractors a user belongs to
 }

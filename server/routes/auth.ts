@@ -292,9 +292,10 @@ export function registerAuthRoutes(app: Express): void {
       return;
     }
 
-    const [fullUser, enabledIntegrations] = await Promise.all([
+    const [fullUser, enabledIntegrations, userContractor] = await Promise.all([
       storage.getUser(req.user.userId),
       storage.getEnabledIntegrations(req.user.contractorId),
+      storage.getUserContractor(req.user.userId, req.user.contractorId),
     ]);
 
     res.json({
@@ -309,7 +310,8 @@ export function registerAuthRoutes(app: Express): void {
         dialpadDefaultNumber: fullUser?.dialpadDefaultNumber || undefined,
         gmailConnected: fullUser?.gmailConnected || false,
         gmailEmail: fullUser?.gmailEmail || undefined,
-        hasActiveCompanyIntegrations: enabledIntegrations.length > 0
+        hasActiveCompanyIntegrations: enabledIntegrations.length > 0,
+        callPreference: userContractor?.callPreference || 'integration',
       }
     });
   }));

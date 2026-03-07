@@ -11,10 +11,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { GmailConnectionCard } from "@/components/settings/GmailConnectionCard";
 import {
-  User, Calendar, Users, UserPlus, Settings2, Search, ExternalLink, Copy, Code, Info
+  User, Calendar, Users, UserPlus, Settings2, Search, ExternalLink, Copy, Code, Info, Phone, Smartphone
 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useProviderStatus } from "@/hooks/use-provider-config";
 
 
 type UserRow = { id: string; username: string; name: string; email: string; role: string; contractorId: string; createdAt: string };
@@ -37,9 +39,31 @@ export function AccountTab({
   allUsers, usersLoading,
 }: AccountTabProps) {
   const { toast } = useToast();
+  const { data: me, refetch: refetchMe } = useCurrentUser();
+  const { calling } = useProviderStatus();
   const [isAddUserDialogOpen, setIsAddUserDialogOpen] = useState(false);
   const [newUserData, setNewUserData] = useState({ username: "", name: "", email: "", password: "", role: "user" });
   const [userSearchQuery, setUserSearchQuery] = useState('');
+
+  const callPreferenceMutation = useMutation({
+    mutationFn: async (callPreference: 'integration' | 'personal') => {
+      const response = await apiRequest('PATCH', '/api/user/call-preference', { callPreference });
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/auth/me'] });
+      refetchMe();
+      toast({
+        title: "Call preference updated",
+        description: data.callPreference === 'personal'
+          ? "You'll now use your personal phone when calling contacts."
+          : "You'll now use the calling integration when calling contacts.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to update", description: error.message, variant: "destructive" });
+    },
+  });
 
   const addUserMutation = useMutation({
     mutationFn: async (data: typeof newUserData) => apiRequest('POST', '/api/users', data),
@@ -115,6 +139,56 @@ export function AccountTab({
       </Card>
 
       <GmailConnectionCard gmailConnected={currentUser?.user?.gmailConnected || false} gmailEmail={currentUser?.user?.gmailEmail} />
+
+      {calling.isConfigured && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><Phone className="h-5 w-5" />Calling Preference</CardTitle>
+            <CardDescription>Choose how you want to make calls from the CRM</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => callPreferenceMutation.mutate('integration')}
+                  disabled={callPreferenceMutation.isPending}
+                  data-testid="button-call-pref-integration"
+                  className={`flex items-start gap-3 p-4 rounded-md border text-left transition-colors ${
+                    (me?.user?.callPreference ?? 'integration') === 'integration'
+                      ? 'border-primary bg-primary/5'
+                      : 'border-border hover-elevate'
+                  }`}
+                >
+                  <Phone className="h-5 w-5 mt-0.5 shrink-0 text-muted-foreground" />
+                  <div>
+                    <div className="text-sm font-medium">Calling integration</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">Uses your connected calling service. Calls are automatically logged.</div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => callPreferenceMutation.mutate('personal')}
+                  disabled={callPreferenceMutation.isPending}
+                  data-testid="button-call-pref-personal"
+                  className={`flex items-start gap-3 p-4 rounded-md border text-left transition-colors ${
+                    me?.user?.callPreference === 'personal'
+                      ? 'border-primary bg-primary/5'
+                      : 'border-border hover-elevate'
+                  }`}
+                >
+                  <Smartphone className="h-5 w-5 mt-0.5 shrink-0 text-muted-foreground" />
+                  <div>
+                    <div className="text-sm font-medium">Personal phone</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">Opens your device's native dialer. Calls won't be automatically logged.</div>
+                  </div>
+                </button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {isAdmin && (
         <Card>

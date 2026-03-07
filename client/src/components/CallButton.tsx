@@ -6,6 +6,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useState } from "react";
 import { CallingModal } from "./CallingModal";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 interface CallButtonProps {
   recipientName: string;
@@ -34,6 +35,7 @@ export function CallButton({
 }: CallButtonProps) {
   const { toast } = useToast();
   const { calling } = useProviderStatus();
+  const { data: currentUser } = useCurrentUser();
   const queryClient = useQueryClient();
   const [isInitiating, setIsInitiating] = useState(false);
   const [showCallingModal, setShowCallingModal] = useState(false);
@@ -80,11 +82,18 @@ export function CallButton({
       return;
     }
 
-    // If Dialpad calling is enabled
+    const cleanPhoneNumber = recipientPhone.replace(/[^\d+]/g, '');
+    const usePersonal = currentUser?.user?.callPreference === 'personal';
+
+    // If user prefers their personal phone, always open device dialer
+    if (usePersonal) {
+      window.location.href = `tel:${cleanPhoneNumber}`;
+      return;
+    }
+
+    // Otherwise use the calling integration if configured
     if (calling.isConfigured) {
-      // If fromNumber is provided, call directly
       if (fromNumber) {
-        const cleanPhoneNumber = recipientPhone.replace(/[^\d+]/g, '');
         setIsInitiating(true);
         initiateCallMutation.mutate({
           toNumber: cleanPhoneNumber,
@@ -93,14 +102,11 @@ export function CallButton({
           leadId,
         });
       } else {
-        // Open modal to select phone number
         setShowCallingModal(true);
       }
     } else {
-      // Fall back to tel: link for devices with phone capability
-      const cleanPhoneNumber = recipientPhone.replace(/[^\d+]/g, '');
+      // No integration configured — fall back to tel: link
       window.location.href = `tel:${cleanPhoneNumber}`;
-      console.log(`Contacting ${recipientName} via phone`);
     }
   };
 
