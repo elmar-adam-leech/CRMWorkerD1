@@ -14,6 +14,7 @@ Priority levels: **P0** = Critical bug / security, **P1** = High, **P2** = Mediu
 | ✅ Fixed | P0 | Vite HMR WebSocket handshake fails on Replit (reverse proxy strips `Sec-WebSocket-Protocol: vite-hmr`), causing Vite to poll endlessly and call `location.reload()` every few seconds. Fixed by setting `hmr: false`. | `server/vite.ts` |
 | ✅ Fixed | P1 | Empty `catch (e) {}` in booking widget — silently swallows script origin detection errors | `client/public/booking-widget.js` |
 | ✅ Fixed | P1 | **Debug `console.log` left in production storage code**: Removed 3 `console.log` calls from `getConversationMessages` that fired on every conversation open and could expose contact phone/email data in logs. | `server/storage/messaging.ts` |
+| ⬜ Open | P3 | **`Messages.tsx` noisy WS debug log**: `console.log('[Messages] WebSocket message received:', message)` fires on every inbound WS frame, including high-frequency events. Remove or replace with a debug-level structured log. | `client/src/pages/Messages.tsx` |
 
 ---
 
@@ -74,6 +75,7 @@ Priority levels: **P0** = Critical bug / security, **P1** = High, **P2** = Mediu
 | ⬜ Open | P3 | **`insertData: any` and `updateData: any`** in `server/storage/integrations.ts`. Type with the Drizzle inferred insert type for the `integrations` table. | `server/storage/integrations.ts` |
 | ⬜ Open | P3 | **`error: any` in catch clauses** in `server/providers/sendgrid-provider.ts` (lines 52, 74). Modern TypeScript infers `unknown` in catch; using `: any` widens the type unnecessarily. | `server/providers/sendgrid-provider.ts` |
 | ⬜ Open | P3 | **`updateData: any`** in `housecall-scheduling-service.ts` `syncHousecallUsers` — type the update shape using the `userContractors` Drizzle table schema. | `server/housecall-scheduling-service.ts` |
+| ⬜ Open | P3 | **`data: any[]` in paginated storage types**: `PaginatedContacts` (contacts.ts:23), `PaginatedJobs` (jobs.ts:12), and `PaginatedEstimates` (estimates.ts:13) all declare `data: any[]`. Should be typed with the actual Drizzle projected select shape so TypeScript catches mismatched field access at call sites. | `server/storage/contacts.ts`, `server/storage/jobs.ts`, `server/storage/estimates.ts` |
 
 ---
 
@@ -106,6 +108,11 @@ Priority levels: **P0** = Critical bug / security, **P1** = High, **P2** = Mediu
 | ⬜ Open | P2 | **`useFetchContact` vs `useContact` fragmentation**: `Estimates.tsx` uses the old imperative `useFetchContact` hook while `EstimateCard`, `JobCard`, and `contact-combobox` use the newer declarative `useContact`. Both target `/api/contacts/:id` but with different cache key structures, meaning the same contact can be cached twice. Consolidate or document the intentional split. | `client/src/hooks/useFetchContact.ts`, `client/src/hooks/useContact.ts`, `client/src/pages/Estimates.tsx` |
 | ⬜ Open | P3 | **`EstimateCard.tsx` and `JobCard.tsx` share nearly identical layouts**. Consider a shared `EntityCard` base component. | `client/src/components/EstimateCard.tsx`, `JobCard.tsx` |
 | ⬜ Open | P3 | **Status constant arrays defined locally in each page** (LEAD_STATUSES, JOB_STATUSES, etc.). Move to a shared constants file or derive from schema enum values. | `client/src/pages/Leads.tsx`, `Jobs.tsx`, `Estimates.tsx` |
+| ⬜ Open | P2 | **`Messages.tsx` hardcoded tenant name**: `companyName="Elmar HVAC"` is hardcoded in both `TextingModal` instances (lines 360, 370). Should be derived from the contractor settings already available in the app. | `client/src/pages/Messages.tsx` |
+| ⬜ Open | P3 | **`Messages.tsx` raw `fetch()` for conversations**: Line 184 uses a bare `fetch()` call to load conversations instead of `apiRequest`. Bypasses error normalisation and the app's standard auth/cookie handling conventions. | `client/src/pages/Messages.tsx` |
+| ⬜ Open | P3 | **`Follow-ups.tsx` hard browser navigations**: Line 174 uses `window.location.href = \`mailto:...\`` (loses SPA state; should open `EmailComposerModal`) and line 291 uses `window.location.href = \`/estimates?edit=...\`` (should use an edit modal or wouter `useLocation`). | `client/src/pages/Follow-ups.tsx` |
+| ⬜ Open | P3 | **`WorkflowBuilder.tsx` raw `fetch()` for step save**: Line 225 uses bare `fetch()` with `credentials: 'include'` instead of `apiRequest`. Non-2xx responses will not automatically throw, risking silent data-loss on save failures. | `client/src/pages/WorkflowBuilder.tsx` |
+| ⬜ Open | P3 | **`Reports.tsx` unused import and non-standard layout**: `BarChart3` (line 3) is imported but never rendered. Page also uses raw `<div>` layout instead of `<PageLayout>` + `<PageHeader>`, diverging from every other page in the app. | `client/src/pages/Reports.tsx` |
 
 ---
 
