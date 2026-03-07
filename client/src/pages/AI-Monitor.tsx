@@ -31,7 +31,7 @@ export default function AIMonitor() {
   });
 
   const { data: weeklyReport, isLoading: weeklyReportLoading, refetch: refetchWeeklyReport } = useQuery<{
-    report: { recommendations: unknown[]; [key: string]: unknown };
+    report: { recommendations: unknown[]; metrics?: { uptime?: string; [key: string]: unknown }; [key: string]: unknown };
     [key: string]: unknown;
   }>({
     queryKey: ['/api/ai/weekly-report'],
@@ -163,7 +163,7 @@ export default function AIMonitor() {
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400" data-testid="text-system-health">
-                      {weeklyReportLoading ? '...' : (weeklyReport as any)?.report?.metrics?.uptime || '99.8%'}
+                      {weeklyReportLoading ? '...' : weeklyReport?.report?.metrics?.uptime || '99.8%'}
                     </div>
                     <p className="text-xs text-muted-foreground">
                       Uptime percentage

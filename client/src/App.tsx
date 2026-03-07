@@ -11,10 +11,11 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { LoginForm } from "@/components/LoginForm";
 import { RefreshBanner } from "@/components/ui/refresh-banner";
 import { useAppVersion } from "@/hooks/use-app-version";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { MobileBottomNav } from "@/components/MobileBottomNav";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 // Import pages
 import Dashboard from "@/pages/Dashboard";
@@ -79,109 +80,76 @@ function Router({ isAuthenticated, onLogin, isLoading, loginError, globalSearch 
   );
 }
 
-function App() {
+/**
+ * AppInner — rendered inside QueryClientProvider so hooks like useCurrentUser
+ * and useToast have access to the React Query client and toast context.
+ *
+ * Auth strategy: useCurrentUser calls /api/auth/me via React Query (5-minute
+ * staleTime, retry:1). This is the single canonical fetch — all other
+ * components that call useCurrentUser share the same cache entry and never
+ * make a duplicate network request. Previously, App.tsx had a raw fetch()
+ * inside a useEffect that did NOT populate the React Query cache, causing
+ * at least two /api/auth/me requests on every hard refresh.
+ */
+function AppInner() {
   const { toast } = useToast();
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [loginError, setLoginError] = useState("");
-  const [isInitializing, setIsInitializing] = useState(true);
-  const [user, setUser] = useState<{
-    id: string;
-    name: string;
-    email: string;
-    role: string;
-    contractorId: string;
-  } | null>(null);
-  
+
+  // Single source of truth for the authenticated user.
+  // isLoading is true only during the initial /api/auth/me fetch.
+  // All other components that call useCurrentUser share this same cache entry.
+  const { data: currentUserData, isLoading: isInitializing } = useCurrentUser();
+  const user = currentUserData?.user ?? null;
+  const isAuthenticated = !!user;
+
   // App version and refresh functionality
   const { showRefreshBanner, handleRefresh, handleDismiss } = useAppVersion();
 
-  // User contractors - will be fetched from API
+  // User contractors - fetched from API once the user is known
   const [userContractors, setUserContractors] = useState<any[]>([]);
   const [currentContractor, setCurrentContractor] = useState<any | null>(null);
 
-  // Fetch user contractors when authenticated
   useEffect(() => {
-    if (isAuthenticated && user) {
-      const fetchContractors = async () => {
-        try {
-          const response = await fetch('/api/user/contractors', {
-            method: 'GET',
-            credentials: 'include',
-          });
-          
-          if (response.ok) {
-            const contractorData = await response.json();
-            setUserContractors(contractorData);
-            
-            // Set current contractor from the list
-            if (contractorData.length > 0 && user.contractorId) {
-              const current = contractorData.find((c: any) => c.contractorId === user.contractorId);
-              if (current) {
-                setCurrentContractor({
-                  id: current.contractor.id,
-                  name: current.contractor.name,
-                  domain: current.contractor.domain,
-                  role: current.role
-                });
-              }
+    if (!user) return;
+    const fetchContractors = async () => {
+      try {
+        const response = await fetch('/api/user/contractors', {
+          method: 'GET',
+          credentials: 'include',
+        });
+        if (response.ok) {
+          const contractorData = await response.json();
+          setUserContractors(contractorData);
+          if (contractorData.length > 0 && user.contractorId) {
+            const current = contractorData.find((c: any) => c.contractorId === user.contractorId);
+            if (current) {
+              setCurrentContractor({
+                id: current.contractor.id,
+                name: current.contractor.name,
+                domain: current.contractor.domain,
+                role: current.role,
+              });
             }
           }
-        } catch (error) {
-          console.error("Failed to fetch contractors:", error);
-        }
-      };
-      
-      fetchContractors();
-    }
-  }, [isAuthenticated, user]);
-  
-  // Check if user is already authenticated on app load
-  useEffect(() => {
-    const checkAuthStatus = async () => {
-      try {
-        const response = await fetch('/api/auth/me', {
-          method: 'GET',
-          credentials: 'include', // Include HTTP-only cookies
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          console.log("Already authenticated:", data);
-          setUser(data.user);
-          setIsAuthenticated(true);
-        } else {
-          // Not authenticated, that's fine
-          setUser(null);
-          setIsAuthenticated(false);
         }
       } catch (error) {
-        console.log("Auth check failed:", error);
-        setUser(null);
-        setIsAuthenticated(false);
-      } finally {
-        setIsInitializing(false);
+        console.error("Failed to fetch contractors:", error);
       }
     };
-
-    checkAuthStatus();
-  }, []);
+    fetchContractors();
+  }, [user?.id]);
 
   const handleLogin = async (credentials: { email: string; password: string }) => {
-    console.log("Login attempt:", credentials);
     setIsLoading(true);
     setLoginError("");
     
     try {
-      // First check if demo credentials, if so create user
       if (credentials.email === "demo@example.com" && credentials.password === "demo") {
-        // Try to create demo user if doesn't exist (registration will fail if user exists, that's ok)
         try {
           await fetch('/api/auth/register', {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
+            headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
             body: JSON.stringify({
               username: 'demo',
@@ -189,7 +157,7 @@ function App() {
               name: 'Demo User',
               email: 'demo@example.com',
               role: 'admin',
-              contractorName: 'Demo Company'
+              contractorName: 'Demo Company',
             }),
           });
         } catch {
@@ -197,24 +165,17 @@ function App() {
         }
       }
 
-      // Now attempt login
       const response = await fetch('/api/auth/login', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include', // Include cookies for HTTP-only token
-        body: JSON.stringify({
-          email: credentials.email,
-          password: credentials.password,
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email: credentials.email, password: credentials.password }),
       });
 
       if (response.ok) {
-        const data = await response.json();
-        console.log("Login successful", data);
-        setUser(data.user);
-        setIsAuthenticated(true);
+        // Invalidate the React Query cache so useCurrentUser refetches with
+        // the new session cookie, which triggers a re-render for all consumers.
+        queryClient.invalidateQueries({ queryKey: ['/api/auth/me'] });
       } else {
         const errorData = await response.json();
         setLoginError(errorData.message || "Login failed");
@@ -228,23 +189,16 @@ function App() {
   };
 
   const handleContractorChange = async (contractor: any) => {
-    console.log("Switching to contractor:", contractor);
-    
     try {
       const response = await fetch('/api/user/switch-contractor', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ contractorId: contractor.id }),
       });
-      
       if (response.ok) {
-        // Reload the page to refresh all data with the new contractor context
         window.location.reload();
       } else {
-        console.error("Failed to switch contractor");
         toast({
           title: "Failed to switch account",
           description: "Could not switch to the selected account. Please refresh the page and try again.",
@@ -262,112 +216,93 @@ function App() {
   };
 
   const [globalSearch, setGlobalSearch] = useState("");
-
-  const handleSearch = (query: string) => {
-    setGlobalSearch(query);
-  };
+  const handleSearch = (query: string) => setGlobalSearch(query);
 
   const [, setLocation] = useLocation();
-  
   const handleQuickAction = (action: string) => {
-    console.log("🚀 Quick action triggered:", action);
-    // Navigate to the appropriate page with a URL parameter to trigger the modal
     switch (action) {
-      case "create-lead":
-        console.log("🚀 Navigating to /leads?add=true");
-        setLocation("/leads?add=true");
-        break;
-      case "create-estimate":
-        console.log("🚀 Navigating to /estimates?add=true");
-        setLocation("/estimates?add=true");
-        break;
-      case "create-job":
-        console.log("🚀 Navigating to /jobs?add=true");
-        setLocation("/jobs?add=true");
-        break;
-      default:
-        console.log("Unknown action:", action);
+      case "create-lead":      setLocation("/leads?add=true");     break;
+      case "create-estimate":  setLocation("/estimates?add=true"); break;
+      case "create-job":       setLocation("/jobs?add=true");      break;
     }
   };
 
-  // Show initialization loading state
   if (isInitializing) {
     return (
-      <QueryClientProvider client={queryClient}>
-        <TooltipProvider>
-          <div className="min-h-screen bg-background flex items-center justify-center">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-              <p className="text-muted-foreground">Loading...</p>
-            </div>
-          </div>
-          <Toaster />
-        </TooltipProvider>
-      </QueryClientProvider>
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
     );
   }
 
-  // Render with or without dashboard layout based on authentication
+  return (
+    <WebSocketProvider>
+      {isAuthenticated && user ? (
+        <SyncStatusProvider>
+          <TerminologyProvider>
+          <BulkSelectionProvider>
+            {showRefreshBanner && (
+              <RefreshBanner
+                onRefresh={handleRefresh}
+                onDismiss={handleDismiss}
+              />
+            )}
+            <DashboardLayout
+              user={user}
+              contractors={userContractors.map(uc => ({
+                id: uc.contractor.id,
+                name: uc.contractor.name,
+                domain: uc.contractor.domain,
+                role: uc.role,
+              }))}
+              currentContractor={currentContractor || {
+                id: user.contractorId,
+                name: 'Loading...',
+                domain: '',
+                role: user.role,
+              }}
+              onContractorChange={handleContractorChange}
+              onSearch={handleSearch}
+              onQuickAction={handleQuickAction}
+            >
+              <ErrorBoundary fallbackTitle="Page error">
+                <Router
+                  isAuthenticated={isAuthenticated}
+                  onLogin={handleLogin}
+                  isLoading={isLoading}
+                  loginError={loginError}
+                  globalSearch={globalSearch}
+                />
+              </ErrorBoundary>
+            </DashboardLayout>
+            <MobileBottomNav />
+            <Toaster />
+          </BulkSelectionProvider>
+          </TerminologyProvider>
+        </SyncStatusProvider>
+      ) : (
+        <>
+          <Router
+            isAuthenticated={isAuthenticated}
+            onLogin={handleLogin}
+            isLoading={isLoading}
+            loginError={loginError}
+          />
+          <Toaster />
+        </>
+      )}
+    </WebSocketProvider>
+  );
+}
+
+function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <WebSocketProvider>
-          {isAuthenticated && user ? (
-            <SyncStatusProvider>
-              <TerminologyProvider>
-              <BulkSelectionProvider>
-                {/* Refresh banner for cached content detection */}
-                {showRefreshBanner && (
-                  <RefreshBanner 
-                    onRefresh={handleRefresh}
-                    onDismiss={handleDismiss}
-                  />
-                )}
-                <DashboardLayout
-                user={user}
-                contractors={userContractors.map(uc => ({
-                  id: uc.contractor.id,
-                  name: uc.contractor.name,
-                  domain: uc.contractor.domain,
-                  role: uc.role
-                }))}
-                currentContractor={currentContractor || {
-                  id: user.contractorId,
-                  name: 'Loading...',
-                  domain: '',
-                  role: user.role
-                }}
-                onContractorChange={handleContractorChange}
-                onSearch={handleSearch}
-                onQuickAction={handleQuickAction}
-              >
-                <ErrorBoundary fallbackTitle="Page error">
-                  <Router 
-                    isAuthenticated={isAuthenticated} 
-                    onLogin={handleLogin} 
-                    isLoading={isLoading} 
-                    loginError={loginError}
-                    globalSearch={globalSearch}
-                  />
-                </ErrorBoundary>
-              </DashboardLayout>
-              <MobileBottomNav />
-              <Toaster />
-              </BulkSelectionProvider>
-              </TerminologyProvider>
-            </SyncStatusProvider>
-          ) : (
-            <>
-              <Router 
-                isAuthenticated={isAuthenticated} 
-                onLogin={handleLogin} 
-                isLoading={isLoading} 
-                loginError={loginError} 
-              />
-              <Toaster />
-            </>
-          )}
-        </WebSocketProvider>
+        <AppInner />
       </TooltipProvider>
     </QueryClientProvider>
   );

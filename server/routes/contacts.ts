@@ -105,7 +105,7 @@ export function registerContactRoutes(app: Express): void {
     res.json(leads);
   }));
 
-  app.post("/api/contacts", asyncHandler(async (req, res) => {
+  app.post("/api/contacts", requireManagerOrAdmin, asyncHandler(async (req, res) => {
     const contactSchema = insertContactSchema
       .omit({ contractorId: true })
       .extend({ followUpDate: z.coerce.date().nullable().optional() });
@@ -206,7 +206,7 @@ export function registerContactRoutes(app: Express): void {
     res.status(201).json(contact);
   }));
 
-  app.put("/api/contacts/:id", asyncHandler(async (req, res) => {
+  app.put("/api/contacts/:id", requireManagerOrAdmin, asyncHandler(async (req, res) => {
     const contactUpdateSchema = insertContactSchema.omit({ contractorId: true }).partial().extend({
       followUpDate: z.coerce.date().nullable().optional(),
     });
@@ -246,7 +246,7 @@ export function registerContactRoutes(app: Express): void {
     res.json(contact);
   }));
 
-  app.patch("/api/contacts/:id", asyncHandler(async (req, res) => {
+  app.patch("/api/contacts/:id", requireManagerOrAdmin, asyncHandler(async (req, res) => {
     const updateData = parseBody(insertContactSchema.omit({ contractorId: true }).partial(), req, res);
     if (!updateData) return;
 

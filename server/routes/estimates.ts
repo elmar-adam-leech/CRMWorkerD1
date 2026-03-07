@@ -3,6 +3,7 @@ import { asyncHandler } from "../utils/async-handler";
 import { parseBody } from "../utils/validate-body";
 import { storage } from "../storage";
 import { insertEstimateSchema } from "@shared/schema";
+import { requireManagerOrAdmin } from "../auth-service";
 import { workflowEngine } from "../workflow-engine";
 import { broadcastToContractor } from "../websocket";
 import { createActivityAndBroadcast } from "../utils/activity";
@@ -49,7 +50,7 @@ export function registerEstimateRoutes(app: Express): void {
     res.json(estimate);
   }));
 
-  app.post("/api/estimates", asyncHandler(async (req, res) => {
+  app.post("/api/estimates", requireManagerOrAdmin, asyncHandler(async (req, res) => {
     const estimateData = parseBody(
       insertEstimateSchema.omit({ contractorId: true }).extend({
         amount: z.union([z.string(), z.number()])
@@ -169,7 +170,7 @@ export function registerEstimateRoutes(app: Express): void {
     res.status(201).json(estimate);
   }));
 
-  app.put("/api/estimates/:id", asyncHandler(async (req, res) => {
+  app.put("/api/estimates/:id", requireManagerOrAdmin, asyncHandler(async (req, res) => {
     const existingEstimate = await storage.getEstimate(req.params.id, req.user.contractorId);
     if (!existingEstimate) {
       res.status(404).json({ message: "Estimate not found" });
@@ -253,7 +254,7 @@ export function registerEstimateRoutes(app: Express): void {
     res.json(estimate);
   }));
 
-  app.delete("/api/estimates/:id", asyncHandler(async (req, res) => {
+  app.delete("/api/estimates/:id", requireManagerOrAdmin, asyncHandler(async (req, res) => {
     const existingEstimate = await storage.getEstimate(req.params.id, req.user.contractorId);
     if (!existingEstimate) {
       res.status(404).json({ message: "Estimate not found" });

@@ -19,6 +19,7 @@ import { useTerminologyContext } from "@/contexts/TerminologyContext";
 import { useUsers } from "@/hooks/useUsers";
 import { cn, formatStatusLabel } from "@/lib/utils";
 import { useWebSocketInvalidation } from "@/hooks/useWebSocketInvalidation";
+import { invalidateContacts } from "@/hooks/useInvalidations";
 import { useBulkActions } from "@/hooks/useBulkActions";
 import { useCommunicationActions } from "@/hooks/useCommunicationActions";
 import { useGlobalShortcuts } from "@/hooks/use-keyboard-shortcuts";
@@ -119,7 +120,10 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
   useWebSocketInvalidation([
     { types: ["new_activity", "activity_update"], queryKeys: ["/api/activities"] },
     { types: ["new_message", "message_update", "message_updated"], queryKeys: ["/api/conversations"] },
-    { types: ["contact_created", "contact_updated", "contact_deleted"], queryKeys: ["/api/contacts/paginated", "/api/contacts/status-counts", "/api/contacts/follow-ups"] },
+    // Invalidating /api/contacts (broad) ensures any open LeadDetailsModal also
+    // gets fresh data — not just the paginated list. contact_updated is triggered
+    // when another user (or device) modifies the same contact in real-time.
+    { types: ["contact_created", "contact_updated", "contact_deleted"], queryKeys: ["/api/contacts/paginated", "/api/contacts/status-counts", "/api/contacts/follow-ups", "/api/contacts"] },
   ]);
 
   useAddModalFromUrl(() => setAddContactModal(true));
@@ -175,10 +179,9 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
     mutationFn: async (data: { contactId: string; status: string }) => {
       return apiRequest("PATCH", `/api/contacts/${data.contactId}/status`, { status: data.status });
     },
-    onSuccess: () => {
+    onSuccess: (_result, data) => {
       toast({ title: "Status Updated", description: "Lead status has been successfully updated." });
-      queryClient.invalidateQueries({ queryKey: ["/api/contacts/paginated"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/contacts/status-counts"] });
+      invalidateContacts(data.contactId);
       queryClient.invalidateQueries({ queryKey: ["/api/contacts/follow-ups"] });
       setEditStatusModal({ isOpen: false });
     },
@@ -332,9 +335,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
   const handleUpdateLead = useCallback(async (contactId: string, updates: Partial<Contact>) => {
     try {
       await apiRequest("PATCH", `/api/contacts/${contactId}`, updates);
-      queryClient.invalidateQueries({ queryKey: ["/api/contacts/paginated"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/contacts/status-counts"] });
-      queryClient.invalidateQueries({ queryKey: [`/api/contacts/${contactId}`] });
+      invalidateContacts(contactId);
       toast({ title: "Lead Updated", description: "Lead has been updated successfully." });
     } catch (error) {
       toast({

@@ -55,7 +55,7 @@ const SYNC_BATCH_SIZE = 25;
  *   "scheduled" status → 'sent':  HCP marks an estimate "scheduled" when an
  *     appointment is booked to present it, which is closest to "sent" in our model.
  */
-export function mapHcpEstimateStatus(hcpEstimate: any): 'approved' | 'rejected' | 'pending' | 'sent' {
+export function mapHcpEstimateStatus(hcpEstimate: { status?: string; work_status?: string }): 'approved' | 'rejected' | 'pending' | 'sent' {
   const ws = (hcpEstimate.work_status || '').toLowerCase();
   const st = (hcpEstimate.status || '').toLowerCase();
   if (['completed','approved','accepted'].some(v => ws === v || st === v)) return 'approved';

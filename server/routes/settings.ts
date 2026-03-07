@@ -85,6 +85,9 @@ export function registerSettingsRoutes(app: Express): void {
     const { cacheInvalidation } = await import('../services/cache');
     cacheInvalidation.invalidateTerminologySettings(req.user.contractorId);
 
+    const { broadcastToContractor } = await import('../websocket');
+    broadcastToContractor(req.user.contractorId, { type: 'terminology_updated' });
+
     res.json(result);
   }));
 

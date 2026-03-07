@@ -307,8 +307,10 @@ export class DialpadCallProvider implements CallProvider {
           if (dialpadUserId) {
             console.log('[DialpadCallProvider] Using global default user ID from credentials');
           }
-        } catch {
-          // user_id not found
+        } catch (credErr) {
+          // Credential lookup can fail if the key doesn't exist (expected) or due
+          // to a DB error (unexpected). Log at error level so the latter is visible.
+          console.error('[DialpadCallProvider] Failed to fetch global user_id credential:', credErr);
         }
       }
 
@@ -446,7 +448,10 @@ export class DialpadCallProvider implements CallProvider {
       });
 
       if (!response.ok) {
-        console.log(`[DialpadCallProvider] Failed to get caller ID numbers for user ${dialpadUserId}: ${response.status}`);
+        // Using console.error here intentionally: returning [] on failure means callers
+        // cannot distinguish "user has no numbers" from "API is down". Logging at error
+        // level ensures the difference is visible in server logs.
+        console.error(`[DialpadCallProvider] Failed to get caller ID numbers for user ${dialpadUserId}: ${response.status}`);
         return [];
       }
 
@@ -455,7 +460,7 @@ export class DialpadCallProvider implements CallProvider {
       console.log(`[DialpadCallProvider] User ${dialpadUserId} has ${numbers.length} authorized caller ID numbers:`, numbers);
       return numbers;
     } catch (error) {
-      console.log('[DialpadCallProvider] Error getting caller ID numbers:', error);
+      console.error('[DialpadCallProvider] Error getting caller ID numbers:', error);
       return [];
     }
   }

@@ -71,6 +71,9 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
 
   useWebSocketInvalidation([
     { types: ["new_job", "job_created", "job_updated", "job_deleted"], queryKeys: ["/api/jobs/paginated", "/api/jobs/status-counts"] },
+    // contact_updated: job cards display contactName — a renamed contact should
+    // update the job list without a full page refresh.
+    { types: ["contact_updated"], queryKeys: ["/api/jobs/paginated"] },
   ]);
 
   useAddModalFromUrl(() => setAddModalOpen());

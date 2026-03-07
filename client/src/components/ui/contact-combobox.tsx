@@ -109,7 +109,9 @@ export function ContactCombobox({ value, onChange, error }: ContactComboboxProps
             });
             return;
           }
-        } catch {}
+        } catch {
+          console.warn('[contact-combobox] Failed to parse error response body — falling back to generic error message');
+        }
       }
       toast({
         variant: "destructive",

@@ -13,6 +13,7 @@ import { DatePicker } from "@/components/ui/date-picker";
 import { ContactCombobox } from "@/components/ui/contact-combobox";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { invalidateEstimates } from "@/hooks/useInvalidations";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -100,6 +101,9 @@ export function CreateJobForm({ onSuccess, onCancel }: CreateJobFormProps) {
       queryClient.invalidateQueries({ queryKey: ['/api/jobs/status-counts'] });
       queryClient.invalidateQueries({ queryKey: ['/api/contacts/paginated'] });
       queryClient.invalidateQueries({ queryKey: ['/api/contacts/status-counts'] });
+      // Also invalidate estimates: creating a job from an estimate should
+      // update the estimate card so it no longer shows a stale status.
+      invalidateEstimates();
       onSuccess();
     },
     onError: (error: any) => {

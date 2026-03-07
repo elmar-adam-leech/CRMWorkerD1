@@ -78,7 +78,7 @@ const ConversationItem = memo(function ConversationItem({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1">
               <Badge
-                variant={getStatusBadgeVariant(conversation.lastMessage.status as any)}
+                variant={getStatusBadgeVariant((conversation.lastMessage.status ?? 'sent') as "sent" | "delivered" | "failed")}
                 className="text-xs"
               >
                 {conversation.lastMessage.status}

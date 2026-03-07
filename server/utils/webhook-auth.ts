@@ -78,10 +78,8 @@ export async function validateWebhookAuth(
  *
  * This helper always returns a plain object regardless of the wrapper format.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function parseWebhookPayload(req: Request): Record<string, any> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let data: any = req.body.data ?? req.body;
+export function parseWebhookPayload(req: Request): Record<string, unknown> {
+  let data: unknown = req.body.data ?? req.body;
   if (Array.isArray(data) && data.length > 0) {
     data = data[0];
   }

@@ -13,7 +13,9 @@ export function dialPhone({
     credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ contactId, phone, name }),
-  }).catch(() => {});
+  }).catch((err) => {
+    console.error('[dialPhone] Failed to log personal call:', err);
+  });
 
   window.location.href = `tel:${phone}`;
 }

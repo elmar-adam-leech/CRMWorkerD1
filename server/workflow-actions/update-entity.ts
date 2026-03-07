@@ -16,8 +16,7 @@ export async function handleUpdateEntity(
 
     console.log(`[Workflow Engine] Updating ${resolvedEntityType} ${entityIdStr}`);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const typedUpdates = updates as any;
+    const typedUpdates = updates as Record<string, unknown>;
     switch (resolvedEntityType) {
       case 'lead':
         await storage.updateContact(entityIdStr, typedUpdates, context.contractorId);

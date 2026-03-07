@@ -39,7 +39,7 @@ export function registerJobRoutes(app: Express): void {
     res.json(job);
   }));
 
-  app.post("/api/jobs", asyncHandler(async (req, res) => {
+  app.post("/api/jobs", requireManagerOrAdmin, asyncHandler(async (req, res) => {
     const jobData = parseBody(insertJobSchema.omit({ contractorId: true }), req, res);
     if (!jobData) return;
     let job: Awaited<ReturnType<typeof storage.createJob>>;
@@ -72,7 +72,7 @@ export function registerJobRoutes(app: Express): void {
     res.status(201).json(job);
   }));
 
-  app.put("/api/jobs/:id", asyncHandler(async (req, res) => {
+  app.put("/api/jobs/:id", requireManagerOrAdmin, asyncHandler(async (req, res) => {
     const existingJob = await storage.getJob(req.params.id, req.user.contractorId);
     if (!existingJob) {
       res.status(404).json({ message: "Job not found" });
