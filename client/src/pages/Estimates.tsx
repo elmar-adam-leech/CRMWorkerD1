@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { useLocation } from "wouter";
 import { EstimateCard } from "@/components/EstimateCard";
 import { CardSkeleton } from "@/components/CardSkeleton";
 import { TextingModal } from "@/components/TextingModal";
@@ -8,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { DeleteConfirmDialog } from "@/components/DeleteConfirmDialog";
 import { PageHeader } from "@/components/ui/page-header-v2";
 import { PageLayout } from "@/components/ui/page-layout";
-import { Plus, Calendar, FileText, Download, Filter } from "lucide-react";
+import { Plus, FileText, Download, Filter } from "lucide-react";
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -48,8 +47,15 @@ const ESTIMATE_BULK_STATUSES = [
   { value: "cancelled", label: "Cancelled" },
 ];
 
+type ActiveEstimateModal =
+  | { type: "add" }
+  | { type: "edit"; estimate: EstimateSummary }
+  | { type: "details"; estimate: EstimateListItem }
+  | { type: "followUp"; estimate: EstimateCardItem }
+  | { type: "delete"; estimateId: string; estimateTitle: string }
+  | null;
+
 export default function Estimates({ externalSearch = "" }: { externalSearch?: string }) {
-  useLocation();
   const { fetchContact } = useFetchContact();
   const [searchQuery, setSearchQuery] = useState(externalSearch);
 
@@ -72,28 +78,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
     closeTextingModal,
   } = useCommunicationActions();
 
-  const [editModal, setEditModal] = useState<{
-    isOpen: boolean;
-    estimate?: EstimateSummary;
-  }>({ isOpen: false });
-
-  const [addModal, setAddModal] = useState(false);
-
-  const [detailsModal, setDetailsModal] = useState<{
-    isOpen: boolean;
-    estimate?: EstimateListItem;
-  }>({ isOpen: false });
-
-  const [followUpModal, setFollowUpModal] = useState<{
-    isOpen: boolean;
-    estimate?: EstimateCardItem;
-  }>({ isOpen: false });
-
-  const [deleteConfirm, setDeleteConfirm] = useState<{
-    isOpen: boolean;
-    estimateId?: string;
-    estimateTitle?: string;
-  }>({ isOpen: false });
+  const [activeModal, setActiveModal] = useState<ActiveEstimateModal>(null);
 
   const terminology = useTerminologyContext();
   const { data: usersData } = useUsers();
@@ -108,8 +93,8 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
   );
 
   const { data: detailsContact } = useQuery<Contact>({
-    queryKey: ["/api/contacts", detailsModal.estimate?.contactId],
-    enabled: detailsModal.isOpen && !!detailsModal.estimate?.contactId,
+    queryKey: ["/api/contacts", activeModal?.type === "details" ? activeModal.estimate.contactId : undefined],
+    enabled: activeModal?.type === "details" && !!activeModal.estimate.contactId,
   });
 
   const {
@@ -153,12 +138,10 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
   const queryClient = useQueryClient();
 
   useGlobalShortcuts((type) => {
-    if (type === "estimate") {
-      setAddModal(true);
-    }
+    if (type === "estimate") setActiveModal({ type: "add" });
   });
 
-  useAddModalFromUrl(() => setAddModal(true));
+  useAddModalFromUrl(() => setActiveModal({ type: "add" }));
 
   const { importDateOpen, setImportDateOpen, selectedImportDate, setSelectedImportDate, handleConfirmImport } =
     useHcpImport({
@@ -207,7 +190,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
 
   const statusCounts = statusCountsData || { all: 0, sent: 0, pending: 0, approved: 0, rejected: 0 };
 
-  const handleAddEstimate = useCallback(() => setAddModal(true), []);
+  const handleAddEstimate = useCallback(() => setActiveModal({ type: "add" }), []);
 
   const handleImportFromHousecallPro = useCallback(() => setImportDateOpen(true), []);
 
@@ -217,9 +200,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
 
   const handleViewDetails = useCallback((estimateId: string) => {
     const estimate = (allEstimates || []).find((e) => e.id === estimateId);
-    if (estimate) {
-      setDetailsModal({ isOpen: true, estimate });
-    }
+    if (estimate) setActiveModal({ type: "details", estimate });
   }, [allEstimates]);
 
   const handleContactById = useCallback(async (estimateId: string, method: "phone" | "email") => {
@@ -287,9 +268,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
 
   const handleEditEstimate = useCallback((estimateId: string) => {
     const estimate = (estimates || []).find((e) => e.id === estimateId);
-    if (estimate) {
-      setEditModal({ isOpen: true, estimate });
-    }
+    if (estimate) setActiveModal({ type: "edit", estimate });
   }, [estimates]);
 
   const updateEstimateMutation = useMutation({
@@ -304,7 +283,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
         title: "Estimate updated",
         description: "The estimate has been successfully updated.",
       });
-      setEditModal({ isOpen: false });
+      setActiveModal(null);
     },
     onError: (error) => {
       toast({
@@ -328,7 +307,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
         title: "Follow-up date set",
         description: "The follow-up date has been successfully updated.",
       });
-      setFollowUpModal({ isOpen: false });
+      setActiveModal(null);
     },
     onError: (error) => {
       toast({
@@ -340,7 +319,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
   });
 
   const handleSetFollowUp = (estimate: EstimateCardItem) => {
-    setFollowUpModal({ isOpen: true, estimate });
+    setActiveModal({ type: "followUp", estimate });
   };
 
   const deleteEstimateMutation = useMutation({
@@ -348,7 +327,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
       return apiRequest("DELETE", `/api/estimates/${estimateId}`);
     },
     onSuccess: () => {
-      setDeleteConfirm({ isOpen: false });
+      setActiveModal(null);
       toast({
         title: "Estimate Deleted",
         description: "Estimate has been successfully deleted.",
@@ -369,18 +348,18 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
   const handleDelete = useCallback((estimateId: string) => {
     const estimate = (estimates || []).find((e) => e.id === estimateId);
     if (!estimate) return;
-    setDeleteConfirm({ isOpen: true, estimateId, estimateTitle: estimate.title });
+    setActiveModal({ type: "delete", estimateId, estimateTitle: estimate.title });
   }, [estimates]);
 
   const handleEditSave = (values: EditEstimateFormValues) => {
-    if (!editModal.estimate) return;
-    updateEstimateMutation.mutate({ estimateId: editModal.estimate.id, data: values });
+    if (activeModal?.type !== "edit") return;
+    updateEstimateMutation.mutate({ estimateId: activeModal.estimate.id, data: values });
   };
 
   const handleFollowUpSave = (date: Date | null | undefined) => {
-    if (!followUpModal.estimate) return;
+    if (activeModal?.type !== "followUp") return;
     updateFollowUpDateMutation.mutate({
-      estimateId: followUpModal.estimate.id,
+      estimateId: activeModal.estimate.id,
       followUpDate: date ?? null,
     });
   };
@@ -526,19 +505,22 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
         ))}
 
       <EditEstimateModal
-        isOpen={editModal.isOpen}
-        estimate={editModal.estimate}
-        onClose={() => setEditModal({ isOpen: false })}
+        isOpen={activeModal?.type === "edit"}
+        estimate={activeModal?.type === "edit" ? activeModal.estimate : undefined}
+        onClose={() => setActiveModal(null)}
         onSave={handleEditSave}
         isSaving={updateEstimateMutation.isPending}
       />
 
-      <CreateEstimateModal isOpen={addModal} onClose={() => setAddModal(false)} />
+      <CreateEstimateModal
+        isOpen={activeModal?.type === "add"}
+        onClose={() => setActiveModal(null)}
+      />
 
       <EstimateDetailsModal
-        isOpen={detailsModal.isOpen}
-        onClose={() => setDetailsModal({ isOpen: false })}
-        estimate={detailsModal.estimate}
+        isOpen={activeModal?.type === "details"}
+        onClose={() => setActiveModal(null)}
+        estimate={activeModal?.type === "details" ? activeModal.estimate : undefined}
         detailsContact={detailsContact}
         onContact={handleContact}
         onSendText={handleSendText}
@@ -572,10 +554,10 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
       />
 
       <FollowUpDateModal
-        isOpen={followUpModal.isOpen}
-        onClose={() => setFollowUpModal({ isOpen: false })}
+        isOpen={activeModal?.type === "followUp"}
+        onClose={() => setActiveModal(null)}
         onSave={handleFollowUpSave}
-        entityName={followUpModal.estimate?.title}
+        entityName={activeModal?.type === "followUp" ? activeModal.estimate.title : undefined}
         isSaving={updateFollowUpDateMutation.isPending}
       />
 
@@ -587,13 +569,13 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
       />
 
       <DeleteConfirmDialog
-        isOpen={deleteConfirm.isOpen}
-        onOpenChange={(open) => setDeleteConfirm((prev) => ({ ...prev, isOpen: open }))}
+        isOpen={activeModal?.type === "delete"}
+        onOpenChange={(open) => { if (!open) setActiveModal(null); }}
         title="Delete Estimate"
-        description={`Are you sure you want to delete "${deleteConfirm.estimateTitle ?? "this estimate"}"? This action cannot be undone.`}
+        description={`Are you sure you want to delete "${activeModal?.type === "delete" ? activeModal.estimateTitle : "this estimate"}"? This action cannot be undone.`}
         onConfirm={() => {
-          if (deleteConfirm.estimateId) {
-            deleteEstimateMutation.mutate(deleteConfirm.estimateId);
+          if (activeModal?.type === "delete") {
+            deleteEstimateMutation.mutate(activeModal.estimateId);
           }
         }}
         confirmTestId="button-confirm-delete-estimate"

@@ -1,11 +1,13 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { invalidateContacts } from "@/hooks/useInvalidations";
 import type { Contact } from "@shared/schema";
 
 /**
  * Shared contact mutation hook — provides pre-wired mutations for all common
- * contact operations. Every mutation shares the same cache-invalidation strategy:
+ * contact operations. Every mutation shares the same cache-invalidation strategy
+ * via `invalidateContacts` from useInvalidations:
  *   - /api/contacts/paginated  — updates the paginated lead list
  *   - /api/contacts/status-counts — updates the status bar counters
  *   - /api/contacts            — updates any full-list consumers
@@ -25,18 +27,7 @@ import type { Contact } from "@shared/schema";
  *   deleteContact.mutate(id, { onSuccess: () => closeDialog() });
  */
 export function useContactMutations() {
-  const queryClient = useQueryClient();
   const { toast } = useToast();
-
-  const invalidateContactQueries = (contactId?: string) => {
-    queryClient.invalidateQueries({ queryKey: ["/api/contacts/paginated"] });
-    queryClient.invalidateQueries({ queryKey: ["/api/contacts/status-counts"] });
-    queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
-    queryClient.invalidateQueries({ queryKey: ["/api/contacts/follow-ups"] });
-    if (contactId) {
-      queryClient.invalidateQueries({ queryKey: ["/api/contacts", contactId] });
-    }
-  };
 
   const deleteContact = useMutation({
     mutationFn: async (contactId: string) => {
@@ -44,7 +35,7 @@ export function useContactMutations() {
     },
     onSuccess: () => {
       toast({ title: "Lead Deleted", description: "Lead has been successfully deleted." });
-      invalidateContactQueries();
+      invalidateContacts();
     },
     onError: (error: Error) => {
       toast({
@@ -61,7 +52,7 @@ export function useContactMutations() {
     },
     onSuccess: (_result, data) => {
       toast({ title: "Status Updated", description: "Lead status has been successfully updated." });
-      invalidateContactQueries(data.contactId);
+      invalidateContacts(data.contactId);
     },
     onError: (error: Error) => {
       toast({
@@ -78,7 +69,7 @@ export function useContactMutations() {
     },
     onSuccess: () => {
       toast({ title: "Lead Archived", description: "Lead has been archived and is hidden from the main view." });
-      invalidateContactQueries();
+      invalidateContacts();
     },
     onError: (error: Error) => {
       toast({
@@ -95,7 +86,7 @@ export function useContactMutations() {
     },
     onSuccess: () => {
       toast({ title: "Lead Restored", description: "Lead has been restored and is visible again." });
-      invalidateContactQueries();
+      invalidateContacts();
     },
     onError: (error: Error) => {
       toast({
@@ -114,7 +105,7 @@ export function useContactMutations() {
     },
     onSuccess: () => {
       toast({ title: "Follow-Up Date Set", description: "Follow-up date has been successfully updated." });
-      invalidateContactQueries();
+      invalidateContacts();
     },
     onError: (error: Error) => {
       toast({
@@ -131,7 +122,7 @@ export function useContactMutations() {
     },
     onSuccess: (_result, data) => {
       toast({ title: "Lead Updated", description: "Lead has been updated successfully." });
-      invalidateContactQueries(data.contactId);
+      invalidateContacts(data.contactId);
     },
     onError: (error: Error) => {
       toast({

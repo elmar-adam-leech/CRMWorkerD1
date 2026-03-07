@@ -22,8 +22,9 @@ export function invalidateContacts(contactId?: string) {
   queryClient.invalidateQueries({ queryKey: ["/api/contacts/paginated"] });
   queryClient.invalidateQueries({ queryKey: ["/api/contacts/status-counts"] });
   queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+  queryClient.invalidateQueries({ queryKey: ["/api/contacts/follow-ups"] });
   if (contactId) {
-    queryClient.invalidateQueries({ queryKey: [`/api/contacts/${contactId}`] });
+    queryClient.invalidateQueries({ queryKey: ["/api/contacts", contactId] });
   }
 }
 
