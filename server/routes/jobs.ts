@@ -2,7 +2,7 @@ import type { Express, Response } from "express";
 import { asyncHandler } from "../utils/async-handler";
 import { parseBody } from "../utils/validate-body";
 import { storage } from "../storage";
-import { insertJobSchema, jobsPaginationQuerySchema } from "@shared/schema";
+import { insertJobSchema, jobsPaginationQuerySchema, jobStatusEnum } from "@shared/schema";
 import { requireManagerOrAdmin, type AuthedRequest } from "../auth-service";
 import { workflowEngine } from "../workflow-engine";
 import { broadcastToContractor } from "../websocket";
@@ -70,6 +70,39 @@ export function registerJobRoutes(app: Express): void {
     });
 
     res.status(201).json(job);
+  }));
+
+  app.patch("/api/jobs/:id/status", requireManagerOrAdmin, asyncHandler(async (req, res) => {
+    const { status } = req.body;
+    const validStatuses = jobStatusEnum.enumValues;
+    if (!status || !validStatuses.includes(status)) {
+      res.status(400).json({ message: `Invalid status. Must be one of: ${validStatuses.join(", ")}` });
+      return;
+    }
+    const existingJob = await storage.getJob(req.params.id, req.user.contractorId);
+    if (!existingJob) {
+      res.status(404).json({ message: "Job not found" });
+      return;
+    }
+    if (existingJob.externalSource === 'housecall-pro') {
+      res.status(403).json({
+        message: "Cannot edit Housecall Pro jobs - they are read-only for tracking lead value. Status updates are managed in Housecall Pro."
+      });
+      return;
+    }
+    const job = await storage.updateJob(req.params.id, { status }, req.user.contractorId);
+    if (!job) {
+      res.status(404).json({ message: "Job not found" });
+      return;
+    }
+    broadcastToContractor(req.user.contractorId, { type: 'job_updated', jobId: job.id });
+    workflowEngine.triggerWorkflowsForEvent('job_updated', toWorkflowEvent(job), req.user.contractorId).catch(error => {
+      log.error('Error triggering workflows for job status update', error);
+    });
+    workflowEngine.triggerWorkflowsForEvent('job_status_changed', toWorkflowEvent(job), req.user.contractorId).catch(error => {
+      log.error('Error triggering workflows for job status change', error);
+    });
+    res.json(job);
   }));
 
   app.put("/api/jobs/:id", requireManagerOrAdmin, asyncHandler(async (req, res) => {

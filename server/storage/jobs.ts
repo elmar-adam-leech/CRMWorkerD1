@@ -69,6 +69,8 @@ async function getJobsPaginated(contractorId: string, options: {
       scheduledDate: jobs.scheduledDate,
       contactId: jobs.contactId,
       contactName: contacts.name,
+      contactEmails: contacts.emails,
+      contactPhones: contacts.phones,
       estimatedHours: jobs.estimatedHours,
       createdAt: jobs.createdAt,
       updatedAt: jobs.updatedAt,
@@ -90,7 +92,12 @@ async function getJobsPaginated(contractorId: string, options: {
     : null;
 
   return {
-    data: jobsData.map(job => ({ ...job, contactName: job.contactName || 'Unknown Contact' })),
+    data: jobsData.map(job => ({
+      ...job,
+      contactName: job.contactName || 'Unknown Contact',
+      contactEmail: (job.contactEmails && job.contactEmails.length > 0) ? job.contactEmails[0] : null,
+      contactPhone: (job.contactPhones && job.contactPhones.length > 0) ? job.contactPhones[0] : null,
+    })),
     pagination: { total, hasMore, nextCursor },
     statusCounts,
   };

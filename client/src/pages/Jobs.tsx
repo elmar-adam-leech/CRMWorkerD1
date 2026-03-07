@@ -86,7 +86,6 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
       {
         status: filterStatus,
         search: searchQuery,
-        assignedTo: advancedFilters.assignedTo,
         dateFrom: advancedFilters.dateFrom?.toISOString(),
         dateTo: advancedFilters.dateTo?.toISOString(),
       },
@@ -147,6 +146,8 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
         title: job.title,
         contactId: job.contactId,
         contactName: job.contactName,
+        contactEmail: job.contactEmail ?? null,
+        contactPhone: job.contactPhone ?? null,
         status: job.status,
         value: typeof job.value === "string" ? parseFloat(job.value) : job.value,
         scheduledDate: job.scheduledDate ? new Date(job.scheduledDate).toLocaleDateString() : "No date",
@@ -183,11 +184,7 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
     entityType: "job",
     deleteEndpoint: (id) => `/api/jobs/${id}`,
     statusEndpoint: (id) => `/api/jobs/${id}/status`,
-    invalidateKeys: [
-      ["/api/jobs/paginated"],
-      ["/api/jobs/status-counts"],
-      ["/api/jobs"],
-    ],
+    onInvalidate: invalidateJobs,
     exportFilename: `jobs-export-${new Date().toISOString().split("T")[0]}.csv`,
     exportHeaders: ["Title", "Customer", "Status", "Value", "Scheduled Date", "Type", "Priority", "Estimated Hours"],
     getExportRow: (job) => {

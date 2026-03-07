@@ -9,6 +9,8 @@ export type JobListItem = {
   title: string;
   contactId: string;
   contactName: string;
+  contactEmail: string | null;
+  contactPhone: string | null;
   status: "scheduled" | "in_progress" | "completed" | "cancelled";
   value: number;
   scheduledDate: string;

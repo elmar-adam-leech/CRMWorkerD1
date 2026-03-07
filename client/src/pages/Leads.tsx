@@ -230,11 +230,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
     entityType: "contact",
     deleteEndpoint: (id) => `/api/contacts/${id}`,
     statusEndpoint: (id) => `/api/contacts/${id}/status`,
-    invalidateKeys: [
-      ["/api/contacts"],
-      ["/api/contacts/paginated"],
-      ["/api/contacts/status-counts"],
-    ],
+    onInvalidate: invalidateContacts,
     exportFilename: `leads-export-${new Date().toISOString().split("T")[0]}.csv`,
     exportHeaders: ["Name", "Email", "Phone", "Address", "Source", "Status"],
     getExportRow: (entity) => {

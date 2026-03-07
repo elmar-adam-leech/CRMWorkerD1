@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { downloadCsv } from "@/lib/csv";
@@ -19,7 +19,7 @@ export interface UseBulkActionsOptions {
   entityType: BulkEntityType;
   deleteEndpoint: (id: string) => string;
   statusEndpoint: (id: string) => string;
-  invalidateKeys: string[][];
+  onInvalidate: () => void;
   exportFilename: string;
   exportHeaders: string[];
   getExportRow: (entity: BulkEntity) => (string | number | undefined)[];
@@ -36,26 +36,19 @@ export interface UseBulkActionsResult {
 export function useBulkActions({
   deleteEndpoint,
   statusEndpoint,
-  invalidateKeys,
+  onInvalidate,
   exportFilename,
   exportHeaders,
   getExportRow,
   entities,
 }: UseBulkActionsOptions): UseBulkActionsResult {
   const { toast } = useToast();
-  const queryClient = useQueryClient();
-
-  const invalidateAll = () => {
-    for (const key of invalidateKeys) {
-      queryClient.invalidateQueries({ queryKey: key });
-    }
-  };
 
   const deleteMutation = useMutation({
     mutationFn: (ids: string[]) =>
       Promise.all(ids.map((id) => apiRequest("DELETE", deleteEndpoint(id)))),
     onSuccess: (_, ids) => {
-      invalidateAll();
+      onInvalidate();
       toast({ title: `Deleted ${ids.length} item(s)` });
     },
     onError: (error) => {
@@ -71,7 +64,7 @@ export function useBulkActions({
     mutationFn: ({ ids, status }: { ids: string[]; status: string }) =>
       Promise.all(ids.map((id) => apiRequest("PATCH", statusEndpoint(id), { status }))),
     onSuccess: (_, { ids, status }) => {
-      invalidateAll();
+      onInvalidate();
       toast({ title: `Updated ${ids.length} item(s) to ${status}` });
     },
     onError: (error) => {

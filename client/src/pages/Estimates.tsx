@@ -37,6 +37,7 @@ import { EstimateDetailsModal, type EstimateListItem } from "@/components/Estima
 import { type EstimateCardItem } from "@/components/EstimateCard";
 import { HCPImportModal } from "@/components/HCPImportModal";
 import { useEstimateMutations } from "@/hooks/useEstimateMutations";
+import { invalidateEstimates } from "@/hooks/useInvalidations";
 
 const ESTIMATE_FILTER_STATUSES = ["sent", "pending", "approved", "rejected"] as const;
 
@@ -288,11 +289,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
     entityType: "estimate",
     deleteEndpoint: (id) => `/api/estimates/${id}`,
     statusEndpoint: (id) => `/api/estimates/${id}/status`,
-    invalidateKeys: [
-      ["/api/estimates/paginated"],
-      ["/api/estimates/status-counts"],
-      ["/api/estimates"],
-    ],
+    onInvalidate: invalidateEstimates,
     exportFilename: `estimates-export-${new Date().toISOString().split("T")[0]}.csv`,
     exportHeaders: ["Title", "Customer", "Status", "Value", "Created Date", "Expiry Date"],
     getExportRow: (est) => {
