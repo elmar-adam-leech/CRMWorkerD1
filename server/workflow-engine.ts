@@ -25,6 +25,9 @@ import { broadcastToContractor } from "./websocket";
 import { extractVariablesFromEntity } from "./utils/workflow/variable-extractor";
 import { replaceVariablesInObject } from "./utils/workflow/variable-replacer";
 import { getWorkflowStepsCached } from "./services/cache";
+import { logger } from "./utils/logger";
+
+const log = logger('WorkflowEngine');
 
 import type { ExecutionContext, StepResult } from "./workflow-actions/types";
 import { handleSendEmail } from "./workflow-actions/send-email";
@@ -86,32 +89,32 @@ export class WorkflowEngine {
     try {
       const execution = await storage.getWorkflowExecution(executionId, contractorId);
       if (!execution) {
-        console.error(`[Workflow Engine] Execution ${executionId} not found for contractor ${contractorId}`);
+        log.error(`Execution ${executionId} not found for contractor ${contractorId}`);
         return;
       }
 
       const workflow = await storage.getWorkflow(execution.workflowId, contractorId);
       if (!workflow) {
-        console.error(`[Workflow Engine] Workflow ${execution.workflowId} not found`);
+        log.error(`Workflow ${execution.workflowId} not found`);
         await this.updateExecutionStatus(executionId, contractorId, 'failed', 'Workflow not found');
         return;
       }
 
       if (!workflow.isActive) {
-        console.log(`[Workflow Engine] Workflow ${workflow.id} is not active, skipping execution`);
+        log.info(`Workflow ${workflow.id} is not active, skipping execution`);
         await this.updateExecutionStatus(executionId, contractorId, 'failed', 'Workflow is not active');
         return;
       }
 
       if (workflow.approvalStatus !== 'approved') {
-        console.log(`[Workflow Engine] Workflow ${workflow.id} is not approved (status: ${workflow.approvalStatus}), skipping execution`);
+        log.info(`Workflow ${workflow.id} is not approved (status: ${workflow.approvalStatus}), skipping execution`);
         await this.updateExecutionStatus(executionId, contractorId, 'failed', `Workflow is not approved (status: ${workflow.approvalStatus})`);
         return;
       }
 
       const steps = await getWorkflowStepsCached(workflow.id);
       if (!steps || steps.length === 0) {
-        console.log(`[Workflow Engine] Workflow ${workflow.id} has no steps`);
+        log.info(`Workflow ${workflow.id} has no steps`);
         await this.updateExecutionStatus(executionId, contractorId, 'completed', 'No steps to execute');
         return;
       }
@@ -143,7 +146,7 @@ export class WorkflowEngine {
         workflowName: workflow.name
       });
 
-      console.log(`[Workflow Engine] Starting execution ${executionId} for workflow "${workflow.name}"`);
+      log.info(`Starting execution ${executionId} for workflow "${workflow.name}"`);
 
       const sortedSteps = steps.sort((a, b) => a.stepOrder - b.stepOrder);
       const stepGroups = new Map<number, WorkflowStep[]>();
@@ -160,7 +163,7 @@ export class WorkflowEngine {
       const stepLogs: StepLog[] = [];
 
       for (const [stepOrder, stepsInGroup] of orderedGroups) {
-        console.log(`[Workflow Engine] Executing ${stepsInGroup.length} step(s) at order ${stepOrder}`);
+        log.debug(`Executing ${stepsInGroup.length} step(s) at order ${stepOrder}`);
         await this.updateExecutionProgress(executionId, contractorId, stepOrder);
 
         const results = await Promise.all(
@@ -186,7 +189,7 @@ export class WorkflowEngine {
         const failures = results.filter(r => !r.success);
         if (failures.length > 0) {
           const errorMessages = failures.map(f => f.error).join('; ');
-          console.error(`[Workflow Engine] ${failures.length} step(s) failed at order ${stepOrder}:`, errorMessages);
+          log.error(`${failures.length} step(s) failed at order ${stepOrder}: ${errorMessages}`);
           await storage.updateWorkflowExecution(executionId, { executionLog: JSON.stringify(stepLogs) }, contractorId);
           await this.updateExecutionStatus(executionId, contractorId, 'failed', errorMessages);
           broadcastToContractor(execution.contractorId, {
@@ -217,9 +220,9 @@ export class WorkflowEngine {
         workflowName: workflow.name
       });
 
-      console.log(`[Workflow Engine] Execution ${executionId} completed successfully`);
+      log.info(`Execution ${executionId} completed successfully`);
     } catch (error) {
-      console.error(`[Workflow Engine] Error executing workflow:`, error);
+      log.error('Error executing workflow', error);
       await this.updateExecutionStatus(executionId, contractorId, 'failed', error instanceof Error ? error.message : 'Unknown error');
     }
   }
@@ -241,7 +244,7 @@ export class WorkflowEngine {
    * @param context - The live execution context (mutated across step groups to pass data forward).
    */
   private async executeStep(step: WorkflowStep, context: ExecutionContext): Promise<StepResult> {
-    console.log(`[Workflow Engine] Executing step ${step.stepOrder}: ${step.actionType}`);
+    log.debug(`Executing step ${step.stepOrder}: ${step.actionType}`);
     try {
       const config = step.actionConfig ? JSON.parse(step.actionConfig) : {};
       const params = this.extractConfig(config);
@@ -276,7 +279,7 @@ export class WorkflowEngine {
           return await handleDelay(step, params);
 
         default:
-          console.warn(`[Workflow Engine] Unknown action type: ${step.actionType}`);
+          log.warn(`Unknown action type: ${step.actionType}`);
           return { success: true };
       }
     } catch (error) {
@@ -353,10 +356,10 @@ export class WorkflowEngine {
           await storage.updateJob(entityId, { status: status as any }, contractorId);
           break;
         default:
-          console.warn(`[Workflow Engine] Unknown entity type for status update: ${entityType}`);
+          log.warn(`Unknown entity type for status update: ${entityType}`);
       }
     } catch (error) {
-      console.error(`[Workflow Engine] Error updating ${entityType} status:`, error);
+      log.error(`Error updating ${entityType} status`, error);
       // Don't throw - status update failure shouldn't fail the whole workflow
     }
   }
@@ -424,7 +427,7 @@ export class WorkflowEngine {
 
       const mapping = eventMapping[eventType];
       if (!mapping) {
-        console.log(`[Workflow Engine] Unknown event type: ${eventType}`);
+        log.info(`Unknown event type: ${eventType}`);
         return;
       }
 
@@ -462,7 +465,7 @@ export class WorkflowEngine {
             contactTags.includes(requiredTag)
           );
           if (!hasRequiredTag) {
-            console.log(`[Workflow Engine] Workflow "${workflow.name}" skipped - contact tags ${JSON.stringify(contactTags)} don't match required tags ${JSON.stringify(triggerConfig.tags)}`);
+            log.debug(`Workflow "${workflow.name}" skipped - contact tags ${JSON.stringify(contactTags)} don't match required tags ${JSON.stringify(triggerConfig.tags)}`);
             return false;
           }
         }
@@ -470,7 +473,7 @@ export class WorkflowEngine {
         return true;
       });
 
-      console.log(`[Workflow Engine] Found ${matchingWorkflows.length} matching workflows for ${eventType}`);
+      log.debug(`Found ${matchingWorkflows.length} matching workflows for ${eventType}`);
 
       // Enrich entity data with related records ONCE here, before the workflow loop.
       // Each enrichment call is a DB query — doing it N times (once per matching workflow)
@@ -497,17 +500,17 @@ export class WorkflowEngine {
             contractorId
           );
 
-          console.log(`[Workflow Engine] Triggered workflow "${workflow.name}" (ID: ${workflow.id}) for ${eventType}`);
+          log.info(`Triggered workflow "${workflow.name}" (ID: ${workflow.id}) for ${eventType}`);
 
           this.executeWorkflow(execution.id, contractorId).catch(error => {
-            console.error(`[Workflow Engine] Error executing workflow ${execution.id}:`, error);
+            log.error(`Error executing workflow ${execution.id}`, error);
           });
         } catch (error) {
-          console.error(`[Workflow Engine] Error triggering workflow ${workflow.id}:`, error);
+          log.error(`Error triggering workflow ${workflow.id}`, error);
         }
       }
     } catch (error) {
-      console.error(`[Workflow Engine] Error in triggerWorkflowsForEvent:`, error);
+      log.error('Error in triggerWorkflowsForEvent', error);
     }
   }
 }

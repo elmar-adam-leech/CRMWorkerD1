@@ -340,8 +340,8 @@ async function deleteContact(id: string, contractorId: string): Promise<boolean>
     )).limit(1);
     if (existing.length === 0) return false;
 
-    await tx.update(messages as any).set({ contactId: null }).where(and(
-      eq((messages as any).contactId, id), eq((messages as any).contractorId, contractorId)
+    await tx.update(messages).set({ contactId: null }).where(and(
+      eq(messages.contactId, id), eq(messages.contractorId, contractorId)
     ));
     await tx.delete(estimates).where(and(eq(estimates.contactId, id), eq(estimates.contractorId, contractorId)));
     await tx.delete(jobs).where(and(eq(jobs.contactId, id), eq(jobs.contractorId, contractorId)));
@@ -477,23 +477,25 @@ async function deleteLead(id: string, contractorId: string): Promise<boolean> {
  *   - The oldest contact in each group becomes the merge target (primary record).
  *   - Path compression keeps subsequent find() calls O(1) amortized.
  */
+/**
+ * Batch size for the deduplication contact loader.
+ *
+ * Contacts are fetched from the database in pages of DEDUP_BATCH_SIZE rows,
+ * then accumulated into the in-memory Union-Find structure. This bounds the
+ * single DB round-trip to ~DEDUP_BATCH_SIZE rows so the Node.js heap never
+ * holds the entire contacts table for a large tenant.
+ *
+ * Trade-off: total DB round-trips = Math.ceil(contactCount / DEDUP_BATCH_SIZE).
+ * For a tenant with 100k contacts at 2k per batch: 50 queries — still far safer
+ * than one 100k-row query that can OOM the process.
+ *
+ * Medium-term migration path: move deduplication into SQL using a temp table
+ * + Postgres MERGE so zero rows are loaded into JS heap at all.
+ */
+const DEDUP_BATCH_SIZE = 2_000;
+
 async function deduplicateContacts(contractorId: string): Promise<{ duplicatesFound: number; contactsMerged: number; contactsDeleted: number }> {
-  // FUTURE (scale): Loads ALL contacts for the contractor into memory at once.
-  // For contractors with >10k contacts this causes:
-  //   a) Large Node.js heap allocations that can OOM the process.
-  //   b) A full table scan on contacts even with indexes (index scan still reads every row).
-  //
-  // Concrete migration path:
-  //   1. SHORT TERM: Add a pagination loop here — fetch contacts in chunks of 1k ordered
-  //      by created_at, build the Union-Find state incrementally, then finalize.
-  //   2. MEDIUM TERM: Replace Union-Find with a SQL approach — use a temporary table to
-  //      store (contact_id, canonical_id) pairs. A single UPDATE query can then merge all
-  //      duplicates without loading them into JS heap. See PostgreSQL's MERGE statement.
-  //   3. LONG TERM: Run deduplication as a nightly background job (BullMQ) scoped to
-  //      only contacts created/updated in the last 24 hours, avoiding a full re-scan.
   console.log(`[deduplicateContacts] Starting deduplication for contractor: ${contractorId}`);
-  const allContacts = await db.select().from(contacts).where(eq(contacts.contractorId, contractorId)).orderBy(contacts.createdAt);
-  console.log(`[deduplicateContacts] Found ${allContacts.length} total contacts`);
 
   const phoneToContacts = new Map<string, string[]>();
   const emailToContacts = new Map<string, string[]>();
@@ -501,25 +503,47 @@ async function deduplicateContacts(contractorId: string): Promise<{ duplicatesFo
 
   const normalizePhone = (phone: string): string => phone.replace(/\D/g, '').slice(-10);
 
-  for (const contact of allContacts) {
-    contactById.set(contact.id, contact);
-    contact.phones?.forEach((phone: string) => {
-      const normalized = normalizePhone(phone);
-      if (normalized.length >= 10) {
-        const existing = phoneToContacts.get(normalized) || [];
-        existing.push(contact.id);
-        phoneToContacts.set(normalized, existing);
-      }
-    });
-    contact.emails?.forEach((email: string) => {
-      const normalized = email.toLowerCase().trim();
-      if (normalized) {
-        const existing = emailToContacts.get(normalized) || [];
-        existing.push(contact.id);
-        emailToContacts.set(normalized, existing);
-      }
-    });
+  let offset = 0;
+  let totalLoaded = 0;
+
+  while (true) {
+    const batch = await db
+      .select()
+      .from(contacts)
+      .where(eq(contacts.contractorId, contractorId))
+      .orderBy(contacts.createdAt)
+      .limit(DEDUP_BATCH_SIZE)
+      .offset(offset);
+
+    if (batch.length === 0) break;
+
+    for (const contact of batch) {
+      contactById.set(contact.id, contact);
+      contact.phones?.forEach((phone: string) => {
+        const normalized = normalizePhone(phone);
+        if (normalized.length >= 10) {
+          const existing = phoneToContacts.get(normalized) || [];
+          existing.push(contact.id);
+          phoneToContacts.set(normalized, existing);
+        }
+      });
+      contact.emails?.forEach((email: string) => {
+        const normalized = email.toLowerCase().trim();
+        if (normalized) {
+          const existing = emailToContacts.get(normalized) || [];
+          existing.push(contact.id);
+          emailToContacts.set(normalized, existing);
+        }
+      });
+    }
+
+    totalLoaded += batch.length;
+    offset += DEDUP_BATCH_SIZE;
+
+    if (batch.length < DEDUP_BATCH_SIZE) break;
   }
+
+  console.log(`[deduplicateContacts] Loaded ${totalLoaded} contacts across batches`);
 
   // Union-Find (Disjoint Set Union) algorithm for grouping duplicate contacts.
   //
@@ -572,7 +596,7 @@ async function deduplicateContacts(contractorId: string): Promise<{ duplicatesFo
   }
 
   const groups = new Map<string, Contact[]>();
-  for (const contact of allContacts) {
+  for (const contact of Array.from(contactById.values())) {
     const root = find(contact.id);
     const group = groups.get(root) || [];
     group.push(contact);
@@ -610,7 +634,7 @@ async function deduplicateContacts(contractorId: string): Promise<{ duplicatesFo
 
     await Promise.all([
       db.update(contacts).set({ phones: Array.from(allPhones), emails: Array.from(allEmails), updatedAt: new Date() }).where(eq(contacts.id, primary.id)),
-      db.update(messages as any).set({ contactId: primary.id }).where(inArray((messages as any).contactId, duplicateIds)),
+      db.update(messages).set({ contactId: primary.id }).where(inArray(messages.contactId, duplicateIds)),
       db.update(activities).set({ contactId: primary.id }).where(inArray(activities.contactId, duplicateIds)),
       db.update(estimates).set({ contactId: primary.id }).where(inArray(estimates.contactId, duplicateIds)),
       db.update(jobs).set({ contactId: primary.id }).where(inArray(jobs.contactId, duplicateIds)),

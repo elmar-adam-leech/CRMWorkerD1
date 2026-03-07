@@ -7,7 +7,11 @@ import { workflowEngine } from "../workflow-engine";
 import { broadcastToContractor } from "../websocket";
 import { createActivityAndBroadcast } from "../utils/activity";
 import { housecallProService } from "../housecall-pro-service";
+import { toWorkflowEvent } from "../utils/workflow/entity-adapter";
+import { logger } from "../utils/logger";
 import { z } from "zod";
+
+const log = logger('EstimateRoutes');
 
 export function registerEstimateRoutes(app: Express): void {
   app.get("/api/estimates", asyncHandler(async (req, res) => {
@@ -147,20 +151,20 @@ export function registerEstimateRoutes(app: Express): void {
                 { externalId: hcpResult.data.id, externalSource: 'housecall-pro' },
                 req.user!.contractorId
               ) ?? estimate;
-              console.log('[HCP Sync] Created HCP estimate:', hcpResult.data.id, 'for estimate:', estimate.id);
+              log.info(`Created HCP estimate: ${hcpResult.data.id} for estimate: ${estimate.id}`);
             } else {
-              console.warn('[HCP Sync] Failed to create HCP estimate:', hcpResult.error);
+              log.warn('Failed to create HCP estimate', hcpResult.error);
             }
           }
         }
       } catch (hcpErr) {
-        console.error('[HCP Sync] Error syncing estimate to HCP:', hcpErr);
+        log.error('Error syncing estimate to HCP', hcpErr);
       }
     }
 
     broadcastToContractor(req.user!.contractorId, { type: 'estimate_created', estimateId: estimate.id });
-    workflowEngine.triggerWorkflowsForEvent('estimate_created', estimate as unknown as Record<string, unknown>, req.user!.contractorId).catch(error => {
-      console.error('[Workflow] Error triggering workflows for estimate creation:', error);
+    workflowEngine.triggerWorkflowsForEvent('estimate_created', toWorkflowEvent(estimate), req.user!.contractorId).catch(error => {
+      log.error('Error triggering workflows for estimate creation', error);
     });
     res.status(201).json(estimate);
   }));
@@ -186,13 +190,13 @@ export function registerEstimateRoutes(app: Express): void {
     }
 
     broadcastToContractor(req.user!.contractorId, { type: 'estimate_updated', estimateId: estimate.id });
-    workflowEngine.triggerWorkflowsForEvent('estimate_updated', estimate as unknown as Record<string, unknown>, req.user!.contractorId).catch(error => {
-      console.error('[Workflow] Error triggering workflows for estimate update:', error);
+    workflowEngine.triggerWorkflowsForEvent('estimate_updated', toWorkflowEvent(estimate), req.user!.contractorId).catch(error => {
+      log.error('Error triggering workflows for estimate update', error);
     });
 
     if (updateData.status) {
-      workflowEngine.triggerWorkflowsForEvent('estimate_status_changed', estimate as unknown as Record<string, unknown>, req.user!.contractorId).catch(error => {
-        console.error('[Workflow] Error triggering workflows for estimate status change:', error);
+      workflowEngine.triggerWorkflowsForEvent('estimate_status_changed', toWorkflowEvent(estimate), req.user!.contractorId).catch(error => {
+        log.error('Error triggering workflows for estimate status change', error);
       });
     }
 
@@ -242,7 +246,7 @@ export function registerEstimateRoutes(app: Express): void {
         { type: 'new_activity', estimateId: req.params.id }
       );
     } catch (activityError) {
-      console.error('[Follow-up] Error creating activity for estimate:', activityError);
+      log.error('Failed to create activity for estimate follow-up update', activityError);
     }
 
     broadcastToContractor(req.user!.contractorId, { type: 'estimate_updated', estimateId: estimate.id });

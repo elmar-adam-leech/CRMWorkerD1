@@ -6,6 +6,10 @@ import { insertJobSchema, jobsPaginationQuerySchema } from "@shared/schema";
 import { requireManagerOrAdmin, type AuthenticatedRequest } from "../auth-service";
 import { workflowEngine } from "../workflow-engine";
 import { broadcastToContractor } from "../websocket";
+import { toWorkflowEvent } from "../utils/workflow/entity-adapter";
+import { logger } from "../utils/logger";
+
+const log = logger('JobRoutes');
 
 export function registerJobRoutes(app: Express): void {
   app.get("/api/jobs", asyncHandler(async (req, res) => {
@@ -57,12 +61,12 @@ export function registerJobRoutes(app: Express): void {
         broadcastToContractor(req.user!.contractorId, { type: 'contact_updated', contactId: contact.id, contactType: contact.type });
       }
     } catch (tagError) {
-      console.error('[Job Creation] Failed to add Customer tag:', tagError);
+      log.error('Failed to add Customer tag during job creation', tagError);
     }
 
     broadcastToContractor(req.user!.contractorId, { type: 'job_created', jobId: job.id });
-    workflowEngine.triggerWorkflowsForEvent('job_created', job as unknown as Record<string, unknown>, req.user!.contractorId).catch(error => {
-      console.error('[Workflow] Error triggering workflows for job creation:', error);
+    workflowEngine.triggerWorkflowsForEvent('job_created', toWorkflowEvent(job), req.user!.contractorId).catch(error => {
+      log.error('Error triggering workflows for job creation', error);
     });
 
     res.status(201).json(job);
@@ -89,13 +93,13 @@ export function registerJobRoutes(app: Express): void {
     }
 
     broadcastToContractor(req.user!.contractorId, { type: 'job_updated', jobId: job.id });
-    workflowEngine.triggerWorkflowsForEvent('job_updated', job as unknown as Record<string, unknown>, req.user!.contractorId).catch(error => {
-      console.error('[Workflow] Error triggering workflows for job update:', error);
+    workflowEngine.triggerWorkflowsForEvent('job_updated', toWorkflowEvent(job), req.user!.contractorId).catch(error => {
+      log.error('Error triggering workflows for job update', error);
     });
 
     if (updateData.status) {
-      workflowEngine.triggerWorkflowsForEvent('job_status_changed', job as unknown as Record<string, unknown>, req.user!.contractorId).catch(error => {
-        console.error('[Workflow] Error triggering workflows for job status change:', error);
+      workflowEngine.triggerWorkflowsForEvent('job_status_changed', toWorkflowEvent(job), req.user!.contractorId).catch(error => {
+        log.error('Error triggering workflows for job status change', error);
       });
     }
 

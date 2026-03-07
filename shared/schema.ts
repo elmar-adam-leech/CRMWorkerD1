@@ -329,6 +329,10 @@ export const estimates = pgTable("estimates", {
   followUpDateIdx: index("estimates_follow_up_date_idx").on(table.followUpDate),
   // Partial index for external ID + contractor lookups (HCP sync path)
   externalIdContractorIdx: index("estimates_external_id_contractor_idx").on(table.externalId, table.contractorId).where(sql`external_id IS NOT NULL`),
+  // Partial index for Housecall Pro estimate ID lookups (HCP sync path).
+  // housecall_pro_estimate_id is distinct from external_id — the HCP estimate-specific
+  // sync path queries this column directly when matching incoming HCP webhooks.
+  housecallProEstimateIdIdx: index("estimates_housecall_pro_estimate_id_idx").on(table.housecallProEstimateId).where(sql`housecall_pro_estimate_id IS NOT NULL`),
   // Composite index supporting paginated title search queries:
   // WHERE contractor_id = ? AND title ILIKE ? ORDER BY created_at DESC
   contractorTitleIdx: index("estimates_contractor_title_idx").on(table.contractorId, table.title),
@@ -1206,6 +1210,10 @@ export const workflowExecutions = pgTable("workflow_executions", {
   statusIdx: index("workflow_executions_status_idx").on(table.status),
   createdAtIdx: index("workflow_executions_created_at_idx").on(table.createdAt),
   workflowStatusIdx: index("workflow_executions_workflow_status_idx").on(table.workflowId, table.status),
+  // Composite index for the execution history view: filter by workflow, then page by date.
+  // Without this, Postgres must intersect two separate indexes (workflowId + createdAt),
+  // which is slower than a single covering scan.
+  workflowCreatedAtIdx: index("workflow_executions_workflow_created_at_idx").on(table.workflowId, table.createdAt),
 }));
 
 export const insertWorkflowExecutionSchema = createInsertSchema(workflowExecutions).omit({

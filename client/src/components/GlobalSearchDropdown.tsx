@@ -5,6 +5,15 @@ import { Search, Users, Briefcase, Calendar, ArrowRight } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import type { Contact, Job, Estimate } from "@shared/schema";
+
+interface PaginatedResponse<T> {
+  data: T[];
+  pagination: { total: number; hasMore: boolean; nextCursor: string | null };
+}
+
+type JobWithContact = Job & { contactName?: string };
+type EstimateWithContact = Estimate & { contactName?: string };
 
 interface GlobalSearchDropdownProps {
   onSearch?: (query: string) => void;
@@ -73,7 +82,7 @@ export function GlobalSearchDropdown({ onSearch }: GlobalSearchDropdownProps) {
 
   const enabled = debouncedQuery.length >= 2;
 
-  const { data: leadsData, isLoading: leadsLoading } = useQuery<any>({
+  const { data: leadsData, isLoading: leadsLoading } = useQuery<PaginatedResponse<Contact>>({
     queryKey: ["/api/contacts/paginated", { search: debouncedQuery, limit: 5, type: "lead" }],
     queryFn: () =>
       fetch(
@@ -84,7 +93,7 @@ export function GlobalSearchDropdown({ onSearch }: GlobalSearchDropdownProps) {
     staleTime: 10_000,
   });
 
-  const { data: jobsData, isLoading: jobsLoading } = useQuery<any>({
+  const { data: jobsData, isLoading: jobsLoading } = useQuery<PaginatedResponse<JobWithContact>>({
     queryKey: ["/api/jobs/paginated", { search: debouncedQuery, limit: 5 }],
     queryFn: () =>
       fetch(
@@ -95,7 +104,7 @@ export function GlobalSearchDropdown({ onSearch }: GlobalSearchDropdownProps) {
     staleTime: 10_000,
   });
 
-  const { data: estimatesData, isLoading: estimatesLoading } = useQuery<any>({
+  const { data: estimatesData, isLoading: estimatesLoading } = useQuery<PaginatedResponse<EstimateWithContact>>({
     queryKey: ["/api/estimates/paginated", { search: debouncedQuery, limit: 5 }],
     queryFn: () =>
       fetch(
@@ -172,7 +181,7 @@ export function GlobalSearchDropdown({ onSearch }: GlobalSearchDropdownProps) {
                 ) : leads.length === 0 ? (
                   <div className="px-3 py-2 text-xs text-muted-foreground italic">No leads found</div>
                 ) : (
-                  leads.slice(0, 3).map((lead: any) => (
+                  leads.slice(0, 3).map((lead) => (
                     <button
                       key={lead.id}
                       onClick={() => navigate("/leads")}
@@ -214,7 +223,7 @@ export function GlobalSearchDropdown({ onSearch }: GlobalSearchDropdownProps) {
                 ) : jobs.length === 0 ? (
                   <div className="px-3 py-2 text-xs text-muted-foreground italic">No jobs found</div>
                 ) : (
-                  jobs.slice(0, 3).map((job: any) => (
+                  jobs.slice(0, 3).map((job) => (
                     <button
                       key={job.id}
                       onClick={() => navigate("/jobs")}
@@ -256,7 +265,7 @@ export function GlobalSearchDropdown({ onSearch }: GlobalSearchDropdownProps) {
                 ) : estimateItems.length === 0 ? (
                   <div className="px-3 py-2 text-xs text-muted-foreground italic">No estimates found</div>
                 ) : (
-                  estimateItems.slice(0, 3).map((est: any) => (
+                  estimateItems.slice(0, 3).map((est) => (
                     <button
                       key={est.id}
                       onClick={() => navigate("/estimates")}

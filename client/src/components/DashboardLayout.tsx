@@ -4,6 +4,8 @@ import { Header } from "./Header";
 import { ThemeProvider } from "./ThemeProvider";
 import { CommandPalette } from "./CommandPalette";
 import { useTerminology } from "@/hooks/useTerminology";
+import { useWebSocketContext } from "@/contexts/WebSocketContext";
+import { WifiOff } from "lucide-react";
 
 type DashboardLayoutProps = {
   children: React.ReactNode;
@@ -20,6 +22,23 @@ type DashboardLayoutProps = {
   onSearch?: (query: string) => void;
   onQuickAction?: (action: string) => void;
 };
+
+function DisconnectedBanner() {
+  const { isConnected } = useWebSocketContext();
+
+  if (isConnected) return null;
+
+  return (
+    <div
+      className="flex items-center gap-2 px-4 py-2 bg-destructive/10 border-b border-destructive/20 text-destructive text-xs"
+      role="status"
+      aria-live="polite"
+    >
+      <WifiOff className="h-3.5 w-3.5 shrink-0" />
+      <span>Live updates paused — reconnecting. Data shown may be slightly out of date.</span>
+    </div>
+  );
+}
 
 export function DashboardLayout({
   children,
@@ -54,6 +73,7 @@ export function DashboardLayout({
               user={user}
               onSearch={onSearch}
             />
+            <DisconnectedBanner />
             <main className="flex-1 overflow-auto bg-background">
               {children}
             </main>

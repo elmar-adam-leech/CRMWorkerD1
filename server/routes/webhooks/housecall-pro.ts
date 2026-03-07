@@ -9,7 +9,11 @@ import { workflowEngine } from "../../workflow-engine";
 import { mapHcpEstimateStatus } from "../../sync/housecall-pro";
 import { webhookRateLimiter } from "../../middleware/rate-limiter";
 import { asyncHandler } from "../../utils/async-handler";
+import { toWorkflowEvent } from "../../utils/workflow/entity-adapter";
+import { logger } from "../../utils/logger";
 import crypto from "crypto";
+
+const log = logger('HCPWebhook');
 
 export function registerHousecallProWebhookRoutes(app: Express): void {
   app.post("/api/webhooks/:contractorId/housecall-pro", 
@@ -20,7 +24,7 @@ export function registerHousecallProWebhookRoutes(app: Express): void {
       
       const contractor = await storage.getContractor(contractorId);
       if (!contractor) {
-        console.error('Invalid contractor ID in webhook:', contractorId);
+        log.error('Invalid contractor ID in webhook', { contractorId });
         res.status(404).json({ message: "Contractor not found" });
         return;
       }
@@ -36,13 +40,13 @@ export function registerHousecallProWebhookRoutes(app: Express): void {
       }
       
       if (!webhookSecret) {
-        console.error('HOUSECALL_PRO_WEBHOOK_SECRET not configured');
+        log.error('HOUSECALL_PRO_WEBHOOK_SECRET not configured');
         res.status(500).json({ message: "Webhook secret not configured" });
         return;
       }
       
       if (!signature) {
-        console.error('Missing webhook signature');
+        log.error('Missing webhook signature', { contractorId });
         res.status(401).json({ message: "Missing signature" });
         return;
       }
@@ -56,7 +60,7 @@ export function registerHousecallProWebhookRoutes(app: Express): void {
       const providedSignature = signature.replace('sha256=', '');
       
       if (!crypto.timingSafeEqual(Buffer.from(expectedSignature, 'hex'), Buffer.from(providedSignature, 'hex'))) {
-        console.error('Invalid webhook signature');
+        log.error('Invalid webhook signature', { contractorId });
         res.status(401).json({ message: "Invalid signature" });
         return;
       }
@@ -64,7 +68,7 @@ export function registerHousecallProWebhookRoutes(app: Express): void {
       const payload = JSON.parse(rawBody.toString('utf8'));
       const { event_type, data } = payload;
 
-      console.log(`[HCP Webhook] Received event: ${event_type} for contractor: ${contractorId}`);
+      log.info(`Received event: ${event_type} for contractor: ${contractorId}`);
 
       const webhookEventRecord = await db.insert(webhookEvents).values({
         contractorId,
@@ -99,11 +103,11 @@ export function registerHousecallProWebhookRoutes(app: Express): void {
             syncedAt: new Date(),
           }, contractorId);
           if (updated) {
-            workflowEngine.triggerWorkflowsForEvent('estimate_updated', updated as unknown as Record<string, unknown>, contractorId).catch(err =>
-              console.error('[HCP Webhook] estimate_updated trigger error:', err));
+            workflowEngine.triggerWorkflowsForEvent('estimate_updated', toWorkflowEvent(updated), contractorId).catch(err =>
+              log.error('estimate_updated trigger error', err));
             if (updated.status !== estimate.status) {
-              workflowEngine.triggerWorkflowsForEvent('estimate_status_changed', updated as unknown as Record<string, unknown>, contractorId).catch(err =>
-                console.error('[HCP Webhook] estimate_status_changed trigger error:', err));
+              workflowEngine.triggerWorkflowsForEvent('estimate_status_changed', toWorkflowEvent(updated), contractorId).catch(err =>
+                log.error('estimate_status_changed trigger error', err));
             }
           }
         }
@@ -114,28 +118,28 @@ export function registerHousecallProWebhookRoutes(app: Express): void {
           if (newStatus && newStatus !== job.status) {
             const updated = await storage.updateJob(job.id, { status: newStatus as any }, contractorId);
             if (updated) {
-              workflowEngine.triggerWorkflowsForEvent('job_updated', updated as unknown as Record<string, unknown>, contractorId).catch(err =>
-                console.error('[HCP Webhook] job_updated trigger error:', err));
-              workflowEngine.triggerWorkflowsForEvent('job_status_changed', updated as unknown as Record<string, unknown>, contractorId).catch(err =>
-                console.error('[HCP Webhook] job_status_changed trigger error:', err));
+              workflowEngine.triggerWorkflowsForEvent('job_updated', toWorkflowEvent(updated), contractorId).catch(err =>
+                log.error('job_updated trigger error', err));
+              workflowEngine.triggerWorkflowsForEvent('job_status_changed', toWorkflowEvent(updated), contractorId).catch(err =>
+                log.error('job_status_changed trigger error', err));
             }
           } else if (event_type === 'job.created') {
-            workflowEngine.triggerWorkflowsForEvent('job_created', job as unknown as Record<string, unknown>, contractorId).catch(err =>
-              console.error('[HCP Webhook] job_created trigger error:', err));
+            workflowEngine.triggerWorkflowsForEvent('job_created', toWorkflowEvent(job), contractorId).catch(err =>
+              log.error('job_created trigger error', err));
           } else {
-            workflowEngine.triggerWorkflowsForEvent('job_updated', job as unknown as Record<string, unknown>, contractorId).catch(err =>
-              console.error('[HCP Webhook] job_updated trigger error:', err));
+            workflowEngine.triggerWorkflowsForEvent('job_updated', toWorkflowEvent(job), contractorId).catch(err =>
+              log.error('job_updated trigger error', err));
           }
         }
       } else if (event_type === 'customer.created' || event_type === 'customer.updated') {
         const contact = await storage.getContactByExternalId(data.id, 'housecall-pro', contractorId);
         if (contact) {
           const eventKey = event_type === 'customer.created' ? 'contact_created' : 'contact_updated';
-          workflowEngine.triggerWorkflowsForEvent(eventKey, contact as unknown as Record<string, unknown>, contractorId).catch(err =>
-            console.error(`[HCP Webhook] ${eventKey} trigger error:`, err));
+          workflowEngine.triggerWorkflowsForEvent(eventKey, toWorkflowEvent(contact), contractorId).catch(err =>
+            log.error(`${eventKey} trigger error`, err));
         }
       } else {
-        console.log(`[HCP Webhook] Unhandled event type: ${event_type}`);
+        log.info(`Unhandled event type: ${event_type}`);
       }
 
       if (webhookEventId) {

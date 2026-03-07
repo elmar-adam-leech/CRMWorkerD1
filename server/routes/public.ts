@@ -181,7 +181,7 @@ export function registerPublicRoutes(app: Express): void {
 
     // Get available slots using the scheduling service with contractor's timezone
     const { housecallSchedulingService } = await import('../housecall-scheduling-service');
-    const timezone = (contractor as any).timezone || 'America/New_York';
+    const timezone = ('timezone' in contractor && typeof contractor.timezone === 'string' ? contractor.timezone : null) ?? 'America/New_York';
     const slots = await housecallSchedulingService.getUnifiedAvailability(contractor.id, start, end, timezone);
     
     // Return slots without revealing salesperson details (for privacy)

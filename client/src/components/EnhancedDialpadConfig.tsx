@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useDialpadPhoneNumbers } from '@/hooks/useDialpadPhoneNumbers';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
@@ -29,10 +30,8 @@ export default function EnhancedDialpadConfig({ onComplete }: EnhancedDialpadCon
   });
   const typedIntegrationStatus = integrationStatus as { hasCredentials: boolean; isEnabled: boolean } | undefined;
 
-  const { data: phoneNumbers = [], isLoading: phoneNumbersLoading, refetch: refetchPhoneNumbers } = useQuery({
-    queryKey: ['/api/dialpad/phone-numbers']
-  });
-  const typedPhoneNumbers = phoneNumbers as DialpadPhoneNumber[];
+  const { data: phoneNumbersRaw = [], isLoading: phoneNumbersLoading, refetch: refetchPhoneNumbers } = useDialpadPhoneNumbers();
+  const typedPhoneNumbers = phoneNumbersRaw as DialpadPhoneNumber[];
 
   const { data: dialpadUsers = [] } = useQuery({
     queryKey: ['/api/dialpad/users']

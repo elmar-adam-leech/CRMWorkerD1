@@ -25,8 +25,28 @@ The backend is built with Node.js and Express.js, providing a RESTful API with c
 ### System Design Choices
 - **Frontend**: React, TypeScript, Vite, Wouter, TanStack Query, Radix UI, Tailwind CSS.
 - **Backend**: Node.js, Express.js, PostgreSQL, Drizzle ORM, Zod.
-- **Real-time**: WebSocket-based architecture.
+- **Real-time**: WebSocket-based architecture with reconnect/stale-data banner in DashboardLayout.
 - **Security**: HTTP-only cookies, role-based access control, AES-256-GCM encryption.
+
+## Code Quality & Architecture Notes (Technical Health Pass)
+
+### Server Utilities (`server/utils/`)
+- **`errors.ts`** — `getErrorMessage(e: unknown): string` helper for typed catch blocks.
+- **`logger.ts`** — Thin structured logger (`logger('ModuleName')`). All route files and the workflow engine use this instead of raw `console.*`.
+- **`workflow/entity-adapter.ts`** — `toWorkflowEvent(entity)` adapter that safely converts typed Drizzle entities to `Record<string, unknown>` for the workflow engine. Eliminates all `as unknown as Record<string, unknown>` casts.
+
+### Storage Module (`server/storage.ts`)
+- Full orientation JSDoc at the top of `IStorage` explaining the multi-module composition pattern and the multi-tenancy requirement.
+- `deduplicateContacts` processes contacts in paginated batches (`DEDUP_BATCH_SIZE = 2000`) — no unbounded `SELECT *`.
+
+### DB Indexes
+- Added composite index on `workflow_executions(workflow_id, created_at)`.
+- Added partial index on `estimates(housecall_pro_estimate_id)` for HCP sync lookups.
+- Both applied directly via SQL and reflected in `shared/schema.ts`.
+
+### Frontend Shared Hooks (`client/src/hooks/`)
+- **`useDialpadPhoneNumbers`** — Single cache-sharing hook for `/api/dialpad/phone-numbers`. Used by `NodeEditDialog`, `EnhancedDialpadConfig`, and `UserManagement` instead of inline `useQuery`.
+- **`useTerminology`**, **`useFetchContact`**, **`useUsers`** — Existing shared hooks; use these instead of inline queries.
 
 ## External Dependencies
 

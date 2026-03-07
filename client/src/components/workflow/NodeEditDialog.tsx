@@ -3,6 +3,7 @@ import { Node } from 'reactflow';
 import { useQuery } from '@tanstack/react-query';
 import { useTerminology } from '@/hooks/useTerminology';
 import { useUsers } from '@/hooks/useUsers';
+import { useDialpadPhoneNumbers } from '@/hooks/useDialpadPhoneNumbers';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
@@ -44,10 +45,7 @@ export default function NodeEditDialog({ node, open, onClose, onSave, onDelete }
     enabled: isAdmin && open,
   });
 
-  const { data: phoneNumbers = [] } = useQuery<Array<{ id: string; phoneNumber: string; displayName: string | null }>>({
-    queryKey: ['/api/dialpad/phone-numbers'],
-    enabled: isAdmin && open,
-  });
+  const { data: phoneNumbers = [] } = useDialpadPhoneNumbers(isAdmin && open);
 
   // Shared hooks — share cache entries across the whole app
   const { data: usersData = [] } = useUsers();

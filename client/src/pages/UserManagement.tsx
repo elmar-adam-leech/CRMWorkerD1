@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useDialpadPhoneNumbers } from "@/hooks/useDialpadPhoneNumbers";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -77,9 +78,7 @@ export default function UserManagement() {
   });
 
   // Fetch available Dialpad phone numbers
-  const { data: dialpadPhoneNumbers = [] } = useQuery<Array<{ id: string; phoneNumber: string; displayName?: string }>>({
-    queryKey: ['/api/dialpad/phone-numbers'],
-  });
+  const { data: dialpadPhoneNumbers = [] } = useDialpadPhoneNumbers();
 
   // Fetch user phone permissions
   const { data: userPermissions = [], refetch: refetchPermissions } = useQuery<PhonePermission[]>({

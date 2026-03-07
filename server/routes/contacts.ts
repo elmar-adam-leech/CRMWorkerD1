@@ -9,7 +9,11 @@ import { workflowEngine } from "../workflow-engine";
 import { broadcastToContractor } from "../websocket";
 import { createActivityAndBroadcast } from "../utils/activity";
 import { housecallProService } from "../housecall-pro-service";
+import { toWorkflowEvent } from "../utils/workflow/entity-adapter";
+import { logger } from "../utils/logger";
 import { z } from "zod";
+
+const log = logger('ContactRoutes');
 
 export function registerContactRoutes(app: Express): void {
   // Legacy endpoint: bounded to 100 rows by default.
@@ -167,12 +171,12 @@ export function registerContactRoutes(app: Express): void {
             externalId: hcpResult.data.id,
             externalSource: 'housecall-pro',
           }, req.user!.contractorId);
-          console.log('[HCP Sync] Created HCP customer:', hcpResult.data.id, 'for contact:', contact.id);
+          log.info(`Created HCP customer: ${hcpResult.data.id} for contact: ${contact.id}`);
         } else {
-          console.warn('[HCP Sync] Failed to create HCP customer:', hcpResult.error);
+          log.warn('Failed to create HCP customer', hcpResult.error);
         }
       } catch (hcpError) {
-        console.error('[HCP Sync] Error creating customer in HCP:', hcpError);
+        log.error('Error creating customer in HCP', hcpError);
       }
     }
 
@@ -183,8 +187,8 @@ export function registerContactRoutes(app: Express): void {
     });
 
     if (contact.type === 'lead') {
-      workflowEngine.triggerWorkflowsForEvent('contact_created', contact as unknown as Record<string, unknown>, req.user!.contractorId).catch(error => {
-        console.error('[Workflow] Error triggering workflows for contact creation:', error);
+      workflowEngine.triggerWorkflowsForEvent('contact_created', toWorkflowEvent(contact), req.user!.contractorId).catch(error => {
+        log.error('Error triggering workflows for contact creation', error);
       });
     }
 
@@ -212,7 +216,7 @@ export function registerContactRoutes(app: Express): void {
 
     if (emailsChanging) {
       storage.unlinkOrphanedEmailActivities(contact.id, contact.emails || [], req.user!.contractorId).catch(err => {
-        console.error('[contacts] Error unlinking orphaned email activities:', err);
+        log.error('Error unlinking orphaned email activities', err);
       });
     }
 
@@ -223,8 +227,8 @@ export function registerContactRoutes(app: Express): void {
     });
 
     if (contact.type === 'lead') {
-      workflowEngine.triggerWorkflowsForEvent('contact_updated', contact as unknown as Record<string, unknown>, req.user!.contractorId).catch(error => {
-        console.error('[Workflow] Error triggering workflows for contact update:', error);
+      workflowEngine.triggerWorkflowsForEvent('contact_updated', toWorkflowEvent(contact), req.user!.contractorId).catch(error => {
+        log.error('Error triggering workflows for contact update (PUT)', error);
       });
     }
 
@@ -252,8 +256,8 @@ export function registerContactRoutes(app: Express): void {
     });
 
     if (contact.type === 'lead') {
-      workflowEngine.triggerWorkflowsForEvent('contact_updated', contact as unknown as Record<string, unknown>, req.user!.contractorId).catch(error => {
-        console.error('[Workflow] Error triggering workflows for contact update:', error);
+      workflowEngine.triggerWorkflowsForEvent('contact_updated', toWorkflowEvent(contact), req.user!.contractorId).catch(error => {
+        log.error('Error triggering workflows for contact update (PATCH)', error);
       });
     }
 
@@ -268,7 +272,7 @@ export function registerContactRoutes(app: Express): void {
     if (!parsed) return;
     const { status } = parsed;
 
-    const updateData: any = { status };
+    const updateData: Partial<UpdateContact> = { status };
     if (status === 'scheduled') {
       updateData.scheduledByUserId = req.user!.userId;
     }
@@ -292,7 +296,7 @@ export function registerContactRoutes(app: Express): void {
         { type: 'new_activity', contactId: req.params.id }
       );
     } catch (activityError) {
-      console.error('[Status Change] Failed to create activity:', activityError);
+      log.error('Failed to create activity for status change', activityError);
     }
 
     broadcastToContractor(req.user!.contractorId, {
@@ -301,8 +305,8 @@ export function registerContactRoutes(app: Express): void {
       contactType: contact.type
     });
 
-    workflowEngine.triggerWorkflowsForEvent('contact_status_changed', { ...contact } as Record<string, unknown>, req.user!.contractorId).catch(error => {
-      console.error('[Workflow] Error triggering workflows for contact status change:', error);
+    workflowEngine.triggerWorkflowsForEvent('contact_status_changed', toWorkflowEvent(contact), req.user!.contractorId).catch(error => {
+      log.error('Error triggering workflows for contact status change', error);
     });
 
     res.json(contact);
@@ -342,7 +346,7 @@ export function registerContactRoutes(app: Express): void {
         { type: 'new_activity', contactId: req.params.id }
       );
     } catch (activityError) {
-      console.error('[Follow-up] Error creating activity:', activityError);
+      log.error('Failed to create activity for follow-up update', activityError);
     }
 
     broadcastToContractor(req.user!.contractorId, {

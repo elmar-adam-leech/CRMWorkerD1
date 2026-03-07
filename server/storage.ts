@@ -1,3 +1,32 @@
+/**
+ * Storage module — the application's data access layer.
+ *
+ * Architecture:
+ *   `IStorage` is the single interface that all application code uses for data access.
+ *   It is composed from domain-specific implementation modules in `server/storage/`:
+ *     - users.ts       → user & contractor CRUD, role management
+ *     - contacts.ts    → contacts, leads, deduplication, follow-ups
+ *     - jobs-estimates.ts → jobs and estimates (paginated, status counts)
+ *     - messaging.ts   → messages, conversations, Dialpad sync
+ *     - activities.ts  → activity log entries (notes, calls, emails, status changes)
+ *     - workflows.ts   → workflow definitions, steps, and execution tracking
+ *     - integrations.ts → integration enablement, credential management
+ *     - employees.ts   → employee sync from external systems (Housecall Pro)
+ *     - dialpad.ts     → Dialpad user/number cache
+ *     - notifications.ts → in-app notifications
+ *     - settings.ts    → contractor settings, terminology, business targets
+ *
+ * Multi-tenancy:
+ *   Every method that touches tenant-specific data requires a `contractorId` parameter.
+ *   NEVER call a storage method without providing the contractorId from the authenticated
+ *   request (`req.user!.contractorId`). Omitting it is a data-leak security hole.
+ *
+ * How to add a new storage method:
+ *   1. Add the method implementation to the appropriate file in `server/storage/`.
+ *   2. Export it from that file's method object (e.g. `export const contactMethods = { ... }`).
+ *   3. Add the method signature to `IStorage` below.
+ *   Drizzle ORM handles the SQL — no raw queries needed for standard CRUD.
+ */
 import { 
   type User, type InsertUser,
   type UserContractor, type InsertUserContractor,
