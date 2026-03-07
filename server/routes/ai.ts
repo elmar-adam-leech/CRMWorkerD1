@@ -15,7 +15,7 @@ export function registerAiRoutes(app: Express): void {
   // Get error statistics and analysis
   app.get("/api/ai/errors", aiRateLimiter, requireManagerOrAdmin, (req: AuthenticatedRequest, res: Response) => {
     try {
-      const stats = getErrorStats(req.user!.contractorId);
+      const stats = getErrorStats(req.user.contractorId);
       res.json(stats);
     } catch (error) {
       console.error('Failed to get error stats:', error);
@@ -27,7 +27,7 @@ export function registerAiRoutes(app: Express): void {
   app.get("/api/ai/error-logs", aiRateLimiter, requireManagerOrAdmin, (req: AuthenticatedRequest, res: Response) => {
     try {
       const limit = parseInt(req.query.limit as string) || 50;
-      const logs = getErrorLogs(req.user!.contractorId, limit);
+      const logs = getErrorLogs(req.user.contractorId, limit);
       res.json(logs);
     } catch (error) {
       console.error('Failed to get error logs:', error);
@@ -37,14 +37,14 @@ export function registerAiRoutes(app: Express): void {
 
   // Generate weekly AI report
   app.post("/api/ai/weekly-report", aiRateLimiter, requireManagerOrAdmin, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    const report = await weeklyReporter.generateWeeklyReport(req.user!.contractorId);
+    const report = await weeklyReporter.generateWeeklyReport(req.user.contractorId);
     res.json(report);
   }));
 
   // Get latest weekly report
   app.get("/api/ai/weekly-report", aiRateLimiter, requireManagerOrAdmin, (req: AuthenticatedRequest, res: Response) => {
     try {
-      const report = weeklyReporter.getLatestReport(req.user!.contractorId);
+      const report = weeklyReporter.getLatestReport(req.user.contractorId);
       if (!report) {
         res.status(404).json({ message: "No weekly report found" });
         return;
@@ -59,7 +59,7 @@ export function registerAiRoutes(app: Express): void {
   // Get all weekly reports
   app.get("/api/ai/weekly-reports", aiRateLimiter, requireManagerOrAdmin, (req: AuthenticatedRequest, res: Response) => {
     try {
-      const reports = weeklyReporter.getReports(req.user!.contractorId);
+      const reports = weeklyReporter.getReports(req.user.contractorId);
       res.json(reports);
     } catch (error) {
       console.error('Failed to get weekly reports:', error);
@@ -83,26 +83,26 @@ export function registerAiRoutes(app: Express): void {
   // Business metrics for contractors
   app.get("/api/ai/business-metrics", aiRateLimiter, requireManagerOrAdmin, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     // Only non-super-admin users get business metrics
-    if (req.user!.role === 'super_admin') {
+    if (req.user.role === 'super_admin') {
       res.status(403).json({ message: "Business metrics not available for super admins" });
       return;
     }
 
     const daysPeriod = parseInt(req.query.days as string) || 30;
-    const metrics = await businessMetrics.calculateMetrics(req.user!.contractorId, daysPeriod);
+    const metrics = await businessMetrics.calculateMetrics(req.user.contractorId, daysPeriod);
     res.json(metrics);
   }));
 
   // Business insights for contractors
   app.get("/api/ai/business-insights", aiRateLimiter, requireManagerOrAdmin, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     // Only non-super-admin users get business insights
-    if (req.user!.role === 'super_admin') {
+    if (req.user.role === 'super_admin') {
       res.status(403).json({ message: "Business insights not available for super admins" });
       return;
     }
 
     const daysPeriod = parseInt(req.query.days as string) || 30;
-    const metrics = await businessMetrics.calculateMetrics(req.user!.contractorId, daysPeriod);
+    const metrics = await businessMetrics.calculateMetrics(req.user.contractorId, daysPeriod);
     const insights = await businessMetrics.generateBusinessInsights(metrics);
     res.json(insights);
   }));

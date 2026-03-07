@@ -10,13 +10,13 @@ import { asyncHandler } from "../../utils/async-handler";
 export function registerHcpSchedulingRoutes(app: Express): void {
   app.post("/api/scheduling/sync-users", requireAuth, requireAdmin, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     const { housecallSchedulingService } = await import('../../housecall-scheduling-service');
-    const result = await housecallSchedulingService.syncHousecallUsers(req.user!.contractorId);
+    const result = await housecallSchedulingService.syncHousecallUsers(req.user.contractorId);
     res.json(result);
   }));
 
   app.get("/api/scheduling/salespeople", requireAuth, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
     const { housecallSchedulingService } = await import('../../housecall-scheduling-service');
-    const teamMembers = await housecallSchedulingService.getTeamMembers(req.user!.contractorId);
+    const teamMembers = await housecallSchedulingService.getTeamMembers(req.user.contractorId);
     res.json(teamMembers);
   }));
 
@@ -38,10 +38,10 @@ export function registerHcpSchedulingRoutes(app: Express): void {
 
     const { housecallSchedulingService } = await import('../../housecall-scheduling-service');
 
-    const contractor = await storage.getContractor(req.user!.contractorId) as Contractor | null;
+    const contractor = await storage.getContractor(req.user.contractorId) as Contractor | null;
     const timezone = contractor?.timezone || 'America/New_York';
 
-    const slots = await housecallSchedulingService.getUnifiedAvailability(req.user!.contractorId, start, end, timezone);
+    const slots = await housecallSchedulingService.getUnifiedAvailability(req.user.contractorId, start, end, timezone);
 
     res.json({
       startDate: start.toISOString(),
@@ -65,7 +65,7 @@ export function registerHcpSchedulingRoutes(app: Express): void {
     }
 
     const { housecallSchedulingService } = await import('../../housecall-scheduling-service');
-    const result = await housecallSchedulingService.bookAppointment(req.user!.contractorId, {
+    const result = await housecallSchedulingService.bookAppointment(req.user.contractorId, {
       startTime: new Date(startTime),
       title,
       customerName,
@@ -91,7 +91,7 @@ export function registerHcpSchedulingRoutes(app: Express): void {
 
     const { housecallSchedulingService } = await import('../../housecall-scheduling-service');
     const bookings = await housecallSchedulingService.getBookings(
-      req.user!.contractorId,
+      req.user.contractorId,
       startDate ? new Date(startDate as string) : undefined,
       endDate ? new Date(endDate as string) : undefined
     );
@@ -116,14 +116,14 @@ export function registerHcpSchedulingRoutes(app: Express): void {
       .set(updateData)
       .where(and(
         eq(userContractors.userId, userId),
-        eq(userContractors.contractorId, req.user!.contractorId)
+        eq(userContractors.contractorId, req.user.contractorId)
       ));
 
     res.json({ message: "Salesperson updated successfully" });
   }));
 
   app.get("/api/integrations/housecall-pro/webhook-config", requireAuth, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    const contractorId = req.user!.contractorId;
+    const contractorId = req.user.contractorId;
     const protocol = (req.headers['x-forwarded-proto'] as string) || req.protocol;
     const host = (req.headers['x-forwarded-host'] as string) || req.get('host');
     const webhookUrl = `${protocol}://${host}/api/webhooks/${contractorId}/housecall-pro`;
@@ -141,7 +141,7 @@ export function registerHcpSchedulingRoutes(app: Express): void {
       res.status(400).json({ error: 'Secret is required' });
       return;
     }
-    await CredentialService.setCredential(req.user!.contractorId, 'housecallpro', 'webhook_secret', secret.trim());
+    await CredentialService.setCredential(req.user.contractorId, 'housecallpro', 'webhook_secret', secret.trim());
     res.json({ success: true });
   }));
 }

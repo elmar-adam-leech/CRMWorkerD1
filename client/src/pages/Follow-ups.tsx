@@ -220,6 +220,7 @@ export default function FollowUps() {
       queryClient.invalidateQueries({ queryKey: ['/api/contacts/paginated'] });
       queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
       queryClient.invalidateQueries({ queryKey: ['/api/contacts/follow-ups'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/contacts/status-counts'] });
     },
     onError: (error: any) => {
       toast({

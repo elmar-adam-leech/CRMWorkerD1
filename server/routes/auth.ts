@@ -270,14 +270,14 @@ export function registerAuthRoutes(app: Express): void {
   }));
 
   app.post("/api/auth/logout", requireAuth, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    const user = req.user!;
+    const user = req.user;
     await AuthService.revokeToken(user);
     res.clearCookie('auth_token', { path: '/' });
     res.json({ message: "Logged out successfully" });
   }));
 
   app.post("/api/auth/logout-all", requireAuth, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    const user = req.user!;
+    const user = req.user;
     await AuthService.revokeToken(user);
     await db.update(users)
       .set({ tokenVersion: (user.tokenVersion ?? 1) + 1 })
@@ -287,7 +287,7 @@ export function registerAuthRoutes(app: Express): void {
   }));
 
   app.post("/api/auth/logout-company", requireAuth, requireAdmin, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    const { contractorId } = req.user!;
+    const { contractorId } = req.user;
     const companyMembers = await db
       .select({ userId: userContractors.userId })
       .from(userContractors)

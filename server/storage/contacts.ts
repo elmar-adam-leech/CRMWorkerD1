@@ -7,7 +7,7 @@ import {
 import { db } from "../db";
 import { deduplicateContacts } from "../services/contact-deduper";
 import { getDashboardMetrics, getMetricsAggregates, type MetricsAggregates } from "../services/dashboard-metrics";
-import { eq, and, or, desc, ne, gt, lte, gte, ilike, isNotNull, notInArray, sql, count } from "drizzle-orm";
+import { eq, and, or, desc, ne, gt, lte, gte, ilike, isNotNull, notInArray, inArray, sql, count } from "drizzle-orm";
 import { normalizePhoneArrayForStorage } from "../utils/phone-normalizer";
 import type { UpdateContact } from "../storage-types";
 
@@ -442,8 +442,8 @@ async function findMatchingContact(contractorId: string, emails?: string[], phon
   }
 
   if (phones && phones.length > 0) {
-    // Strip formatting from the input phones and keep the last 10 digits of each.
-    // The SQL does the same stripping on stored phones so any format variant matches.
+    // Normalize the input phones to 10-digit format and query the indexed normalizedPhone
+    // column directly — avoids the prior REGEXP_REPLACE full-table scan.
     const normalizedPhones = phones.map(phone => {
       const digits = phone.replace(/\D/g, '');
       return digits.length > 10 ? digits.slice(-10) : digits;
@@ -452,10 +452,7 @@ async function findMatchingContact(contractorId: string, emails?: string[], phon
     if (normalizedPhones.length > 0) {
       const phoneResult = await db.select({ id: contacts.id }).from(contacts).where(and(
         eq(contacts.contractorId, contractorId),
-        sql`EXISTS (
-          SELECT 1 FROM unnest(${contacts.phones}) AS contact_phone
-          WHERE RIGHT(REGEXP_REPLACE(contact_phone, '[^0-9]', '', 'g'), 10) = ANY(ARRAY[${sql.join(normalizedPhones.map(p => sql`${p}`), sql`, `)}]::text[])
-        )`
+        inArray(contacts.normalizedPhone, normalizedPhones)
       )).limit(1);
       if (phoneResult.length > 0) return phoneResult[0].id;
     }

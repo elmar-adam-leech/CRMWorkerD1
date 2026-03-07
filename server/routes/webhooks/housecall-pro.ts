@@ -5,6 +5,7 @@ import { webhookEvents } from "@shared/schema";
 import { db } from "../../db";
 import { eq } from "drizzle-orm";
 import { CredentialService } from "../../credential-service";
+import { broadcastToContractor } from "../../websocket";
 import { workflowEngine } from "../../workflow-engine";
 import { mapHcpEstimateStatus } from "../../sync/housecall-pro";
 import { webhookRateLimiter } from "../../middleware/rate-limiter";
@@ -106,6 +107,7 @@ export function registerHousecallProWebhookRoutes(app: Express): void {
             syncedAt: new Date(),
           }, contractorId);
           if (updated) {
+            broadcastToContractor(contractorId, { type: 'estimate_updated', estimateId: updated.id });
             workflowEngine.triggerWorkflowsForEvent('estimate_updated', toWorkflowEvent(updated), contractorId).catch(err =>
               log.error('estimate_updated trigger error', err));
             if (updated.status !== estimate.status) {
@@ -121,15 +123,18 @@ export function registerHousecallProWebhookRoutes(app: Express): void {
           if (newStatus && newStatus !== job.status) {
             const updated = await storage.updateJob(job.id, { status: newStatus as any }, contractorId);
             if (updated) {
+              broadcastToContractor(contractorId, { type: 'job_updated', jobId: updated.id });
               workflowEngine.triggerWorkflowsForEvent('job_updated', toWorkflowEvent(updated), contractorId).catch(err =>
                 log.error('job_updated trigger error', err));
               workflowEngine.triggerWorkflowsForEvent('job_status_changed', toWorkflowEvent(updated), contractorId).catch(err =>
                 log.error('job_status_changed trigger error', err));
             }
           } else if (event_type === 'job.created') {
+            broadcastToContractor(contractorId, { type: 'job_created', jobId: job.id });
             workflowEngine.triggerWorkflowsForEvent('job_created', toWorkflowEvent(job), contractorId).catch(err =>
               log.error('job_created trigger error', err));
           } else {
+            broadcastToContractor(contractorId, { type: 'job_updated', jobId: job.id });
             workflowEngine.triggerWorkflowsForEvent('job_updated', toWorkflowEvent(job), contractorId).catch(err =>
               log.error('job_updated trigger error', err));
           }
@@ -138,6 +143,7 @@ export function registerHousecallProWebhookRoutes(app: Express): void {
         const contact = await storage.getContactByExternalId(data.id, 'housecall-pro', contractorId);
         if (contact) {
           const eventKey = event_type === 'customer.created' ? 'contact_created' : 'contact_updated';
+          broadcastToContractor(contractorId, { type: eventKey, contactId: contact.id });
           workflowEngine.triggerWorkflowsForEvent(eventKey, toWorkflowEvent(contact), contractorId).catch(err =>
             log.error(`${eventKey} trigger error`, err));
         }

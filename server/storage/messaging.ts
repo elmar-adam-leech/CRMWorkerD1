@@ -240,14 +240,11 @@ async function getConversations(contractorId: string, options: {
 }
 
 async function getConversationMessages(contractorId: string, contactId: string): Promise<Message[]> {
-  console.log(`[getConversationMessages] Called with contactId: ${contactId}`);
-
   const contact = await db.select({ phones: contacts.phones, emails: contacts.emails })
     .from(contacts).where(and(eq(contacts.id, contactId), eq(contacts.contractorId, contractorId))).limit(1);
 
   const contactPhones = contact[0]?.phones || [];
   const contactEmails = contact[0]?.emails || [];
-  console.log(`[getConversationMessages] Contact phones: ${JSON.stringify(contactPhones)}, emails: ${JSON.stringify(contactEmails)}`);
 
   const [smsMessages, emailActivities] = await Promise.all([
     db.select({
@@ -269,8 +266,6 @@ async function getConversationMessages(contractorId: string, contactId: string):
       .orderBy(desc(activities.createdAt))
       .limit(CONVERSATION_MESSAGE_LIMIT),
   ]);
-
-  console.log(`[getConversationMessages] Found ${smsMessages.length} SMS messages`);
 
   const emailMessages = emailActivities.map(emailActivityToMessage);
 

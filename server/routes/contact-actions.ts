@@ -19,19 +19,19 @@ const scheduleContactSchema = z.object({
 
 export function registerContactActionRoutes(app: Express): void {
   app.get("/api/contacts/scheduled", asyncHandler(async (req, res) => {
-    const scheduledContacts = await storage.getScheduledContacts(req.user!.contractorId);
+    const scheduledContacts = await storage.getScheduledContacts(req.user.contractorId);
     res.json(scheduledContacts);
   }));
 
   app.get("/api/contacts/unscheduled", asyncHandler(async (req, res) => {
-    const unscheduledContacts = await storage.getUnscheduledContacts(req.user!.contractorId);
+    const unscheduledContacts = await storage.getUnscheduledContacts(req.user.contractorId);
     res.json(unscheduledContacts);
   }));
 
   app.post("/api/contacts/:id/schedule", asyncHandler(async (req, res) => {
     const { id: contactId } = req.params;
 
-    const isIntegrationEnabled = await storage.isIntegrationEnabled(req.user!.contractorId, 'housecall-pro');
+    const isIntegrationEnabled = await storage.isIntegrationEnabled(req.user.contractorId, 'housecall-pro');
     if (!isIntegrationEnabled) {
       res.status(403).json({
         message: "Housecall Pro integration is not enabled for this tenant. Please enable it to schedule contacts.",
@@ -56,7 +56,7 @@ export function registerContactActionRoutes(app: Express): void {
     const startDate = new Date(scheduledStart);
     const endDate = new Date(scheduledEnd);
 
-    const contact = await storage.getContact(contactId, req.user!.contractorId);
+    const contact = await storage.getContact(contactId, req.user.contractorId);
     if (!contact) {
       res.status(404).json({ message: "Contact not found" });
       return;
@@ -73,7 +73,7 @@ export function registerContactActionRoutes(app: Express): void {
 
     if (!housecallProCustomerId) {
       if (contactEmail || contactPhone) {
-        const searchResult = await housecallProService.searchCustomers(req.user!.contractorId, {
+        const searchResult = await housecallProService.searchCustomers(req.user.contractorId, {
           email: contactEmail || undefined,
           phone: contactPhone || undefined
         });
@@ -84,7 +84,7 @@ export function registerContactActionRoutes(app: Express): void {
       }
 
       if (!housecallProCustomerId) {
-        const customerResult = await housecallProService.createCustomer(req.user!.contractorId, {
+        const customerResult = await housecallProService.createCustomer(req.user.contractorId, {
           first_name: contact.name.split(' ')[0] || contact.name,
           last_name: contact.name.split(' ').slice(1).join(' ') || '',
           email: contactEmail || '',
@@ -107,7 +107,7 @@ export function registerContactActionRoutes(app: Express): void {
       }
     }
 
-    const estimateResult = await housecallProService.createEstimate(req.user!.contractorId, {
+    const estimateResult = await housecallProService.createEstimate(req.user.contractorId, {
       customer_id: housecallProCustomerId,
       employee_id: employeeId,
       message: description || `Estimate for ${contact.name}`,
@@ -140,7 +140,7 @@ export function registerContactActionRoutes(app: Express): void {
       scheduledStart: startDate,
       scheduledEnd: endDate,
       description: description || `Estimate for ${contact.name}`
-    }, req.user!.contractorId);
+    }, req.user.contractorId);
 
     if (!result) {
       res.status(500).json({ message: "Failed to complete contact-to-estimate conversion" });
@@ -156,11 +156,11 @@ export function registerContactActionRoutes(app: Express): void {
   }));
 
   app.post("/api/contacts/deduplicate", asyncHandler(async (req, res) => {
-    if (req.user!.role !== 'admin') {
+    if (req.user.role !== 'admin') {
       res.status(403).json({ message: "Only administrators can deduplicate contacts" });
       return;
     }
-    const result = await storage.deduplicateContacts(req.user!.contractorId);
+    const result = await storage.deduplicateContacts(req.user.contractorId);
     res.json(result);
   }));
 
@@ -172,7 +172,7 @@ export function registerContactActionRoutes(app: Express): void {
         return;
       }
 
-      const contractorId = req.user!.contractorId;
+      const contractorId = req.user.contractorId;
 
       if (csvData.length > 1024 * 1024) {
         res.status(400).json({ error: "CSV file too large", message: "CSV data must be less than 1MB" });

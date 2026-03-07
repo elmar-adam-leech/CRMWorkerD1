@@ -6,7 +6,7 @@ import { asyncHandler } from "../utils/async-handler";
 
 export function registerEmployeeRoutes(app: Express): void {
   app.get("/api/employees", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    const employees = await storage.getEmployees(req.user!.contractorId);
+    const employees = await storage.getEmployees(req.user.contractorId);
     res.json(employees);
   }));
 
@@ -29,7 +29,7 @@ export function registerEmployeeRoutes(app: Express): void {
     const { roles } = validation.data;
     
     // Update employee roles
-    const updatedEmployee = await storage.updateEmployeeRoles(id, roles, req.user!.contractorId);
+    const updatedEmployee = await storage.updateEmployeeRoles(id, roles, req.user.contractorId);
     if (!updatedEmployee) {
       res.status(404).json({ message: "Employee not found" });
       return;

@@ -27,7 +27,7 @@ export function registerGoogleSheetsRoutes(app: Express): void {
   });
 
   app.post("/api/leads/google-sheets/credentials", requireManagerOrAdmin, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    const contractorId = req.user!.contractorId;
+    const contractorId = req.user.contractorId;
     const credentials = googleSheetsCredentialSchema.parse(req.body);
     
     const service = new GoogleSheetsService({
@@ -61,7 +61,7 @@ export function registerGoogleSheetsRoutes(app: Express): void {
 
   // Check Google Sheets credential status
   app.get("/api/leads/google-sheets/credentials/status", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    const contractorId = req.user!.contractorId;
+    const contractorId = req.user.contractorId;
     
     const hasCredentials = await CredentialService.hasRequiredCredentials(
       contractorId, 
@@ -73,7 +73,7 @@ export function registerGoogleSheetsRoutes(app: Express): void {
 
   // Validate Google Sheets connection with stored credentials
   app.post("/api/leads/google-sheets/validate", requireManagerOrAdmin, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    const contractorId = req.user!.contractorId;
+    const contractorId = req.user.contractorId;
     const config = googleSheetsOperationSchema.parse(req.body);
     
     const credentials = await CredentialService.getServiceCredentials(contractorId, 'google-sheets');
@@ -103,7 +103,7 @@ export function registerGoogleSheetsRoutes(app: Express): void {
 
   // Get Google Sheets info and headers with stored credentials
   app.post("/api/leads/google-sheets/info", requireManagerOrAdmin, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    const contractorId = req.user!.contractorId;
+    const contractorId = req.user.contractorId;
     const config = googleSheetsOperationSchema.parse(req.body);
     
     const credentials = await CredentialService.getServiceCredentials(contractorId, 'google-sheets');
@@ -137,7 +137,7 @@ export function registerGoogleSheetsRoutes(app: Express): void {
 
   // Preview Google Sheets data with stored credentials
   app.post("/api/leads/google-sheets/preview", requireManagerOrAdmin, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    const contractorId = req.user!.contractorId;
+    const contractorId = req.user.contractorId;
     const config = googleSheetsOperationSchema.extend({
       maxRows: z.number().int().min(1).max(50).optional().default(10)
     }).parse(req.body);
@@ -168,7 +168,7 @@ export function registerGoogleSheetsRoutes(app: Express): void {
 
   // Import leads from Google Sheets with stored credentials
   app.post("/api/leads/google-sheets/import", requireManagerOrAdmin, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    const contractorId = req.user!.contractorId;
+    const contractorId = req.user.contractorId;
     const importConfig = googleSheetsImportSchema.parse(req.body);
     
     if (!Object.values(importConfig.columnMapping).includes('name')) {

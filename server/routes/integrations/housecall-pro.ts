@@ -6,7 +6,7 @@ import { asyncHandler } from "../../utils/async-handler";
 
 export function registerHousecallProRoutes(app: Express): void {
   app.get("/api/housecall-pro/status", asyncHandler(async (req: AuthedRequest, res: Response) => {
-    const isIntegrationEnabled = await storage.isIntegrationEnabled(req.user!.contractorId, 'housecall-pro');
+    const isIntegrationEnabled = await storage.isIntegrationEnabled(req.user.contractorId, 'housecall-pro');
     if (!isIntegrationEnabled) {
       res.status(403).json({
         message: "Housecall Pro integration is not enabled for this tenant. Please enable it first.",
@@ -15,13 +15,13 @@ export function registerHousecallProRoutes(app: Express): void {
       return;
     }
 
-    const isConfigured = await housecallProService.isConfigured(req.user!.contractorId);
+    const isConfigured = await housecallProService.isConfigured(req.user.contractorId);
     if (!isConfigured) {
       res.json({ configured: false, connected: false });
       return;
     }
 
-    const connection = await housecallProService.checkConnection(req.user!.contractorId);
+    const connection = await housecallProService.checkConnection(req.user.contractorId);
     res.json({
       configured: true,
       connected: connection.connected,
@@ -30,7 +30,7 @@ export function registerHousecallProRoutes(app: Express): void {
   }));
 
   app.get("/api/housecall-pro/employees", asyncHandler(async (req: AuthedRequest, res: Response) => {
-    const isIntegrationEnabled = await storage.isIntegrationEnabled(req.user!.contractorId, 'housecall-pro');
+    const isIntegrationEnabled = await storage.isIntegrationEnabled(req.user.contractorId, 'housecall-pro');
     if (!isIntegrationEnabled) {
       res.status(403).json({
         message: "Housecall Pro integration is not enabled for this tenant. Please enable it first.",
@@ -39,7 +39,7 @@ export function registerHousecallProRoutes(app: Express): void {
       return;
     }
 
-    const result = await housecallProService.getEmployees(req.user!.contractorId);
+    const result = await housecallProService.getEmployees(req.user.contractorId);
     if (!result.success) {
       res.status(400).json({ message: result.error });
       return;
@@ -48,7 +48,7 @@ export function registerHousecallProRoutes(app: Express): void {
   }));
 
   app.get("/api/housecall-pro/availability", asyncHandler(async (req: AuthedRequest, res: Response) => {
-    const isIntegrationEnabled = await storage.isIntegrationEnabled(req.user!.contractorId, 'housecall-pro');
+    const isIntegrationEnabled = await storage.isIntegrationEnabled(req.user.contractorId, 'housecall-pro');
     if (!isIntegrationEnabled) {
       res.status(403).json({
         message: "Housecall Pro integration is not enabled for this tenant. Please enable it first.",
@@ -79,7 +79,7 @@ export function registerHousecallProRoutes(app: Express): void {
     }
 
     const result = await housecallProService.getEstimatorAvailability(
-      req.user!.contractorId,
+      req.user.contractorId,
       date,
       estimatorIdArray
     );
@@ -104,7 +104,7 @@ export function registerHousecallProRoutes(app: Express): void {
     const endOfDay = new Date(`${date}T23:59:59`);
 
     const result = await housecallProService.getEmployeeScheduledEstimates(
-      req.user!.contractorId,
+      req.user.contractorId,
       employeeId as string,
       startOfDay,
       endOfDay

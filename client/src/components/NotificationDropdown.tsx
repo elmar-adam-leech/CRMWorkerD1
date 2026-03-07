@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useWebSocketInvalidation } from "@/hooks/useWebSocketInvalidation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,13 +23,14 @@ export function NotificationDropdown() {
   const [, setLocation] = useLocation();
   const [open, setOpen] = useState(false);
 
-  // Fetch unread notifications for the badge count.
-  // staleTime is kept short so the badge updates promptly (WebSocket events
-  // will bust the cache immediately; polling is a safety net for missed events).
+  // Subscribe to WS events so the badge updates immediately without polling.
+  useWebSocketInvalidation([
+    { types: ['notification_updated'], queryKeys: ['/api/notifications/unread', '/api/notifications'] },
+  ]);
+
   const { data: unreadNotifications = [] } = useQuery<Notification[]>({
     queryKey: ['/api/notifications/unread'],
     staleTime: 30_000,
-    refetchInterval: 60_000,
   });
 
   // Fetch all recent notifications

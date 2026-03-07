@@ -129,7 +129,7 @@ export function registerOAuthRoutes(app: Express): void {
   }));
 
   app.get("/api/user/contractors", requireAuth, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    const userContractors = await storage.getUserContractors(req.user!.userId);
+    const userContractors = await storage.getUserContractors(req.user.userId);
 
     // Batch-fetch all contractors in a single query instead of N individual lookups
     const contractorList = await storage.getContractorsByIds(userContractors.map(uc => uc.contractorId));
@@ -147,14 +147,14 @@ export function registerOAuthRoutes(app: Express): void {
       return;
     }
 
-    const updatedUser = await storage.switchContractor(req.user!.userId, contractorId);
+    const updatedUser = await storage.switchContractor(req.user.userId, contractorId);
 
     if (!updatedUser) {
       res.status(404).json({ message: "User or contractor not found" });
       return;
     }
 
-    const userContractor = await storage.getUserContractor(req.user!.userId, contractorId);
+    const userContractor = await storage.getUserContractor(req.user.userId, contractorId);
     if (!userContractor) {
       res.status(403).json({ message: "Access denied to this contractor" });
       return;

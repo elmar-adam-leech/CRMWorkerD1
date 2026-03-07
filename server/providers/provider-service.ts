@@ -33,6 +33,10 @@ export const AVAILABLE_INTEGRATIONS = {
 export const INTEGRATION_NAMES = Object.values(AVAILABLE_INTEGRATIONS);
 export type IntegrationName = typeof AVAILABLE_INTEGRATIONS[keyof typeof AVAILABLE_INTEGRATIONS];
 
+export function isIntegrationName(v: string): v is IntegrationName {
+  return (INTEGRATION_NAMES as readonly string[]).includes(v);
+}
+
 /**
  * Provider factory definitions for dynamic loading
  */
@@ -425,7 +429,7 @@ export class ProviderService {
   async saveCredentials(contractorId: string, integrationName: string, credentials: Record<string, string>): Promise<{ success: boolean; error?: string }> {
     try {
       // Validate the integration name
-      if (!INTEGRATION_NAMES.includes(integrationName as any)) {
+      if (!isIntegrationName(integrationName)) {
         return {
           success: false,
           error: `Invalid integration name: ${integrationName}`

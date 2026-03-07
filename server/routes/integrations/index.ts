@@ -1,7 +1,7 @@
 import type { Express, Response } from "express";
 import { storage } from "../../storage";
 import { dialpadEnhancedService } from "../../dialpad-enhanced-service";
-import { providerService, INTEGRATION_NAMES } from "../../providers/provider-service";
+import { providerService, INTEGRATION_NAMES, isIntegrationName } from "../../providers/provider-service";
 import { requireManagerOrAdmin, type AuthedRequest } from "../../auth-service";
 import { CredentialService } from "../../credential-service";
 import { asyncHandler } from "../../utils/async-handler";
@@ -56,7 +56,7 @@ export function registerIntegrationRoutes(app: Express): void {
 
     const { integrationName } = req.params;
     
-    if (!INTEGRATION_NAMES.includes(integrationName as any)) {
+    if (!isIntegrationName(integrationName)) {
       res.status(400).json({ message: "Invalid integration name" });
       return;
     }
@@ -133,7 +133,7 @@ export function registerIntegrationRoutes(app: Express): void {
 
     const { integrationName } = req.params;
     
-    if (!INTEGRATION_NAMES.includes(integrationName as any)) {
+    if (!isIntegrationName(integrationName)) {
       res.status(400).json({ message: "Invalid integration name" });
       return;
     }
@@ -164,7 +164,7 @@ export function registerIntegrationRoutes(app: Express): void {
   app.get("/api/integrations/:integrationName/status", asyncHandler(async (req: AuthedRequest, res: Response) => {
     const { integrationName } = req.params;
     
-    if (!INTEGRATION_NAMES.includes(integrationName as any)) {
+    if (!isIntegrationName(integrationName)) {
       res.status(400).json({ message: "Invalid integration name" });
       return;
     }
@@ -191,7 +191,7 @@ export function registerIntegrationRoutes(app: Express): void {
     const { integrationName } = req.params;
     const { credentials } = req.body;
     
-    if (!INTEGRATION_NAMES.includes(integrationName as any)) {
+    if (!isIntegrationName(integrationName)) {
       res.status(400).json({ message: "Invalid integration name" });
       return;
     }
@@ -219,7 +219,7 @@ export function registerIntegrationRoutes(app: Express): void {
   app.get("/api/integrations/:integrationName/credentials", requireManagerOrAdmin, asyncHandler(async (req: AuthedRequest, res: Response) => {
     const { integrationName } = req.params;
     
-    if (!INTEGRATION_NAMES.includes(integrationName as any)) {
+    if (!isIntegrationName(integrationName)) {
       res.status(400).json({ message: "Invalid integration name" });
       return;
     }
@@ -232,7 +232,7 @@ export function registerIntegrationRoutes(app: Express): void {
   app.delete("/api/integrations/:integrationName/credentials", requireManagerOrAdmin, asyncHandler(async (req: AuthedRequest, res: Response) => {
     const { integrationName } = req.params;
     
-    if (!INTEGRATION_NAMES.includes(integrationName as any)) {
+    if (!isIntegrationName(integrationName)) {
       res.status(400).json({ message: "Invalid integration name" });
       return;
     }
