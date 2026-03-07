@@ -456,6 +456,18 @@ async function updateLead(id: string, lead: Partial<InsertLead>, contractorId: s
 }
 
 async function deleteLead(id: string, contractorId: string): Promise<boolean> {
+  const lead = await db.select({ contactId: leads.contactId })
+    .from(leads)
+    .where(and(eq(leads.id, id), eq(leads.contractorId, contractorId)))
+    .limit(1);
+
+  if (lead.length === 0) return false;
+
+  const contactId = lead[0].contactId;
+  if (contactId) {
+    return deleteContact(contactId, contractorId);
+  }
+
   const result = await db.delete(leads).where(and(eq(leads.id, id), eq(leads.contractorId, contractorId)));
   return (result.rowCount ?? 0) > 0;
 }
