@@ -30,7 +30,7 @@ import { useState, useMemo } from "react";
 import type { Contact, Estimate } from "@shared/schema";
 import { PageHeader } from "@/components/ui/page-header-v2";
 import { PageLayout } from "@/components/ui/page-layout";
-import { logPersonalCall } from "@/lib/logPersonalCall";
+import { dialPhone } from "@/lib/dialPhone";
 
 export default function FollowUps() {
   const { toast } = useToast();
@@ -160,8 +160,7 @@ export default function FollowUps() {
     
     if (method === 'phone') {
       if (item.phone) {
-        logPersonalCall({ contactId: item.id, phone: item.phone, name: item.name });
-        window.location.href = `tel:${item.phone}`;
+        dialPhone({ contactId: item.id, phone: item.phone, name: item.name });
       } else {
         toast({
           title: "No phone number",

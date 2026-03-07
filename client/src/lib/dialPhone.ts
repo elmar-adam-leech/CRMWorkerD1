@@ -1,4 +1,4 @@
-export function logPersonalCall({
+export function dialPhone({
   contactId,
   phone,
   name,
@@ -14,4 +14,6 @@ export function logPersonalCall({
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ contactId, phone, name }),
   }).catch(() => {});
+
+  window.location.href = `tel:${phone}`;
 }
