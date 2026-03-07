@@ -6,6 +6,7 @@ import { setupVite, serveStatic, log } from "./vite";
 import { providerService } from "./providers/provider-service";
 import { syncScheduler } from "./sync-scheduler";
 import { messageCleanupService } from "./services/message-cleanup";
+import { AuthService } from "./auth-service";
 
 const app = express();
 // Content Security Policy — permissive-but-defined baseline.
@@ -74,6 +75,11 @@ app.use((req, res, next) => {
   // Start the message cleanup service
   log("Starting message cleanup service...");
   messageCleanupService.start();
+
+  // Hourly cleanup of expired revoked_tokens rows (prevents unbounded table growth)
+  setInterval(() => {
+    AuthService.cleanupExpiredRevokedTokens();
+  }, 60 * 60 * 1000);
   
   const server = await registerRoutes(app);
 

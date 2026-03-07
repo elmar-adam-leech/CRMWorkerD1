@@ -109,8 +109,6 @@ export function registerEstimateWebhookRoutes(app: Express): void {
         validUntil: parseWebhookDate(validUntil),
         followUpDate: parseWebhookDate(followUpDate),
         contactId: customerId,
-        emails: customerEmail ? [String(customerEmail).trim()] : [],
-        phones: normalizedPhone ? [normalizedPhone] : [],
       };
       
       console.log('[webhook-estimate] Creating estimate with data:', estimateData);

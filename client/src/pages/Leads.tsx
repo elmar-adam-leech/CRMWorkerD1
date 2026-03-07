@@ -22,6 +22,7 @@ import { useWebSocketInvalidation } from "@/hooks/useWebSocketInvalidation";
 import { useBulkActions } from "@/hooks/useBulkActions";
 import { useCommunicationActions } from "@/hooks/useCommunicationActions";
 import { useGlobalShortcuts } from "@/hooks/use-keyboard-shortcuts";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { BulkActionToolbar } from "@/components/BulkActionToolbar";
 import { StatusFilterBar } from "@/components/StatusFilterBar";
 import { LoadMoreButton } from "@/components/LoadMoreButton";
@@ -47,8 +48,10 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
     setSearchQuery(externalSearch);
   }, [externalSearch]);
 
-  const { viewMode, setViewMode, filterStatus, setFilterStatus, advancedFilters, setAdvancedFilters } =
+  const isMobile = useIsMobile();
+  const { viewMode: savedViewMode, setViewMode, filterStatus, setFilterStatus, advancedFilters, setAdvancedFilters } =
     usePagePreferences({ pageKey: "leads" });
+  const viewMode = isMobile ? "cards" : savedViewMode;
 
   const {
     emailModal,

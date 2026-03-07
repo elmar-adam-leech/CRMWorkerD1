@@ -226,8 +226,8 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
           <div className="flex items-center gap-2">
             {isHousecallProConfigured && (
               <Button variant="outline" onClick={handleImportFromHousecallPro} data-testid="button-import-hcp">
-                <CalendarIcon className="h-4 w-4 mr-2" />
-                Import from Housecall Pro
+                <CalendarIcon className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Import from Housecall Pro</span>
               </Button>
             )}
             <Button onClick={() => setAddModalOpen(true)} data-testid="button-add-job">

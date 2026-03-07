@@ -12,6 +12,7 @@ import { RefreshBanner } from "@/components/ui/refresh-banner";
 import { useAppVersion } from "@/hooks/use-app-version";
 import { useState, useEffect } from "react";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { MobileBottomNav } from "@/components/MobileBottomNav";
 
 // Import pages
 import Dashboard from "@/pages/Dashboard";
@@ -334,6 +335,7 @@ function App() {
                   />
                 </ErrorBoundary>
               </DashboardLayout>
+              <MobileBottomNav />
               <Toaster />
               </BulkSelectionProvider>
             </SyncStatusProvider>

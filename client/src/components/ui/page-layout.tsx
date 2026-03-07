@@ -23,7 +23,7 @@ export function PageLayout({
 }: PageLayoutProps) {
   return (
     <div className={cn(
-      "p-6 mx-auto space-y-6",
+      "p-3 sm:p-6 pb-20 sm:pb-6 mx-auto space-y-6",
       maxWidthClasses[maxWidth],
       className
     )}>

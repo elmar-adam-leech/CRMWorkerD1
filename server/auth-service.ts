@@ -1,7 +1,11 @@
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import type { Request, Response, NextFunction } from 'express';
 import { storage } from './storage';
 import { getUserContractorCached } from './services/cache';
+import { db } from './db';
+import { revokedTokens, users } from '@shared/schema';
+import { eq, lt } from 'drizzle-orm';
 
 // Critical security check for production
 const JWT_SECRET = (() => {
@@ -24,6 +28,7 @@ const JWT_SECRET = (() => {
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d'; // 7 days for sliding expiration
 
 export interface JWTPayload {
+  jti: string;       // Unique JWT ID — used for per-token revocation
   userId: string;
   username: string;
   name: string;
@@ -31,6 +36,7 @@ export interface JWTPayload {
   role: string;
   contractorId: string;
   canManageIntegrations: boolean;
+  tokenVersion: number; // Snapshot of users.tokenVersion at issue time
   iat?: number;
   exp?: number;
 }
@@ -53,8 +59,10 @@ export class AuthService {
     role: string;
     contractorId: string;
     canManageIntegrations?: boolean;
+    tokenVersion: number;
   }): string {
     const payload: Omit<JWTPayload, 'iat' | 'exp'> = {
+      jti: crypto.randomUUID(), // Unique per-token ID for revocation tracking
       userId: user.id,
       username: user.username,
       name: user.name,
@@ -62,6 +70,7 @@ export class AuthService {
       role: user.role,
       contractorId: user.contractorId,
       canManageIntegrations: user.canManageIntegrations ?? false,
+      tokenVersion: user.tokenVersion,
     };
 
     return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN } as jwt.SignOptions);
@@ -110,6 +119,29 @@ export class AuthService {
   }
 
   /**
+   * Revoke a token by inserting its jti into the revoked_tokens table.
+   */
+  static async revokeToken(decoded: JWTPayload): Promise<void> {
+    if (!decoded.jti || !decoded.exp) return;
+    await db.insert(revokedTokens).values({
+      jti: decoded.jti,
+      userId: decoded.userId,
+      expiresAt: new Date(decoded.exp * 1000),
+    }).onConflictDoNothing();
+  }
+
+  /**
+   * Delete expired rows from revoked_tokens. Called hourly from server/index.ts.
+   */
+  static async cleanupExpiredRevokedTokens(): Promise<void> {
+    try {
+      await db.delete(revokedTokens).where(lt(revokedTokens.expiresAt, new Date()));
+    } catch (err) {
+      console.error('[auth] Failed to clean up expired revoked tokens:', err);
+    }
+  }
+
+  /**
    * Determines whether the current request should receive a refreshed JWT cookie.
    *
    * Sliding-window expiration strategy:
@@ -151,10 +183,28 @@ export class AuthService {
         return;
       }
 
+      // Check if token has been explicitly revoked (e.g., via logout)
+      if (decoded.jti) {
+        const revoked = await db.select({ jti: revokedTokens.jti })
+          .from(revokedTokens)
+          .where(eq(revokedTokens.jti, decoded.jti))
+          .limit(1);
+        if (revoked.length > 0) {
+          res.status(401).json({ message: 'Session has been revoked' });
+          return;
+        }
+      }
+
       // Verify user still exists
       const user = await storage.getUser(decoded.userId);
       if (!user) {
         res.status(401).json({ message: 'User no longer exists' });
+        return;
+      }
+
+      // Check tokenVersion — protects against stolen devices via "sign out all"
+      if (decoded.tokenVersion !== user.tokenVersion) {
+        res.status(401).json({ message: 'Session invalidated — please log in again' });
         return;
       }
 
@@ -179,6 +229,7 @@ export class AuthService {
           role: decoded.role,
           contractorId: decoded.contractorId,
           canManageIntegrations: decoded.canManageIntegrations,
+          tokenVersion: user.tokenVersion,
         });
         
         // Update the cookie with fresh token

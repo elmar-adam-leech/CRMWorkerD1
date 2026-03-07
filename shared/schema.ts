@@ -66,6 +66,7 @@ export const users = pgTable("users", {
   name: text("name").notNull(),
   email: text("email").notNull(), // Removed unique constraint to allow same email across companies
   role: userRoleEnum("role").notNull().default("user"), // Legacy field, role now in user_contractors
+  tokenVersion: integer("token_version").notNull().default(1), // Incremented on logout-all; invalidates all prior tokens
   contractorId: varchar("contractor_id").references(() => contractors.id), // Current/active contractor for this session
   dialpadDefaultNumber: text("dialpad_default_number"), // Legacy field, now in user_contractors
   gmailConnected: boolean("gmail_connected").default(false).notNull(), // Whether user has connected their Gmail account
@@ -109,6 +110,23 @@ export const userContractors = pgTable("user_contractors", {
   contractorIdIdx: index("user_contractors_contractor_id_idx").on(table.contractorId),
   salespersonIdx: index("user_contractors_salesperson_idx").on(table.contractorId, table.isSalesperson),
 }));
+
+// Revoked tokens table — used by the logout handler to invalidate individual JWTs before
+// their natural expiry. The requireAuth middleware queries this table on every request.
+// Rows are cleaned up hourly by a setInterval in server/index.ts once they expire.
+export const revokedTokens = pgTable("revoked_tokens", {
+  jti: varchar("jti").primaryKey(), // JWT ID claim — uniquely identifies the token
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  expiresAt: timestamp("expires_at").notNull(), // Natural expiry of the JWT — row can be deleted after this
+  revokedAt: timestamp("revoked_at").defaultNow().notNull(),
+}, (table) => ({
+  expiresAtIdx: index("revoked_tokens_expires_at_idx").on(table.expiresAt),
+  userIdIdx: index("revoked_tokens_user_id_idx").on(table.userId),
+}));
+
+export const insertRevokedTokenSchema = createInsertSchema(revokedTokens);
+export type InsertRevokedToken = z.infer<typeof insertRevokedTokenSchema>;
+export type RevokedToken = typeof revokedTokens.$inferSelect;
 
 // Scheduled bookings table for tracking appointments
 export const scheduledBookings = pgTable("scheduled_bookings", {
@@ -294,6 +312,7 @@ export const jobs = pgTable("jobs", {
   scheduledDate: timestamp("scheduled_date"),
   contactId: varchar("contact_id").notNull().references(() => contacts.id),
   estimateId: varchar("estimate_id").references(() => estimates.id), // Link to estimate if job was created from one
+  notes: text("notes"), // Free-form notes from webhooks or manual entry
   externalId: varchar("external_id"), // External system job ID (e.g., Housecall Pro)
   externalSource: varchar("external_source"), // Source system (e.g., 'housecall-pro')
   contractorId: varchar("contractor_id").notNull().references(() => contractors.id),

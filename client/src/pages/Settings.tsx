@@ -133,7 +133,7 @@ export default function Settings() {
     <button
       key={id}
       onClick={() => goTab(id)}
-      className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === id ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+      className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap shrink-0 ${activeTab === id ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
       data-testid={testId}
     >
       {label}
@@ -169,7 +169,7 @@ export default function Settings() {
     <PageLayout>
       <PageHeader title="Settings" description="Configure integrations, manage users, and set business targets" />
 
-      <div className="flex space-x-1 border-b mb-6">
+      <div className="flex space-x-1 border-b mb-6 overflow-x-auto">
         {canManageIntegrations && tabBtn('integrations', 'Integrations', 'tab-integrations')}
         {tabBtn('account', 'Account', 'tab-account')}
         {tabBtn('security', 'Security', 'tab-security')}

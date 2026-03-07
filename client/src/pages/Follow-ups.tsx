@@ -339,9 +339,9 @@ export default function FollowUps() {
         title="Follow-ups"
         description="Leads and estimates that need follow-up, sorted by date"
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
           <Select value={filterView} onValueChange={setFilterView} data-testid="select-filter-view">
-            <SelectTrigger className="w-[180px]">
+            <SelectTrigger className="w-full sm:w-[180px]">
               <div className="flex items-center gap-2">
                 <Filter className="h-4 w-4" />
                 <SelectValue placeholder="Filter view" />

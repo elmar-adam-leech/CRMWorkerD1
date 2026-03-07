@@ -3,28 +3,18 @@ import { storage } from "../storage";
 import { insertUserSchema, users, passwordResetTokens } from "@shared/schema";
 import { db } from "../db";
 import { eq } from "drizzle-orm";
-import { AuthService, type AuthenticatedRequest } from "../auth-service";
+import { AuthService, requireAuth, type AuthenticatedRequest } from "../auth-service";
 import bcrypt from "bcrypt";
 import { sendGridService } from "../sendgrid-service";
 import { authLoginRateLimiter, authRegisterRateLimiter, authForgotPasswordRateLimiter } from "../middleware/rate-limiter";
 import { asyncHandler } from "../utils/async-handler";
 
 export function registerAuthRoutes(app: Express): void {
-  // Why we issue BOTH a JWT in the response body AND an httpOnly cookie:
-  //
-  //  • The httpOnly cookie is consumed by the browser SPA. It survives page
-  //    reloads without any JavaScript storage (no localStorage / sessionStorage)
-  //    and is immune to XSS because JS cannot read httpOnly cookies. The SPA
-  //    sends it automatically with every same-origin fetch.
-  //
-  //  • The body token serves programmatic/API clients (mobile apps, third-party
-  //    integrations, curl) that cannot or should not rely on browser cookie jars.
-  //    These clients store the token themselves and pass it as a Bearer header.
-  //
-  // Both tokens are identical JWTs signed with the same secret; the two delivery
-  // mechanisms are simply different transport channels for different consumers.
-  // The middleware in auth-service.ts accepts either form (cookie first, then
-  // Authorization: Bearer fallback) so both client types work transparently.
+  // Authentication uses an httpOnly cookie (auth_token) as the sole delivery
+  // mechanism for the browser SPA. The cookie is immune to XSS (JS cannot read
+  // httpOnly cookies) and is sent automatically with every same-origin request.
+  // API/programmatic clients should authenticate via the Authorization: Bearer
+  // header — they receive a 401 and must re-authenticate to get a fresh cookie.
   app.post("/api/auth/login", authLoginRateLimiter, asyncHandler(async (req: Request, res: Response) => {
     const { email, password } = req.body;
     if (!email || !password) {
@@ -57,7 +47,8 @@ export function registerAuthRoutes(app: Express): void {
       email: user.email,
       role: user.role,
       contractorId: user.contractorId,
-      canManageIntegrations: user.canManageIntegrations || false
+      canManageIntegrations: user.canManageIntegrations || false,
+      tokenVersion: user.tokenVersion ?? 1,
     });
 
     res.cookie('auth_token', token, {
@@ -69,7 +60,6 @@ export function registerAuthRoutes(app: Express): void {
     });
 
     res.json({
-      token,
       user: {
         id: user.id,
         username: user.username,
@@ -204,7 +194,8 @@ export function registerAuthRoutes(app: Express): void {
       name: user.name,
       email: user.email,
       role: userRole,
-      contractorId
+      contractorId,
+      tokenVersion: user.tokenVersion ?? 1,
     });
 
     res.cookie('auth_token', token, {
@@ -216,7 +207,6 @@ export function registerAuthRoutes(app: Express): void {
     });
 
     res.status(201).json({
-      token,
       user: {
         id: user.id,
         username: user.username,
@@ -277,6 +267,23 @@ export function registerAuthRoutes(app: Express): void {
     }
 
     res.json({ message: "Password reset successful" });
+  }));
+
+  app.post("/api/auth/logout", requireAuth, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const user = req.user!;
+    await AuthService.revokeToken(user);
+    res.clearCookie('auth_token', { path: '/' });
+    res.json({ message: "Logged out successfully" });
+  }));
+
+  app.post("/api/auth/logout-all", requireAuth, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const user = req.user!;
+    await AuthService.revokeToken(user);
+    await db.update(users)
+      .set({ tokenVersion: (user.tokenVersion ?? 1) + 1 })
+      .where(eq(users.id, user.userId));
+    res.clearCookie('auth_token', { path: '/' });
+    res.json({ message: "All sessions signed out" });
   }));
 
   app.get("/api/auth/me", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {

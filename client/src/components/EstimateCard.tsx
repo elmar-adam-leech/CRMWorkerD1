@@ -1,4 +1,5 @@
 import { memo, useState } from "react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -56,6 +57,8 @@ type EstimateCardProps = {
 export const EstimateCard = memo(function EstimateCard({ estimate, onSend: _onSend, onViewDetails, onConvertToJob: _onConvertToJob, onEdit, onContact: _onContact, onSendText, onSendEmail, onSetFollowUp, onDelete, onUpdateEstimate, selectable = false }: EstimateCardProps) {
   const { toggleItem, isSelected } = useBulkSelection();
   const { toast } = useToast();
+  const isMobile = useIsMobile();
+  const showSendButton = isMobile && estimate.status === "draft" && !!_onSend;
   const [tagsDialogOpen, setTagsDialogOpen] = useState(false);
   
   const { data: contact, isLoading: contactLoading } = useQuery<Contact>({
@@ -238,6 +241,18 @@ export const EstimateCard = memo(function EstimateCard({ estimate, onSend: _onSe
                 View Details
               </Button>
             </div>
+
+            {showSendButton && (
+              <Button
+                variant="default"
+                size="sm"
+                className="w-full"
+                onClick={() => _onSend!(estimate.id)}
+                data-testid={`button-send-estimate-${estimate.id}`}
+              >
+                Send Estimate
+              </Button>
+            )}
             
             {contact?.tags && contact.tags.length > 0 && (
               <div className="pt-2 border-t">

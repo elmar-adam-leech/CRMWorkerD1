@@ -26,7 +26,9 @@ The backend is built with Node.js and Express.js, providing a RESTful API with c
 - **Frontend**: React, TypeScript, Vite, Wouter, TanStack Query, Radix UI, Tailwind CSS.
 - **Backend**: Node.js, Express.js, PostgreSQL, Drizzle ORM, Zod.
 - **Real-time**: WebSocket-based architecture with reconnect/stale-data banner in DashboardLayout.
-- **Security**: HTTP-only cookies, role-based access control, AES-256-GCM encryption.
+- **Security**: HTTP-only cookies, role-based access control, AES-256-GCM encryption, JWT revocation via `revoked_tokens` table (per-token logout), `tokenVersion` on `users` (sign-out-all-devices protection for stolen phones).
+- **PWA**: `client/public/manifest.json` + meta tags in `index.html` — field techs can install to home screen with standalone display.
+- **Mobile UX**: Fixed bottom nav bar (`MobileBottomNav.tsx`) on ≤767px screens with Dashboard/Leads/Jobs/Messages/More; mobile-first page padding; responsive PageHeader stacking; mobile quick actions on Job and Estimate cards.
 
 ## Running TODO List
 See `TODO.md` at the repo root for the prioritized list of open improvements, security items, performance work, and technical debt. Update it whenever you find new issues or complete existing ones.

@@ -398,8 +398,8 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
           <div className="flex items-center gap-2">
             {isHousecallProConfigured && (
               <Button variant="outline" onClick={handleImportFromHousecallPro} data-testid="button-import-hcp-estimates">
-                <Download className="h-4 w-4 mr-2" />
-                Import from Housecall Pro
+                <Download className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Import from Housecall Pro</span>
               </Button>
             )}
             <Button onClick={handleAddEstimate} data-testid="button-add-estimate">

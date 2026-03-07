@@ -1,4 +1,5 @@
 import { memo, useState } from "react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -43,6 +44,11 @@ type JobCardProps = {
 export const JobCard = memo(function JobCard({ job, onStatusChange: _onStatusChange, onViewDetails, onEdit, onEditStatus, onUpdateJob, onDelete, selectable = false }: JobCardProps) {
   const { toggleItem, isSelected } = useBulkSelection();
   const { toast } = useToast();
+  const isMobile = useIsMobile();
+  const showMarkComplete = isMobile
+    && (job.status === "scheduled" || job.status === "in_progress")
+    && job.externalSource !== 'housecall-pro'
+    && !!_onStatusChange;
   const [tagsDialogOpen, setTagsDialogOpen] = useState(false);
   
   const { data: contact, isLoading: contactLoading } = useQuery<Contact>({
@@ -208,6 +214,18 @@ export const JobCard = memo(function JobCard({ job, onStatusChange: _onStatusCha
                 View Details
               </Button>
             </div>
+
+            {showMarkComplete && (
+              <Button
+                variant="default"
+                size="sm"
+                className="w-full"
+                onClick={() => _onStatusChange!(job.id, 'completed')}
+                data-testid={`button-mark-complete-${job.id}`}
+              >
+                Mark Complete
+              </Button>
+            )}
             
             {contact?.tags && contact.tags.length > 0 && (
               <div className="pt-2 border-t">

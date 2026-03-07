@@ -245,26 +245,31 @@ export function registerLeadWebhookRoutes(app: Express): void {
       console.log('[webhook-lead] Creating new lead record with data:', leadData);
       const newLead = await storage.createLead(leadData, contractorId);
       console.log(`[webhook-lead] ✓ Lead created successfully for contractor ${contractor.name}: ${newLead.id} (${isNewContact ? 'new contact' : 'existing contact'})`);
-      
-      const hcpIntegrationEnabled = await storage.isIntegrationEnabled(contractorId, 'housecall-pro');
-      if (hcpIntegrationEnabled) {
-        // FUTURE (scale): The following HCP API calls (searchCustomers → createCustomer → createLead)
-        // are executed synchronously inside the webhook HTTP handler. Each call to housecallProService
-        // adds ~300–800ms of network latency, so a worst-case new-lead flow can add 1.5–3s to the
-        // webhook response time. Most webhook senders (e.g. Zapier, Typeform) have short timeouts
-        // (typically 10–30s) so this is safe today, but will become fragile under load.
-        //
-        // Concrete migration path:
-        //   1. SHORT TERM: Return 200 immediately after `storage.createLead()` above. Move the
-        //      HCP sync block below into a `setImmediate()` or `process.nextTick()` callback so
-        //      it runs after the HTTP response is sent. This eliminates response-time coupling.
-        //   2. MEDIUM TERM: Move HCP sync into a durable background job queue (BullMQ + Redis).
-        //      Enqueue a job with the newLead.id, and let a worker process pick it up. This gives
-        //      you retries, dead-letter queues, and decoupled horizontal scaling of the sync worker.
-        //   3. LONG TERM: Implement a webhook-to-event bus pattern — the handler writes a raw event
-        //      to a stream (Redis Streams or SQS) and returns immediately. Downstream consumers
-        //      (HCP sync, email notification, CRM enrichment) each process the event independently.
+
+      // Respond immediately — HCP sync runs in the background via setImmediate so it
+      // cannot block or time out the webhook caller. See MEDIUM/LONG TERM migration notes
+      // in the original code comment for the path to a durable background queue.
+      res.status(201).json({
+        success: true,
+        message: isNewContact ? "Lead created with new contact" : "Lead created for existing contact",
+        leadId: newLead.id,
+        contactId: contactId,
+        isNewContact: isNewContact,
+        lead: {
+          id: newLead.id,
+          contactId: newLead.contactId,
+          status: newLead.status,
+          source: newLead.source,
+          createdAt: newLead.createdAt
+        }
+      });
+
+      // HCP sync is fire-and-forget — runs after the HTTP response is flushed.
+      setImmediate(async () => {
         try {
+          const hcpIntegrationEnabled = await storage.isIntegrationEnabled(contractorId, 'housecall-pro');
+          if (!hcpIntegrationEnabled) return;
+
           const contact = await storage.getContact(contactId, contractorId);
           if (contact && !contact.housecallProCustomerId) {
             const nameParts = contact.name.split(' ');
@@ -281,7 +286,6 @@ export function registerLeadWebhookRoutes(app: Express): void {
                 email: searchEmail,
                 phone: searchPhone
               });
-              
               if (searchResult.success && searchResult.data && searchResult.data.length > 0) {
                 hcpCustomerId = searchResult.data[0].id;
                 console.log('[HCP Sync] Found existing HCP customer:', hcpCustomerId);
@@ -297,12 +301,8 @@ export function registerLeadWebhookRoutes(app: Express): void {
                 mobile_number: searchPhone,
                 lead_source: source || 'Webhook',
                 notes: notes || undefined,
-                addresses: address ? [{
-                  street: address,
-                  type: 'service'
-                }] : undefined
+                addresses: address ? [{ street: address, type: 'service' }] : undefined
               });
-              
               if (hcpCustomerResult.success && hcpCustomerResult.data?.id) {
                 hcpCustomerId = hcpCustomerResult.data.id;
                 console.log('[HCP Sync] Created HCP customer:', hcpCustomerId);
@@ -312,21 +312,15 @@ export function registerLeadWebhookRoutes(app: Express): void {
             }
             
             if (hcpCustomerId) {
-              await storage.updateContact(contact.id, { 
-                housecallProCustomerId: hcpCustomerId 
-              }, contractorId);
+              await storage.updateContact(contact.id, { housecallProCustomerId: hcpCustomerId }, contractorId);
               console.log('[HCP Sync] Stored HCP customer ID:', hcpCustomerId, 'for contact:', contact.id);
-              
               const hcpLeadResult = await housecallProService.createLead(contractorId, {
                 customer_id: hcpCustomerId,
                 lead_source: source || 'Webhook',
                 note: notes || undefined
               });
-              
               if (hcpLeadResult.success && hcpLeadResult.data?.id) {
-                await storage.updateLead(newLead.id, { 
-                  housecallProLeadId: hcpLeadResult.data.id 
-                }, contractorId);
+                await storage.updateLead(newLead.id, { housecallProLeadId: hcpLeadResult.data.id }, contractorId);
                 console.log('[HCP Sync] Created HCP lead:', hcpLeadResult.data.id, 'for CRM lead:', newLead.id);
               } else {
                 console.warn('[HCP Sync] Failed to create HCP lead:', hcpLeadResult.error);
@@ -338,33 +332,15 @@ export function registerLeadWebhookRoutes(app: Express): void {
               lead_source: source || 'Webhook',
               note: notes || undefined
             });
-            
             if (hcpLeadResult.success && hcpLeadResult.data?.id) {
-              await storage.updateLead(newLead.id, { 
-                housecallProLeadId: hcpLeadResult.data.id 
-              }, contractorId);
+              await storage.updateLead(newLead.id, { housecallProLeadId: hcpLeadResult.data.id }, contractorId);
               console.log('[HCP Sync] Created HCP lead:', hcpLeadResult.data.id, 'for CRM lead:', newLead.id);
             } else {
               console.warn('[HCP Sync] Failed to create HCP lead:', hcpLeadResult.error);
             }
           }
         } catch (hcpError) {
-          console.error('[HCP Sync] Error syncing to HCP:', hcpError);
-        }
-      }
-      
-      res.status(201).json({
-        success: true,
-        message: isNewContact ? "Lead created with new contact" : "Lead created for existing contact",
-        leadId: newLead.id,
-        contactId: contactId,
-        isNewContact: isNewContact,
-        lead: {
-          id: newLead.id,
-          contactId: newLead.contactId,
-          status: newLead.status,
-          source: newLead.source,
-          createdAt: newLead.createdAt
+          console.error('[HCP Sync] Background sync error (lead not lost — already saved to CRM):', hcpError);
         }
       });
       

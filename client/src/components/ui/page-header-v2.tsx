@@ -18,7 +18,7 @@ export function PageHeader({
 }: PageHeaderProps) {
   return (
     <div className={cn("mb-6", className)}>
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-center gap-4">
           {icon && (
             <div className="flex h-14 w-14 items-center justify-center rounded-full bg-green-100 shrink-0 border-4 border-green-400 shadow-lg">
@@ -37,7 +37,7 @@ export function PageHeader({
           </div>
         </div>
         {actions && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap shrink-0">
             {actions}
           </div>
         )}
