@@ -6,3 +6,13 @@ vite.config.ts.*
 *.tar.gz
 attached_assets/
 TODO.md
+
+# Secrets and credentials — never commit these
+.env
+cookies.txt
+
+# Internal / Replit-specific files — not for public repos
+git-reset.sh
+replit.md
+design_guidelines.md
+GMAIL_TROUBLESHOOTING.md
