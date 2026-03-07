@@ -167,7 +167,8 @@ export function registerOAuthRoutes(app: Express): void {
       email: updatedUser.email,
       role: userContractor.role,
       contractorId: contractorId,
-      canManageIntegrations: userContractor.canManageIntegrations || false
+      canManageIntegrations: userContractor.canManageIntegrations || false,
+      tokenVersion: updatedUser.tokenVersion ?? 1,
     });
 
     res.cookie('auth_token', newToken, {
