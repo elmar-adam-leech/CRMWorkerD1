@@ -121,4 +121,13 @@ app.use((req, res, next) => {
   }, () => {
     log(`serving on port ${port}`);
   });
+
+  server.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      log(`Port ${port} is already in use — exiting so the runner can restart cleanly`);
+      process.exit(1);
+    } else {
+      throw err;
+    }
+  });
 })();

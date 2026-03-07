@@ -172,7 +172,7 @@ export default function Settings() {
       <div className="flex space-x-1 border-b mb-6 overflow-x-auto">
         {canManageIntegrations && tabBtn('integrations', 'Integrations', 'tab-integrations')}
         {tabBtn('account', 'Account', 'tab-account')}
-        {tabBtn('security', 'Security', 'tab-security')}
+        {isAdmin && tabBtn('security', 'Security', 'tab-security')}
         {isAdmin && tabBtn('targets', 'Performance Targets', 'tab-targets')}
         {tabBtn('webhooks', 'Webhooks', 'tab-webhooks')}
         {isAdmin && tabBtn('salespeople', 'Salespeople', 'tab-salespeople')}
@@ -194,7 +194,7 @@ export default function Settings() {
           usersLoading={usersLoading}
         />
       )}
-      {activeTab === 'security' && <SecurityTab />}
+      {activeTab === 'security' && isAdmin && <SecurityTab />}
       {activeTab === 'targets' && (
         <TargetsTab currentUser={currentUser} targetsLoading={targetsLoading} businessTargets={effectiveTargets} setBusinessTargets={setBusinessTargets} />
       )}

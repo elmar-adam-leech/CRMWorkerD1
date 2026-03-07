@@ -1,9 +1,9 @@
 import type { Express, Request, Response } from "express";
 import { storage } from "../storage";
-import { insertUserSchema, users, passwordResetTokens } from "@shared/schema";
+import { insertUserSchema, users, userContractors, passwordResetTokens } from "@shared/schema";
 import { db } from "../db";
-import { eq } from "drizzle-orm";
-import { AuthService, requireAuth, type AuthenticatedRequest } from "../auth-service";
+import { eq, inArray, sql } from "drizzle-orm";
+import { AuthService, requireAuth, requireAdmin, type AuthenticatedRequest } from "../auth-service";
 import bcrypt from "bcrypt";
 import { sendGridService } from "../sendgrid-service";
 import { authLoginRateLimiter, authRegisterRateLimiter, authForgotPasswordRateLimiter } from "../middleware/rate-limiter";
@@ -284,6 +284,28 @@ export function registerAuthRoutes(app: Express): void {
       .where(eq(users.id, user.userId));
     res.clearCookie('auth_token', { path: '/' });
     res.json({ message: "All sessions signed out" });
+  }));
+
+  app.post("/api/auth/logout-company", requireAuth, requireAdmin, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const { contractorId } = req.user!;
+    const companyMembers = await db
+      .select({ userId: userContractors.userId })
+      .from(userContractors)
+      .where(eq(userContractors.contractorId, contractorId));
+
+    if (companyMembers.length === 0) {
+      res.clearCookie('auth_token', { path: '/' });
+      res.json({ message: "No users found", count: 0 });
+      return;
+    }
+
+    const userIds = companyMembers.map((m) => m.userId);
+    await db.update(users)
+      .set({ tokenVersion: sql`token_version + 1` })
+      .where(inArray(users.id, userIds));
+
+    res.clearCookie('auth_token', { path: '/' });
+    res.json({ message: `All sessions signed out for ${userIds.length} user(s)`, count: userIds.length });
   }));
 
   app.get("/api/auth/me", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {

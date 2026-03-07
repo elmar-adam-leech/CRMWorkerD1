@@ -22,16 +22,20 @@ export function SecurityTab() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [isPending, setIsPending] = useState(false);
 
-  const handleLogoutAll = async () => {
+  const handleLogoutCompany = async () => {
     setIsPending(true);
     try {
-      await apiRequest("POST", "/api/auth/logout-all");
-      toast({ title: "Signed out of all devices", description: "All active sessions have been ended." });
+      const result = await apiRequest("POST", "/api/auth/logout-company");
+      const data = await result.json();
+      toast({
+        title: "All company users signed out",
+        description: data.message ?? "Every active session across your company has been ended.",
+      });
       setTimeout(() => setLocation("/login"), 800);
     } catch (err) {
       toast({
         title: "Error",
-        description: err instanceof Error ? err.message : "Failed to sign out all devices",
+        description: err instanceof Error ? err.message : "Failed to sign out company users",
         variant: "destructive",
       });
     } finally {
@@ -48,14 +52,14 @@ export function SecurityTab() {
             <Shield className="h-5 w-5" />
             Security Settings
           </CardTitle>
-          <CardDescription>Manage your security preferences and active sessions</CardDescription>
+          <CardDescription>Manage company-wide security controls</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
-              <p className="text-sm font-medium">Sign out of all devices</p>
+              <p className="text-sm font-medium">Sign out all company users</p>
               <p className="text-sm text-muted-foreground">
-                Immediately ends every active session on all your devices. Use this if your phone was stolen or you suspect unauthorized access.
+                Immediately ends every active session for all users in your company. Use this if you suspect unauthorized access or a security breach.
               </p>
             </div>
             <Button
@@ -65,7 +69,7 @@ export function SecurityTab() {
               data-testid="button-logout-all"
             >
               <LogOut className="h-4 w-4 mr-2" />
-              Sign out all devices
+              Sign out all users
             </Button>
           </div>
         </CardContent>
@@ -74,20 +78,20 @@ export function SecurityTab() {
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Sign out of all devices?</AlertDialogTitle>
+            <AlertDialogTitle>Sign out all company users?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will immediately end all active sessions on every device — including this one. You will be redirected to the login page.
+              This will immediately end all active sessions for every user in your company — including yours. Everyone will be redirected to the login page. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isPending}>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={handleLogoutAll}
+              onClick={handleLogoutCompany}
               disabled={isPending}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               data-testid="button-confirm-logout-all"
             >
-              {isPending ? "Signing out..." : "Sign out all devices"}
+              {isPending ? "Signing out..." : "Sign out all users"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
