@@ -401,6 +401,23 @@ export function registerMessagingRoutes(app: Express): void {
     res.json({ count });
   }));
 
+  app.post("/api/calls/log-personal", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const { contactId, phone, name } = req.body as { contactId?: string; phone?: string; name?: string };
+    if (!phone) {
+      res.status(400).json({ message: "phone is required" });
+      return;
+    }
+    const label = name ? `${name} (${phone})` : phone;
+    await storage.createActivity({
+      contractorId: req.user!.contractorId,
+      userId: req.user!.userId,
+      contactId: contactId || null,
+      type: "call",
+      description: `Outbound call to ${label} via personal phone`,
+    });
+    res.json({ success: true });
+  }));
+
   app.get("/api/providers", asyncHandler(async (req, res) => {
     const tenantProviders = await storage.getTenantProviders(req.user!.contractorId);
     const availableProviders = {

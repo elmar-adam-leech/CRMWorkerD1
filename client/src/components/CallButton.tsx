@@ -7,6 +7,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useState } from "react";
 import { CallingModal } from "./CallingModal";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { logPersonalCall } from "@/lib/logPersonalCall";
 
 interface CallButtonProps {
   recipientName: string;
@@ -87,6 +88,8 @@ export function CallButton({
 
     // If user prefers their personal phone, always open device dialer
     if (usePersonal) {
+      logPersonalCall({ contactId: customerId || leadId, phone: cleanPhoneNumber, name: recipientName });
+      queryClient.invalidateQueries({ queryKey: ['/api/activities'] });
       window.location.href = `tel:${cleanPhoneNumber}`;
       return;
     }
@@ -106,6 +109,8 @@ export function CallButton({
       }
     } else {
       // No integration configured — fall back to tel: link
+      logPersonalCall({ contactId: customerId || leadId, phone: cleanPhoneNumber, name: recipientName });
+      queryClient.invalidateQueries({ queryKey: ['/api/activities'] });
       window.location.href = `tel:${cleanPhoneNumber}`;
     }
   };

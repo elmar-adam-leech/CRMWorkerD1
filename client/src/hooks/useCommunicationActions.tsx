@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { logPersonalCall } from "@/lib/logPersonalCall";
 
 export interface CommunicationEntity {
   id: string;
@@ -99,6 +100,7 @@ export function useCommunicationActions() {
     
     if (method === "phone") {
       if (entityPhone) {
+        logPersonalCall({ contactId: entity.id, phone: entityPhone, name: entity.name || entity.customerName || undefined });
         window.location.href = `tel:${entityPhone}`;
       } else {
         console.log("No phone number available for this entity");
