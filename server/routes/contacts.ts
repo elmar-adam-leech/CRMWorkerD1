@@ -81,15 +81,6 @@ export function registerContactRoutes(app: Express): void {
     res.send(csvTemplate);
   }));
 
-  app.get("/api/contacts/:id", asyncHandler(async (req, res) => {
-    const contact = await storage.getContact(req.params.id, req.user!.contractorId);
-    if (!contact) {
-      res.status(404).json({ message: "Contact not found" });
-      return;
-    }
-    res.json(contact);
-  }));
-
   app.get("/api/contacts/with-counts", asyncHandler(async (req, res) => {
     const { search, cursor, limit } = req.query;
     const result = await storage.getContactsWithCounts(req.user!.contractorId, {
@@ -98,6 +89,15 @@ export function registerContactRoutes(app: Express): void {
       limit: limit ? parseInt(limit as string, 10) : 50,
     });
     res.json(result);
+  }));
+
+  app.get("/api/contacts/:id", asyncHandler(async (req, res) => {
+    const contact = await storage.getContact(req.params.id, req.user!.contractorId);
+    if (!contact) {
+      res.status(404).json({ message: "Contact not found" });
+      return;
+    }
+    res.json(contact);
   }));
 
   app.get("/api/contacts/:contactId/leads", asyncHandler(async (req, res) => {
