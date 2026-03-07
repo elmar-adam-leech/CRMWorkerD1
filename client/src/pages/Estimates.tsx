@@ -394,7 +394,6 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
       <PageHeader
         title={terminology?.estimatesLabel || "Estimates"}
         description="Create and manage estimates for potential jobs"
-        icon={<Calendar className="h-6 w-6" />}
         actions={
           <div className="flex items-center gap-2">
             {isHousecallProConfigured && (

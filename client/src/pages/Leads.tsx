@@ -317,7 +317,6 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
       <PageHeader
         title={terminology?.leadsLabel || "Leads"}
         description="Manage and track potential customers and sales opportunities"
-        icon={<Users className="h-6 w-6" />}
         actions={
           <Button onClick={() => setAddContactModal(true)} data-testid="button-add-lead">
             <Plus className="h-4 w-4 mr-2" />

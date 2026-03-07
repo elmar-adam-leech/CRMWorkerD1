@@ -167,7 +167,7 @@ export default function Settings() {
 
   return (
     <PageLayout>
-      <PageHeader title="Settings" description="Configure integrations, manage users, and set business targets" icon={<SettingsIcon className="h-6 w-6" />} />
+      <PageHeader title="Settings" description="Configure integrations, manage users, and set business targets" />
 
       <div className="flex space-x-1 border-b mb-6">
         {canManageIntegrations && tabBtn('integrations', 'Integrations', 'tab-integrations')}

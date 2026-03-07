@@ -338,7 +338,6 @@ export default function FollowUps() {
       <PageHeader
         title="Follow-ups"
         description="Leads and estimates that need follow-up, sorted by date"
-        icon={<Clock className="h-6 w-6" />}
         actions={
           <div className="flex items-center gap-2">
           <Select value={filterView} onValueChange={setFilterView} data-testid="select-filter-view">

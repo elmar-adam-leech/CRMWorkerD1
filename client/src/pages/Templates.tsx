@@ -211,7 +211,6 @@ export default function Templates() {
       <PageHeader
         title="Templates"
         description="Manage your text and email templates"
-        icon={<FileText className="h-6 w-6" />}
         actions={
           <Button 
             onClick={() => handleOpenModal("create")}

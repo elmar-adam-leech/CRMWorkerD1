@@ -222,7 +222,6 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
       <PageHeader
         title={jobsLabel}
         description="Track and manage all your service jobs and installations"
-        icon={<Briefcase className="h-6 w-6" />}
         actions={
           <div className="flex items-center gap-2">
             {isHousecallProConfigured && (

@@ -208,7 +208,6 @@ export default function Messages() {
       <PageHeader 
         title="Messages" 
         description="Unified communications hub for all customer interactions"
-        icon={<MessageSquare className="h-6 w-6" />}
       />
 
       {/* Search and Filters */}
