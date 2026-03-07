@@ -2,6 +2,8 @@ import type { Express, Response } from "express";
 import { storage } from "../storage";
 import type { AuthedRequest } from "../auth-service";
 import { asyncHandler } from "../utils/async-handler";
+import { z } from "zod";
+import { placesRateLimiter } from "../middleware/rate-limiter";
 
 // Minimal types for the Google Places API v1 responses used in this file.
 // Only fields actually consumed by the handlers are listed. See:
@@ -16,9 +18,20 @@ interface GooglePlacesDetailsResponse {
   error?: { message: string; status: string };
 }
 
+// Zod schema for the dashboard metrics query params.
+// Validates timeframe and custom date range values before any Date construction,
+// preventing silent NaN dates or 500 errors from malformed query strings.
+const dashboardMetricsQuerySchema = z.object({
+  timeframe: z.enum(['this_week', 'this_month', 'this_year', 'custom', 'all_time']).optional(),
+  startDate: z.string().datetime({ offset: true }).optional().or(z.string().date().optional()),
+  endDate: z.string().datetime({ offset: true }).optional().or(z.string().date().optional()),
+});
+
 export function registerDashboardRoutes(app: Express): void {
-  // Google Places API proxy — authenticated, server-side calls bypass browser referrer restrictions
-  app.get('/api/places/autocomplete', asyncHandler(async (req: AuthedRequest, res: Response) => {
+  // Google Places API proxy — authenticated, server-side calls bypass browser referrer restrictions.
+  // `placesRateLimiter` enforces a per-IP limit of 30 req/min (stricter than the 300 req/min global
+  // apiRateLimiter) because each call here consumes a paid Google API quota slot.
+  app.get('/api/places/autocomplete', placesRateLimiter, asyncHandler(async (req: AuthedRequest, res: Response) => {
     const { input } = req.query as { input?: string };
     if (!input || input.trim().length < 3) {
       res.json({ suggestions: [] });
@@ -51,7 +64,7 @@ export function registerDashboardRoutes(app: Express): void {
     res.json({ suggestions: data.suggestions || [] });
   }));
 
-  app.get('/api/places/details', asyncHandler(async (req: AuthedRequest, res: Response) => {
+  app.get('/api/places/details', placesRateLimiter, asyncHandler(async (req: AuthedRequest, res: Response) => {
     const { placeId } = req.query as { placeId?: string };
     if (!placeId) {
       res.status(400).json({ error: 'placeId is required' });
@@ -84,7 +97,12 @@ export function registerDashboardRoutes(app: Express): void {
 
   // Dashboard metrics route
   app.get("/api/dashboard/metrics", asyncHandler(async (req: AuthedRequest, res: Response) => {
-    const { timeframe, startDate, endDate } = req.query;
+    const parsed = dashboardMetricsQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Invalid query parameters" });
+      return;
+    }
+    const { timeframe, startDate, endDate } = parsed.data;
 
     let start: Date | undefined;
     let end: Date | undefined;
@@ -107,9 +125,9 @@ export function registerDashboardRoutes(app: Express): void {
       start.setHours(0, 0, 0, 0);
       end = now;
     } else if (timeframe === 'custom' && startDate && endDate) {
-      start = new Date(startDate as string);
+      start = new Date(startDate);
       start.setHours(0, 0, 0, 0);
-      end = new Date(endDate as string);
+      end = new Date(endDate);
       end.setHours(23, 59, 59, 999);
     }
 

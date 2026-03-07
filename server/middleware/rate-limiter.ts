@@ -150,3 +150,14 @@ export const apiRateLimiter = createRateLimiter({
   maxRequests: 300,
   keyPrefix: 'api',
 });
+
+// Stricter limiter for the Google Places API proxy routes (/api/places/*).
+// These routes are authenticated but each request consumes a paid Google API
+// quota slot. Without a tighter limit, a single user with a leaked session
+// token could exhaust the server's Google API quota for everyone.
+// 30 requests/min is generous for real autocomplete-as-you-type usage.
+export const placesRateLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  maxRequests: 30,
+  keyPrefix: 'places',
+});

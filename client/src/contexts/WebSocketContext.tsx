@@ -50,9 +50,13 @@
  */
 import { createContext, useContext, useEffect, useRef, useState, useCallback, ReactNode } from 'react';
 
-interface WebSocketMessage {
+export interface WebSocketMessage {
   type: string;
-  data?: any;
+  data?: unknown;
+  // Optional fields sent on message-related events (new_message, message_update, etc.)
+  contactId?: string;
+  contactType?: string;
+  [key: string]: unknown;
 }
 
 type MessageCallback = (message: WebSocketMessage) => void;

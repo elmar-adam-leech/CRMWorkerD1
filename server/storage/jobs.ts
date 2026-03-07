@@ -1,11 +1,12 @@
 import {
   type Job, type InsertJob,
-  jobs, contacts, leads, estimates, messages, calls,
+  jobs, contacts, messages, calls,
   jobStatusEnum,
 } from "@shared/schema";
 import { db } from "../db";
 import { eq, and, or, desc, lte, ilike, sql, count } from "drizzle-orm";
 import type { UpdateJob } from "../storage-types";
+import { maybeDeleteOrphanContact } from "./contacts";
 
 type PaginatedJobs = {
   data: Record<string, unknown>[];
@@ -170,14 +171,7 @@ async function deleteJob(id: string, contractorId: string): Promise<boolean> {
   if (result.length === 0) return false;
 
   if (contactId) {
-    const [remainingLeads, remainingEstimates, remainingJobs] = await Promise.all([
-      db.select({ id: leads.id }).from(leads).where(and(eq(leads.contactId, contactId), eq(leads.contractorId, contractorId))).limit(1),
-      db.select({ id: estimates.id }).from(estimates).where(and(eq(estimates.contactId, contactId), eq(estimates.contractorId, contractorId))).limit(1),
-      db.select({ id: jobs.id }).from(jobs).where(and(eq(jobs.contactId, contactId), eq(jobs.contractorId, contractorId))).limit(1),
-    ]);
-    if (remainingLeads.length === 0 && remainingEstimates.length === 0 && remainingJobs.length === 0) {
-      await deleteContactFull(contactId, contractorId);
-    }
+    await maybeDeleteOrphanContact(contactId, contractorId);
   }
 
   return true;

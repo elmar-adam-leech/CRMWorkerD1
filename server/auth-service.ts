@@ -174,6 +174,11 @@ export class AuthService {
     if (!decoded.iat) return false;
     
     const tokenAge = Date.now() / 1000 - decoded.iat; // Age in seconds
+    // 50% threshold chosen to balance UX against security. At 50% of a 7-day token
+    // (≥3.5 days), active users always have a fresh token without needing to re-login,
+    // while inactive users whose last request was >7 days ago are naturally logged out.
+    // Lowering this (e.g. 25%) increases token refresh DB writes; raising it (e.g. 75%)
+    // reduces write load but shortens the effective "active session" window.
     const halfLifeSeconds = (7 * 24 * 60 * 60) / 2; // 3.5 days in seconds
     
     return tokenAge > halfLifeSeconds;
@@ -197,7 +202,12 @@ export class AuthService {
         return;
       }
 
-      // Check if token has been explicitly revoked (e.g., via logout)
+      // Check if token has been explicitly revoked (e.g., via logout).
+      // This issues a DB query on every authenticated request. At 10x load, consider
+      // moving revoked JTIs to a Redis SET for O(1) membership checks rather than a
+      // SQL SELECT. The existing `cleanupExpiredRevokedTokens` hourly job keeps the
+      // table small for now, but Redis becomes necessary when request volume is high.
+      // TODO: At scale, move revoked token lookups to Redis (O(1) SET membership).
       if (decoded.jti) {
         const revoked = await db.select({ jti: revokedTokens.jti })
           .from(revokedTokens)

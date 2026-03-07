@@ -25,6 +25,10 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
   emailIdx: index("users_email_idx").on(table.email),
+  // Functional index for case-insensitive email lookups used by getUserByEmail().
+  // Without this, lower(email) calls bypass the standard B-tree emailIdx above,
+  // causing full table scans on every login and invitation lookup.
+  emailLowerIdx: index("users_email_lower_idx").on(sql`lower(${table.email})`),
   // Index for session-based tenant resolution (users.contractorId tracks the active session tenant)
   contractorIdIdx: index("users_contractor_id_idx").on(table.contractorId),
 }));
@@ -73,6 +77,13 @@ export type UserContractor = typeof userContractors.$inferSelect;
 // Revoked tokens table — used by the logout handler to invalidate individual JWTs before
 // their natural expiry. The requireAuth middleware queries this table on every request.
 // Rows are cleaned up hourly by a setInterval in server/index.ts once they expire.
+//
+// Scaling concern: a SELECT on this table fires for every authenticated API request. At
+// low-to-medium traffic the small table size (bounded by token TTL + hourly cleanup) keeps
+// this fast, but at high request rates (>10x current load) this becomes a hot spot. The
+// standard fix is to store revoked JTIs in a Redis SET and replace the DB query with a
+// single O(1) SISMEMBER call. See the auth-service.ts middleware for the exact call site.
+// TODO: At scale, move revoked token lookups to Redis (O(1) SET membership).
 export const revokedTokens = pgTable("revoked_tokens", {
   jti: varchar("jti").primaryKey(), // JWT ID claim — uniquely identifies the token
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),

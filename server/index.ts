@@ -80,6 +80,14 @@ app.use((req, res, next) => {
   setInterval(() => {
     AuthService.cleanupExpiredRevokedTokens();
   }, 60 * 60 * 1000);
+
+  // TODO: Implement a scheduled cleanup job to archive/delete processed webhook_events
+  // older than N days. The webhook_events table grows without bound as every incoming
+  // Dialpad/HCP event is persisted. At high write volumes the multiple B-tree indexes
+  // on that table will degrade write throughput. A daily DELETE of rows where
+  // processed=true AND created_at < NOW() - INTERVAL 'N days' (using the
+  // processedCreatedAtIdx composite index) is the recommended fix.
+  // See: shared/schema/messages.ts webhookEvents table for the target index.
   
   const server = await registerRoutes(app);
 

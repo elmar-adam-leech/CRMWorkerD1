@@ -232,7 +232,7 @@ export class DialpadEnhancedService {
   async syncUsers(contractorId: string): Promise<{ 
     fetched: number;
     synced: number; 
-    users: any[];
+    users: unknown[];
     errors: string[];
   }> {
     const errors: string[] = [];
@@ -241,7 +241,7 @@ export class DialpadEnhancedService {
     try {
       // Fetch users from Dialpad
       const dialpadUsers = await this.fetchDialpadUsers(contractorId);
-      const users: any[] = [];
+      const users: unknown[] = [];
       const totalFetched = dialpadUsers.length;
 
       for (const dialpadUser of dialpadUsers) {
@@ -262,7 +262,7 @@ export class DialpadEnhancedService {
 
           // Insert or update user
           const existing = await storage.getDialpadUserByDialpadId(dialpadUser.id, contractorId);
-          let user: any;
+          let user;
           
           if (existing) {
             user = await storage.updateDialpadUser(existing.id, {
@@ -292,7 +292,7 @@ export class DialpadEnhancedService {
   async syncDepartments(contractorId: string): Promise<{ 
     fetched: number;
     synced: number; 
-    departments: any[];
+    departments: unknown[];
     errors: string[];
   }> {
     const errors: string[] = [];
@@ -301,7 +301,7 @@ export class DialpadEnhancedService {
     try {
       // Fetch departments from Dialpad
       const dialpadDepartments = await this.dialpadService.getDepartments(contractorId);
-      const departments: any[] = [];
+      const departments: unknown[] = [];
       const totalFetched = dialpadDepartments.length;
 
       for (const dialpadDepartment of dialpadDepartments) {

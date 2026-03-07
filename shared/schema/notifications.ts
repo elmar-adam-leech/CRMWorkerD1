@@ -21,9 +21,12 @@ export const notifications = pgTable("notifications", {
   // Index for fetching user's notifications
   userIdIdx: index("notifications_user_id_idx").on(table.userId),
   contractorIdIdx: index("notifications_contractor_id_idx").on(table.contractorId),
-  // Composite index for unread notifications query
+  // Composite index for unread notifications query (userId, read)
   userUnreadIdx: index("notifications_user_unread_idx").on(table.userId, table.read),
   createdAtIdx: index("notifications_created_at_idx").on(table.createdAt),
+  // Covering composite index for getUnreadNotifications() which filters by
+  // (user_id, contractor_id, read) and orders by created_at in a single scan.
+  userContractorUnreadCreatedIdx: index("notifications_user_contractor_unread_created_idx").on(table.userId, table.contractorId, table.read, table.createdAt),
 }));
 
 export const insertNotificationSchema = createInsertSchema(notifications).omit({

@@ -55,12 +55,15 @@ export function AddressAutocomplete({
       );
       if (!resp.ok) return;
       const data = await resp.json();
-      const mapped = (data.suggestions || [])
-        .map((s: any) => ({
+      interface PlaceSuggestion {
+        placePrediction?: { placeId?: string; text?: { text?: string } };
+      }
+      const mapped = (data.suggestions as PlaceSuggestion[] || [])
+        .map((s) => ({
           placeId: s.placePrediction?.placeId || "",
           text: s.placePrediction?.text?.text || "",
         }))
-        .filter((s: any) => s.placeId && s.text);
+        .filter((s) => s.placeId && s.text);
       setSuggestions(mapped);
       setShowDropdown(mapped.length > 0);
     } catch (e) {

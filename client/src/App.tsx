@@ -107,8 +107,19 @@ function AppInner() {
   const { showRefreshBanner, handleRefresh, handleDismiss } = useAppVersion();
 
   // User contractors - fetched from API once the user is known
-  const [userContractors, setUserContractors] = useState<any[]>([]);
-  const [currentContractor, setCurrentContractor] = useState<any | null>(null);
+  interface ContractorMembership {
+    contractorId: string;
+    role: string;
+    contractor: { id: string; name: string; domain: string };
+  }
+  interface ActiveContractor {
+    id: string;
+    name: string;
+    domain: string;
+    role: string;
+  }
+  const [userContractors, setUserContractors] = useState<ContractorMembership[]>([]);
+  const [currentContractor, setCurrentContractor] = useState<ActiveContractor | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -122,7 +133,7 @@ function AppInner() {
           const contractorData = await response.json();
           setUserContractors(contractorData);
           if (contractorData.length > 0 && user.contractorId) {
-            const current = contractorData.find((c: any) => c.contractorId === user.contractorId);
+            const current = contractorData.find((c: ContractorMembership) => c.contractorId === user.contractorId);
             if (current) {
               setCurrentContractor({
                 id: current.contractor.id,
@@ -188,7 +199,7 @@ function AppInner() {
     }
   };
 
-  const handleContractorChange = async (contractor: any) => {
+  const handleContractorChange = async (contractor: ActiveContractor) => {
     try {
       const response = await fetch('/api/user/switch-contractor', {
         method: 'POST',

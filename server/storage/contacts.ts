@@ -507,15 +507,7 @@ async function deleteLead(id: string, contractorId: string): Promise<boolean> {
   if ((result.rowCount ?? 0) === 0) return false;
 
   if (contactId) {
-    // If the contact has no remaining leads, estimates, or jobs, delete the contact too
-    const [remainingLeads, remainingEstimates, remainingJobs] = await Promise.all([
-      db.select({ id: leads.id }).from(leads).where(and(eq(leads.contactId, contactId), eq(leads.contractorId, contractorId))).limit(1),
-      db.select({ id: estimates.id }).from(estimates).where(and(eq(estimates.contactId, contactId), eq(estimates.contractorId, contractorId))).limit(1),
-      db.select({ id: jobs.id }).from(jobs).where(and(eq(jobs.contactId, contactId), eq(jobs.contractorId, contractorId))).limit(1),
-    ]);
-    if (remainingLeads.length === 0 && remainingEstimates.length === 0 && remainingJobs.length === 0) {
-      await deleteContact(contactId, contractorId);
-    }
+    await maybeDeleteOrphanContact(contactId, contractorId);
   }
 
   return true;
@@ -631,6 +623,27 @@ async function getContactsWithCounts(contractorId: string, options: {
     data: data as Array<Contact & { leadCount: number; estimateCount: number; jobCount: number }>,
     pagination: { total: totalResult[0]?.count ?? 0, hasMore, nextCursor },
   };
+}
+
+/**
+ * Checks whether a contact has any remaining linked entities (leads, estimates, jobs).
+ * If none remain, hard-deletes the contact and all its associated records.
+ *
+ * This is a shared helper used by deleteLead, deleteJob, and deleteEstimate to avoid
+ * duplicating the three-query orphan check across all three delete paths.
+ * Previously each delete path ran 3 separate EXISTS queries independently.
+ *
+ * Exported so jobs.ts and estimates.ts can call it after their own delete operations.
+ */
+export async function maybeDeleteOrphanContact(contactId: string, contractorId: string): Promise<void> {
+  const [remainingLeads, remainingEstimates, remainingJobs] = await Promise.all([
+    db.select({ id: leads.id }).from(leads).where(and(eq(leads.contactId, contactId), eq(leads.contractorId, contractorId))).limit(1),
+    db.select({ id: estimates.id }).from(estimates).where(and(eq(estimates.contactId, contactId), eq(estimates.contractorId, contractorId))).limit(1),
+    db.select({ id: jobs.id }).from(jobs).where(and(eq(jobs.contactId, contactId), eq(jobs.contractorId, contractorId))).limit(1),
+  ]);
+  if (remainingLeads.length === 0 && remainingEstimates.length === 0 && remainingJobs.length === 0) {
+    await deleteContact(contactId, contractorId);
+  }
 }
 
 export const contactMethods = {

@@ -280,7 +280,10 @@ export class WorkflowEngine {
 
         default:
           log.warn(`Unknown action type: ${step.actionType}`);
-          return { success: true };
+          // Return failure so the execution is logged as failed rather than silently
+          // succeeding. A misconfigured step should not be treated as a success because
+          // downstream steps may depend on this step's output.
+          return { success: false, error: `Unknown action type: ${step.actionType}` };
       }
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
@@ -333,14 +336,19 @@ export class WorkflowEngine {
   }
 
   /**
-   * Update entity status after sending communication
+   * Update entity status after sending communication.
+   *
+   * Returns true on success, false if the storage call throws. Callers
+   * receive the result so they can decide whether to surface the failure.
+   * Previously this returned void and swallowed errors silently, which
+   * allowed a failed status update to appear as a workflow success.
    */
   private async updateEntityStatus(
     entityType: string,
     entityId: string,
     status: string,
     contractorId: string
-  ): Promise<void> {
+  ): Promise<boolean> {
     try {
       switch (entityType) {
         case 'lead':
@@ -354,10 +362,12 @@ export class WorkflowEngine {
           break;
         default:
           log.warn(`Unknown entity type for status update: ${entityType}`);
+          return false;
       }
+      return true;
     } catch (error) {
       log.error(`Error updating ${entityType} status`, error);
-      // Don't throw - status update failure shouldn't fail the whole workflow
+      return false;
     }
   }
 

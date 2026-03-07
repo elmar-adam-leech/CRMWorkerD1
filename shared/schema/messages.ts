@@ -79,7 +79,15 @@ export const insertWebhookSchema = createInsertSchema(webhooks).omit({
 export type InsertWebhook = z.infer<typeof insertWebhookSchema>;
 export type Webhook = typeof webhooks.$inferSelect;
 
-// Webhook events table for logging all webhook events received
+// Webhook events table for logging all webhook events received.
+//
+// Growth concern: this table accumulates every incoming webhook event indefinitely. At
+// 10x write volume (high Dialpad/HCP traffic) the GIN indexes on `payload` and the
+// multiple B-tree indexes will degrade write throughput significantly. The standard
+// approach is a scheduled job that archives or hard-deletes processed rows older than
+// N days (e.g. 30 days). The `processedCreatedAtIdx` composite index is designed to
+// make that DELETE efficient (index-only scan on processed + createdAt).
+// TODO: Implement a scheduled cleanup job to archive/delete processed webhook_events older than N days.
 export const webhookEvents = pgTable("webhook_events", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   webhookId: varchar("webhook_id").references(() => webhooks.id),

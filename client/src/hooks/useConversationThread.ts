@@ -65,7 +65,7 @@ export function useConversationThread({
   useEffect(() => {
     if (!enabled || !contactId) return;
 
-    const unsubscribe = subscribe((message: any) => {
+    const unsubscribe = subscribe((message) => {
       if (
         message.type === 'new_message' ||
         message.type === 'message_update' ||

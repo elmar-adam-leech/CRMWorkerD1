@@ -5,18 +5,38 @@ import { storage } from "../storage";
 import { insertActivitySchema } from "@shared/schema";
 import { requireManagerOrAdmin } from "../auth-service";
 import { broadcastToContractor } from "../websocket";
+import { z } from "zod";
+
+// Zod schema for the GET /api/activities query parameters.
+// Previously these were manually cast with parseInt/as-string, which silently
+// produced NaN for non-numeric limit/offset values.
+const activitiesQuerySchema = z.object({
+  contactId:  z.string().optional(),
+  leadId:     z.string().optional(),
+  customerId: z.string().optional(),
+  estimateId: z.string().optional(),
+  jobId:      z.string().optional(),
+  type:       z.enum(['note', 'call', 'email', 'sms', 'meeting', 'follow_up', 'status_change']).optional(),
+  limit:      z.coerce.number().int().min(1).max(500).optional(),
+  offset:     z.coerce.number().int().min(0).optional(),
+});
 
 export function registerActivityRoutes(app: Express): void {
   app.get("/api/activities", asyncHandler(async (req, res) => {
-    const { contactId, leadId, customerId, estimateId, jobId, type, limit, offset } = req.query;
+    const parsed = activitiesQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Invalid query parameters" });
+      return;
+    }
+    const { contactId, leadId, customerId, estimateId, jobId, type, limit, offset } = parsed.data;
     const resolvedContactId = contactId || leadId || customerId;
     const activities = await storage.getActivities(req.user.contractorId, {
-      contactId: resolvedContactId as string,
-      estimateId: estimateId as string,
-      jobId: jobId as string,
-      type: type as 'note' | 'call' | 'email' | 'sms' | 'meeting' | 'follow_up' | 'status_change' | undefined,
-      limit: limit ? parseInt(limit as string) : undefined,
-      offset: offset ? parseInt(offset as string) : undefined,
+      contactId: resolvedContactId,
+      estimateId,
+      jobId,
+      type,
+      limit,
+      offset,
     });
     res.json(activities);
   }));
