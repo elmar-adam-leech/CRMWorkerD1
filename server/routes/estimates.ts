@@ -15,7 +15,7 @@ const log = logger('EstimateRoutes');
 
 export function registerEstimateRoutes(app: Express): void {
   app.get("/api/estimates", asyncHandler(async (req, res) => {
-    const estimates = await storage.getEstimates(req.user!.contractorId);
+    const estimates = await storage.getEstimates(req.user.contractorId);
     res.json(estimates);
   }));
 
@@ -24,24 +24,24 @@ export function registerEstimateRoutes(app: Express): void {
     const limit = parseInt(req.query.limit as string) || 50;
     const status = req.query.status as string;
     const search = req.query.search as string;
-    const result = await storage.getEstimatesPaginated(req.user!.contractorId, { cursor, limit, status, search });
+    const result = await storage.getEstimatesPaginated(req.user.contractorId, { cursor, limit, status, search });
     res.json(result);
   }));
 
   app.get("/api/estimates/status-counts", asyncHandler(async (req, res) => {
     const search = req.query.search as string;
-    const counts = await storage.getEstimatesStatusCounts(req.user!.contractorId, { search });
+    const counts = await storage.getEstimatesStatusCounts(req.user.contractorId, { search });
     res.json(counts);
   }));
 
   app.get("/api/estimates/follow-ups", asyncHandler(async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit as string) || 200, 500);
-    const estimatesList = await storage.getEstimatesWithFollowUp(req.user!.contractorId, limit);
+    const estimatesList = await storage.getEstimatesWithFollowUp(req.user.contractorId, limit);
     res.json(estimatesList);
   }));
 
   app.get("/api/estimates/:id", asyncHandler(async (req, res) => {
-    const estimate = await storage.getEstimate(req.params.id, req.user!.contractorId);
+    const estimate = await storage.getEstimate(req.params.id, req.user.contractorId);
     if (!estimate) {
       res.status(404).json({ message: "Estimate not found" });
       return;
@@ -63,7 +63,7 @@ export function registerEstimateRoutes(app: Express): void {
     if (!estimateData) return;
     let estimate: Awaited<ReturnType<typeof storage.createEstimate>>;
     try {
-      estimate = await storage.createEstimate(estimateData, req.user!.contractorId);
+      estimate = await storage.createEstimate(estimateData, req.user.contractorId);
     } catch (err) {
       if (err instanceof Error && err.message.includes('Customer not found')) {
         res.status(400).json({ message: err.message });
@@ -72,10 +72,10 @@ export function registerEstimateRoutes(app: Express): void {
       throw err;
     }
 
-    const hcpEnabled = await storage.isIntegrationEnabled(req.user!.contractorId, 'housecall-pro');
+    const hcpEnabled = await storage.isIntegrationEnabled(req.user.contractorId, 'housecall-pro');
     if (hcpEnabled && estimate.contactId) {
       try {
-        const contact = await storage.getContact(estimate.contactId, req.user!.contractorId);
+        const contact = await storage.getContact(estimate.contactId, req.user.contractorId);
         if (contact) {
           let hcpCustomerId: string | undefined = contact.externalId || contact.housecallProCustomerId || undefined;
 
@@ -85,7 +85,7 @@ export function registerEstimateRoutes(app: Express): void {
 
             if (contactEmail || contactPhone) {
               const searchResult = await housecallProService.searchCustomers(
-                req.user!.contractorId,
+                req.user.contractorId,
                 { email: contactEmail, phone: contactPhone }
               );
               if (searchResult.success && searchResult.data && searchResult.data.length > 0) {
@@ -96,7 +96,7 @@ export function registerEstimateRoutes(app: Express): void {
             if (!hcpCustomerId) {
               const nameParts = contact.name.split(' ');
               const customerResult = await housecallProService.createCustomer(
-                req.user!.contractorId,
+                req.user.contractorId,
                 {
                   first_name: nameParts[0] || contact.name,
                   last_name: nameParts.slice(1).join(' ') || '',
@@ -113,7 +113,7 @@ export function registerEstimateRoutes(app: Express): void {
               await storage.updateContact(
                 contact.id,
                 { externalId: hcpCustomerId, externalSource: 'housecall-pro', housecallProCustomerId: hcpCustomerId },
-                req.user!.contractorId
+                req.user.contractorId
               );
             }
           }
@@ -133,7 +133,7 @@ export function registerEstimateRoutes(app: Express): void {
 
           if (hcpCustomerId) {
             const hcpResult = await housecallProService.createEstimate(
-              req.user!.contractorId,
+              req.user.contractorId,
               {
                 customer_id: hcpCustomerId,
                 message: estimate.description || undefined,
@@ -149,7 +149,7 @@ export function registerEstimateRoutes(app: Express): void {
               estimate = await storage.updateEstimate(
                 estimate.id,
                 { externalId: hcpResult.data.id, externalSource: 'housecall-pro' },
-                req.user!.contractorId
+                req.user.contractorId
               ) ?? estimate;
               log.info(`Created HCP estimate: ${hcpResult.data.id} for estimate: ${estimate.id}`);
             } else {
@@ -162,15 +162,15 @@ export function registerEstimateRoutes(app: Express): void {
       }
     }
 
-    broadcastToContractor(req.user!.contractorId, { type: 'estimate_created', estimateId: estimate.id });
-    workflowEngine.triggerWorkflowsForEvent('estimate_created', toWorkflowEvent(estimate), req.user!.contractorId).catch(error => {
+    broadcastToContractor(req.user.contractorId, { type: 'estimate_created', estimateId: estimate.id });
+    workflowEngine.triggerWorkflowsForEvent('estimate_created', toWorkflowEvent(estimate), req.user.contractorId).catch(error => {
       log.error('Error triggering workflows for estimate creation', error);
     });
     res.status(201).json(estimate);
   }));
 
   app.put("/api/estimates/:id", asyncHandler(async (req, res) => {
-    const existingEstimate = await storage.getEstimate(req.params.id, req.user!.contractorId);
+    const existingEstimate = await storage.getEstimate(req.params.id, req.user.contractorId);
     if (!existingEstimate) {
       res.status(404).json({ message: "Estimate not found" });
       return;
@@ -183,19 +183,19 @@ export function registerEstimateRoutes(app: Express): void {
     }
     const updateData = parseBody(insertEstimateSchema.omit({ contractorId: true, contactId: true }).partial(), req, res);
     if (!updateData) return;
-    const estimate = await storage.updateEstimate(req.params.id, updateData, req.user!.contractorId);
+    const estimate = await storage.updateEstimate(req.params.id, updateData, req.user.contractorId);
     if (!estimate) {
       res.status(404).json({ message: "Estimate not found" });
       return;
     }
 
-    broadcastToContractor(req.user!.contractorId, { type: 'estimate_updated', estimateId: estimate.id });
-    workflowEngine.triggerWorkflowsForEvent('estimate_updated', toWorkflowEvent(estimate), req.user!.contractorId).catch(error => {
+    broadcastToContractor(req.user.contractorId, { type: 'estimate_updated', estimateId: estimate.id });
+    workflowEngine.triggerWorkflowsForEvent('estimate_updated', toWorkflowEvent(estimate), req.user.contractorId).catch(error => {
       log.error('Error triggering workflows for estimate update', error);
     });
 
     if (updateData.status) {
-      workflowEngine.triggerWorkflowsForEvent('estimate_status_changed', toWorkflowEvent(estimate), req.user!.contractorId).catch(error => {
+      workflowEngine.triggerWorkflowsForEvent('estimate_status_changed', toWorkflowEvent(estimate), req.user.contractorId).catch(error => {
         log.error('Error triggering workflows for estimate status change', error);
       });
     }
@@ -204,7 +204,7 @@ export function registerEstimateRoutes(app: Express): void {
   }));
 
   app.patch("/api/estimates/:id/follow-up", asyncHandler(async (req, res) => {
-    const existingEstimate = await storage.getEstimate(req.params.id, req.user!.contractorId);
+    const existingEstimate = await storage.getEstimate(req.params.id, req.user.contractorId);
     if (!existingEstimate) {
       res.status(404).json({ message: "Estimate not found" });
       return;
@@ -229,7 +229,7 @@ export function registerEstimateRoutes(app: Express): void {
     const parsed = parseBody(followUpSchema, req, res);
     if (!parsed) return;
     const { followUpDate } = parsed;
-    const estimate = await storage.updateEstimate(req.params.id, { followUpDate }, req.user!.contractorId);
+    const estimate = await storage.updateEstimate(req.params.id, { followUpDate }, req.user.contractorId);
     if (!estimate) {
       res.status(404).json({ message: "Estimate not found" });
       return;
@@ -241,32 +241,32 @@ export function registerEstimateRoutes(app: Express): void {
         : 'Follow-up date cleared';
 
       await createActivityAndBroadcast(
-        req.user!.contractorId,
-        { type: 'follow_up', title: 'Follow-up Date Updated', content: activityContent, estimateId: req.params.id, userId: req.user!.userId },
+        req.user.contractorId,
+        { type: 'follow_up', title: 'Follow-up Date Updated', content: activityContent, estimateId: req.params.id, userId: req.user.userId },
         { type: 'new_activity', estimateId: req.params.id }
       );
     } catch (activityError) {
       log.error('Failed to create activity for estimate follow-up update', activityError);
     }
 
-    broadcastToContractor(req.user!.contractorId, { type: 'estimate_updated', estimateId: estimate.id });
+    broadcastToContractor(req.user.contractorId, { type: 'estimate_updated', estimateId: estimate.id });
     res.json(estimate);
   }));
 
   app.delete("/api/estimates/:id", asyncHandler(async (req, res) => {
-    const existingEstimate = await storage.getEstimate(req.params.id, req.user!.contractorId);
+    const existingEstimate = await storage.getEstimate(req.params.id, req.user.contractorId);
     if (!existingEstimate) {
       res.status(404).json({ message: "Estimate not found" });
       return;
     }
 
-    const deleted = await storage.deleteEstimate(req.params.id, req.user!.contractorId);
+    const deleted = await storage.deleteEstimate(req.params.id, req.user.contractorId);
     if (!deleted) {
       res.status(404).json({ message: "Estimate not found" });
       return;
     }
 
-    broadcastToContractor(req.user!.contractorId, { type: 'estimate_deleted', estimateId: req.params.id });
+    broadcastToContractor(req.user.contractorId, { type: 'estimate_deleted', estimateId: req.params.id });
     res.json({ message: "Estimate deleted successfully" });
   }));
 }

@@ -103,6 +103,15 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
   const { data: terminology } = useTerminology();
   const { data: usersData } = useUsers();
 
+  const leadStatusOptions = useMemo(
+    () => LEAD_STATUSES.map((s) => ({ value: s, label: formatStatusLabel(s) })),
+    []
+  );
+  const leadUserOptions = useMemo(
+    () => usersData?.map((u) => ({ value: u.id, label: u.fullName })) ?? [],
+    [usersData]
+  );
+
   useGlobalShortcuts((type) => {
     if (type === "lead") setAddContactModal(true);
   });
@@ -110,7 +119,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
   useWebSocketInvalidation([
     { types: ["new_activity", "activity_update"], queryKeys: ["/api/activities"] },
     { types: ["new_message", "message_update", "message_updated"], queryKeys: ["/api/conversations"] },
-    { types: ["contact_created", "contact_updated", "contact_deleted"], queryKeys: ["/api/contacts/paginated", "/api/contacts/status-counts"] },
+    { types: ["contact_created", "contact_updated", "contact_deleted"], queryKeys: ["/api/contacts/paginated", "/api/contacts/status-counts", "/api/contacts/follow-ups"] },
   ]);
 
   useAddModalFromUrl(() => setAddContactModal(true));
@@ -170,6 +179,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
       toast({ title: "Status Updated", description: "Lead status has been successfully updated." });
       queryClient.invalidateQueries({ queryKey: ["/api/contacts/paginated"] });
       queryClient.invalidateQueries({ queryKey: ["/api/contacts/status-counts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts/follow-ups"] });
       setEditStatusModal({ isOpen: false });
     },
     onError: (error: Error) => {
@@ -201,6 +211,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
       toast({ title: "Lead Archived", description: "Lead has been archived and is hidden from the main view." });
       queryClient.invalidateQueries({ queryKey: ["/api/contacts/paginated"] });
       queryClient.invalidateQueries({ queryKey: ["/api/contacts/status-counts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts/follow-ups"] });
     },
     onError: (error: Error) => {
       toast({ title: "Failed to Archive Lead", description: error.message || "Something went wrong.", variant: "destructive" });
@@ -215,6 +226,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
       toast({ title: "Lead Restored", description: "Lead has been restored and is visible again." });
       queryClient.invalidateQueries({ queryKey: ["/api/contacts/paginated"] });
       queryClient.invalidateQueries({ queryKey: ["/api/contacts/status-counts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts/follow-ups"] });
     },
     onError: (error: Error) => {
       toast({ title: "Failed to Restore Lead", description: error.message || "Something went wrong.", variant: "destructive" });
@@ -231,6 +243,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
       toast({ title: "Follow-Up Date Set", description: "Follow-up date has been successfully updated." });
       queryClient.invalidateQueries({ queryKey: ["/api/contacts/paginated"] });
       queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts/follow-ups"] });
     },
     onError: (error: Error) => {
       toast({ title: "Failed to Update Follow-Up Date", description: error.message || "Something went wrong.", variant: "destructive" });
@@ -343,14 +356,17 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
     ],
     exportFilename: `leads-export-${new Date().toISOString().split("T")[0]}.csv`,
     exportHeaders: ["Name", "Email", "Phone", "Address", "Source", "Status"],
-    getExportRow: (contact: Contact) => [
-      contact.name,
-      contact.emails && contact.emails.length > 0 ? contact.emails[0] : "",
-      contact.phones && contact.phones.length > 0 ? contact.phones[0] : "",
-      contact.address ?? undefined,
-      contact.source ?? undefined,
-      contact.status ?? undefined,
-    ],
+    getExportRow: (entity) => {
+      const contact = entity as Contact;
+      return [
+        contact.name,
+        contact.emails && contact.emails.length > 0 ? contact.emails[0] : "",
+        contact.phones && contact.phones.length > 0 ? contact.phones[0] : "",
+        contact.address ?? undefined,
+        contact.source ?? undefined,
+        contact.status ?? undefined,
+      ];
+    },
     entities: leads,
   });
 
@@ -397,8 +413,8 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
             <FilterPanel
               filters={advancedFilters}
               onFiltersChange={setAdvancedFilters}
-              statusOptions={LEAD_STATUSES.map((s) => ({ value: s, label: formatStatusLabel(s) }))}
-              userOptions={usersData?.map((u) => ({ value: u.id, label: u.fullName })) || []}
+              statusOptions={leadStatusOptions}
+              userOptions={leadUserOptions}
               dateLabel="Created Date"
             />
           </>
@@ -597,7 +613,7 @@ export default function Leads({ externalSearch = "" }: { externalSearch?: string
         onDelete={handleBulkDelete}
         onStatusChange={handleBulkStatusChange}
         onExport={handleBulkExport}
-        statusOptions={LEAD_STATUSES.map((s) => ({ value: s, label: formatStatusLabel(s) }))}
+        statusOptions={leadStatusOptions}
       />
     </PageLayout>
   );

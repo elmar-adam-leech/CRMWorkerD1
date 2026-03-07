@@ -147,10 +147,9 @@ export function registerPublicRoutes(app: Express): void {
       return;
     }
 
-    // Return public contractor info (limited fields for security)
+    // Return public contractor info (name and slug only — no internal IDs)
     res.json({
       contractor: {
-        id: contractor.id,
         name: contractor.name,
         bookingSlug: contractor.bookingSlug,
       }

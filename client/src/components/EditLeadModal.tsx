@@ -60,6 +60,9 @@ export function EditLeadModal({ isOpen, contact, onClose, onSuccess }: EditLeadM
     onSuccess: () => {
       toast({ title: "Lead Updated", description: "Lead information has been successfully updated." });
       queryClient.invalidateQueries({ queryKey: ["/api/contacts/paginated"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts/status-counts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts/follow-ups"] });
       onSuccess();
       onClose();
     },

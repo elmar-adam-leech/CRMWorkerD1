@@ -1,25 +1,25 @@
 import type { Express, Response } from "express";
 import { storage } from "../storage";
 import { insertWorkflowSchema, insertWorkflowStepSchema } from "@shared/schema";
-import { requireAuth, requireManagerOrAdmin, type AuthenticatedRequest } from "../auth-service";
+import { requireAuth, requireManagerOrAdmin, type AuthedRequest } from "../auth-service";
 import { workflowEngine } from "../workflow-engine";
 import { asyncHandler } from "../utils/async-handler";
 
 export function registerWorkflowRoutes(app: Express): void {
   // Workflow API endpoints
-  app.get("/api/workflows", requireAuth, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/workflows", requireAuth, asyncHandler(async (req: AuthedRequest, res: Response) => {
     const approvalStatus = req.query.approvalStatus as string | undefined;
-    const workflows = await storage.getWorkflows(req.user!.contractorId, approvalStatus);
+    const workflows = await storage.getWorkflows(req.user.contractorId, approvalStatus);
     res.json(workflows);
   }));
 
-  app.get("/api/workflows/active", requireAuth, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    const workflows = await storage.getActiveWorkflows(req.user!.contractorId);
+  app.get("/api/workflows/active", requireAuth, asyncHandler(async (req: AuthedRequest, res: Response) => {
+    const workflows = await storage.getActiveWorkflows(req.user.contractorId);
     res.json(workflows);
   }));
 
-  app.get("/api/workflows/:id", requireAuth, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    const workflow = await storage.getWorkflow(req.params.id, req.user!.contractorId);
+  app.get("/api/workflows/:id", requireAuth, asyncHandler(async (req: AuthedRequest, res: Response) => {
+    const workflow = await storage.getWorkflow(req.params.id, req.user.contractorId);
     if (!workflow) {
       res.status(404).json({ error: 'Workflow not found' });
       return;
@@ -27,7 +27,7 @@ export function registerWorkflowRoutes(app: Express): void {
     res.json(workflow);
   }));
 
-  app.post("/api/workflows", requireAuth, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/workflows", requireAuth, asyncHandler(async (req: AuthedRequest, res: Response) => {
     const validation = insertWorkflowSchema.safeParse(req.body);
     if (!validation.success) {
       res.status(400).json({ error: 'Invalid workflow data', details: validation.error });
@@ -35,7 +35,7 @@ export function registerWorkflowRoutes(app: Express): void {
     }
 
     // Admins, managers, and super_admins auto-approve their own workflows
-    const userContractor = await storage.getUserContractor(req.user!.userId, req.user!.contractorId);
+    const userContractor = await storage.getUserContractor(req.user.userId, req.user.contractorId);
     const isElevatedRole = userContractor && ['admin', 'manager', 'super_admin'].includes(userContractor.role);
     const workflowData = isElevatedRole
       ? { ...validation.data, approvalStatus: 'approved' as const }
@@ -43,13 +43,13 @@ export function registerWorkflowRoutes(app: Express): void {
 
     const workflow = await storage.createWorkflow(
       workflowData,
-      req.user!.contractorId,
-      req.user!.userId
+      req.user.contractorId,
+      req.user.userId
     );
     res.status(201).json(workflow);
   }));
 
-  app.patch("/api/workflows/:id", requireAuth, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.patch("/api/workflows/:id", requireAuth, asyncHandler(async (req: AuthedRequest, res: Response) => {
     // Validate request body
     const validation = insertWorkflowSchema.partial().safeParse(req.body);
     if (!validation.success) {
@@ -59,7 +59,7 @@ export function registerWorkflowRoutes(app: Express): void {
     
     // If trying to activate workflow, check approval status
     if (validation.data.isActive === true) {
-      const existingWorkflow = await storage.getWorkflow(req.params.id, req.user!.contractorId);
+      const existingWorkflow = await storage.getWorkflow(req.params.id, req.user.contractorId);
       if (!existingWorkflow) {
         res.status(404).json({ error: 'Workflow not found' });
         return;
@@ -79,7 +79,7 @@ export function registerWorkflowRoutes(app: Express): void {
     const workflow = await storage.updateWorkflow(
       req.params.id,
       validation.data,
-      req.user!.contractorId
+      req.user.contractorId
     );
     if (!workflow) {
       res.status(404).json({ error: 'Workflow not found' });
@@ -88,8 +88,8 @@ export function registerWorkflowRoutes(app: Express): void {
     res.json(workflow);
   }));
 
-  app.delete("/api/workflows/:id", requireAuth, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    const deleted = await storage.deleteWorkflow(req.params.id, req.user!.contractorId);
+  app.delete("/api/workflows/:id", requireAuth, asyncHandler(async (req: AuthedRequest, res: Response) => {
+    const deleted = await storage.deleteWorkflow(req.params.id, req.user.contractorId);
     if (!deleted) {
       res.status(404).json({ error: 'Workflow not found' });
       return;
@@ -98,19 +98,19 @@ export function registerWorkflowRoutes(app: Express): void {
   }));
 
   // Workflow approval endpoints
-  app.get("/api/workflows/pending-approval", requireAuth, requireManagerOrAdmin, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    const workflows = await storage.getWorkflowsPendingApproval(req.user!.contractorId);
+  app.get("/api/workflows/pending-approval", requireAuth, requireManagerOrAdmin, asyncHandler(async (req: AuthedRequest, res: Response) => {
+    const workflows = await storage.getWorkflowsPendingApproval(req.user.contractorId);
     res.json(workflows);
   }));
 
-  app.post("/api/workflows/:id/approve", requireAuth, requireManagerOrAdmin, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    const existingWorkflow = await storage.getWorkflow(req.params.id, req.user!.contractorId);
+  app.post("/api/workflows/:id/approve", requireAuth, requireManagerOrAdmin, asyncHandler(async (req: AuthedRequest, res: Response) => {
+    const existingWorkflow = await storage.getWorkflow(req.params.id, req.user.contractorId);
     if (!existingWorkflow) {
       res.status(404).json({ error: 'Workflow not found' });
       return;
     }
     
-    const workflow = await storage.approveWorkflow(req.params.id, req.user!.contractorId, req.user!.userId);
+    const workflow = await storage.approveWorkflow(req.params.id, req.user.contractorId, req.user.userId);
     if (!workflow) {
       res.status(404).json({ error: 'Workflow not found' });
       return;
@@ -119,15 +119,15 @@ export function registerWorkflowRoutes(app: Express): void {
     res.json(workflow);
   }));
 
-  app.post("/api/workflows/:id/reject", requireAuth, requireManagerOrAdmin, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    const existingWorkflow = await storage.getWorkflow(req.params.id, req.user!.contractorId);
+  app.post("/api/workflows/:id/reject", requireAuth, requireManagerOrAdmin, asyncHandler(async (req: AuthedRequest, res: Response) => {
+    const existingWorkflow = await storage.getWorkflow(req.params.id, req.user.contractorId);
     if (!existingWorkflow) {
       res.status(404).json({ error: 'Workflow not found' });
       return;
     }
     
     const { rejectionReason } = req.body;
-    const workflow = await storage.rejectWorkflow(req.params.id, req.user!.contractorId, req.user!.userId, rejectionReason);
+    const workflow = await storage.rejectWorkflow(req.params.id, req.user.contractorId, req.user.userId, rejectionReason);
     if (!workflow) {
       res.status(404).json({ error: 'Workflow not found' });
       return;
@@ -137,9 +137,9 @@ export function registerWorkflowRoutes(app: Express): void {
   }));
 
   // Workflow step endpoints
-  app.get("/api/workflows/:workflowId/steps", requireAuth, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/workflows/:workflowId/steps", requireAuth, asyncHandler(async (req: AuthedRequest, res: Response) => {
     // Verify workflow belongs to contractor
-    const workflow = await storage.getWorkflow(req.params.workflowId, req.user!.contractorId);
+    const workflow = await storage.getWorkflow(req.params.workflowId, req.user.contractorId);
     if (!workflow) {
       res.status(404).json({ error: 'Workflow not found' });
       return;
@@ -149,9 +149,9 @@ export function registerWorkflowRoutes(app: Express): void {
     res.json(steps);
   }));
 
-  app.post("/api/workflows/:workflowId/steps", requireAuth, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/workflows/:workflowId/steps", requireAuth, asyncHandler(async (req: AuthedRequest, res: Response) => {
     // Verify workflow belongs to contractor
-    const workflow = await storage.getWorkflow(req.params.workflowId, req.user!.contractorId);
+    const workflow = await storage.getWorkflow(req.params.workflowId, req.user.contractorId);
     if (!workflow) {
       res.status(404).json({ error: 'Workflow not found' });
       return;
@@ -167,8 +167,8 @@ export function registerWorkflowRoutes(app: Express): void {
     res.status(201).json(step);
   }));
 
-  app.put("/api/workflows/:workflowId/steps", requireAuth, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    const workflow = await storage.getWorkflow(req.params.workflowId, req.user!.contractorId);
+  app.put("/api/workflows/:workflowId/steps", requireAuth, asyncHandler(async (req: AuthedRequest, res: Response) => {
+    const workflow = await storage.getWorkflow(req.params.workflowId, req.user.contractorId);
     if (!workflow) {
       res.status(404).json({ error: 'Workflow not found' });
       return;
@@ -198,7 +198,7 @@ export function registerWorkflowRoutes(app: Express): void {
     res.json(createdSteps);
   }));
 
-  app.patch("/api/workflow-steps/:id", requireAuth, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.patch("/api/workflow-steps/:id", requireAuth, asyncHandler(async (req: AuthedRequest, res: Response) => {
     // First get the step to find its workflow
     const existingStep = await storage.getWorkflowStep(req.params.id);
     if (!existingStep) {
@@ -207,7 +207,7 @@ export function registerWorkflowRoutes(app: Express): void {
     }
     
     // Verify the workflow belongs to the contractor
-    const workflow = await storage.getWorkflow(existingStep.workflowId, req.user!.contractorId);
+    const workflow = await storage.getWorkflow(existingStep.workflowId, req.user.contractorId);
     if (!workflow) {
       res.status(404).json({ error: 'Workflow step not found' });
       return;
@@ -228,7 +228,7 @@ export function registerWorkflowRoutes(app: Express): void {
     res.json(step);
   }));
 
-  app.delete("/api/workflow-steps/:id", requireAuth, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.delete("/api/workflow-steps/:id", requireAuth, asyncHandler(async (req: AuthedRequest, res: Response) => {
     // First get the step to find its workflow
     const existingStep = await storage.getWorkflowStep(req.params.id);
     if (!existingStep) {
@@ -237,7 +237,7 @@ export function registerWorkflowRoutes(app: Express): void {
     }
     
     // Verify the workflow belongs to the contractor
-    const workflow = await storage.getWorkflow(existingStep.workflowId, req.user!.contractorId);
+    const workflow = await storage.getWorkflow(existingStep.workflowId, req.user.contractorId);
     if (!workflow) {
       res.status(404).json({ error: 'Workflow step not found' });
       return;
@@ -252,16 +252,16 @@ export function registerWorkflowRoutes(app: Express): void {
   }));
 
   // Workflow execution endpoints
-  app.get("/api/workflows/:workflowId/executions", requireAuth, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/workflows/:workflowId/executions", requireAuth, asyncHandler(async (req: AuthedRequest, res: Response) => {
     // Verify workflow belongs to contractor
-    const workflow = await storage.getWorkflow(req.params.workflowId, req.user!.contractorId);
+    const workflow = await storage.getWorkflow(req.params.workflowId, req.user.contractorId);
     if (!workflow) {
       res.status(404).json({ error: 'Workflow not found' });
       return;
     }
     
     const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
-    const executions = await storage.getWorkflowExecutions(req.params.workflowId, req.user!.contractorId, limit);
+    const executions = await storage.getWorkflowExecutions(req.params.workflowId, req.user.contractorId, limit);
     const parsedExecutions = executions.map(e => ({
       ...e,
       stepLogs: e.executionLog ? JSON.parse(e.executionLog) : [],
@@ -269,15 +269,15 @@ export function registerWorkflowRoutes(app: Express): void {
     res.json(parsedExecutions);
   }));
 
-  app.get("/api/workflow-executions/recent", requireAuth, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/workflow-executions/recent", requireAuth, asyncHandler(async (req: AuthedRequest, res: Response) => {
     const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
-    const executions = await storage.getRecentWorkflowExecutions(req.user!.contractorId, limit);
+    const executions = await storage.getRecentWorkflowExecutions(req.user.contractorId, limit);
     res.json(executions);
   }));
 
-  app.get("/api/workflow-executions/:id", requireAuth, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/workflow-executions/:id", requireAuth, asyncHandler(async (req: AuthedRequest, res: Response) => {
     // Direct tenant-isolated fetch - no need for secondary workflow check
-    const execution = await storage.getWorkflowExecution(req.params.id, req.user!.contractorId);
+    const execution = await storage.getWorkflowExecution(req.params.id, req.user.contractorId);
     if (!execution) {
       res.status(404).json({ error: 'Workflow execution not found' });
       return;
@@ -289,9 +289,9 @@ export function registerWorkflowRoutes(app: Express): void {
     });
   }));
 
-  app.post("/api/workflows/:workflowId/execute", requireAuth, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/workflows/:workflowId/execute", requireAuth, asyncHandler(async (req: AuthedRequest, res: Response) => {
     // Verify workflow belongs to contractor
-    const workflow = await storage.getWorkflow(req.params.workflowId, req.user!.contractorId);
+    const workflow = await storage.getWorkflow(req.params.workflowId, req.user.contractorId);
     if (!workflow) {
       res.status(404).json({ error: 'Workflow not found' });
       return;
@@ -333,11 +333,11 @@ export function registerWorkflowRoutes(app: Express): void {
         status: 'pending',
         triggerData: triggerDataStr,
       },
-      req.user!.contractorId
+      req.user.contractorId
     );
     
     // Execute workflow asynchronously (don't wait for completion)
-    workflowEngine.executeWorkflow(execution.id, req.user!.contractorId).catch(error => {
+    workflowEngine.executeWorkflow(execution.id, req.user.contractorId).catch(error => {
       console.error(`[Workflow API] Error executing workflow ${execution.id}:`, error);
     });
     

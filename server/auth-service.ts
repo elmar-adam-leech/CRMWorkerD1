@@ -50,6 +50,16 @@ export interface AuthenticatedRequest extends Request {
   contractorId?: string; // Set by requireContractorAccess middleware for debugging
 }
 
+/**
+ * Use `AuthedRequest` for route handlers that sit behind `requireAuth` middleware.
+ * The middleware guarantees `req.user` is populated, so this type makes it non-optional,
+ * eliminating the need for `req.user!` non-null assertions throughout route handlers.
+ *
+ * Use `AuthenticatedRequest` only for middleware that may run before `requireAuth`
+ * (e.g. the auth middleware itself, optional-auth middleware, or webhook handlers).
+ */
+export type AuthedRequest = AuthenticatedRequest & { user: JWTPayload };
+
 export class AuthService {
   
   /**

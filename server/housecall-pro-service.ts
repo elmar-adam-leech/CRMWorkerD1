@@ -306,6 +306,12 @@ export class HousecallProService {
     };
   }
 
+  // ── API Client Methods ──────────────────────────────────────────────────────
+  // The methods below are thin wrappers around the Housecall Pro REST API.
+  // Each method maps 1:1 to a single HCP endpoint and returns the raw response.
+  // They do NOT modify local database state; callers are responsible for
+  // persisting data (see the Sync / Business Logic Methods section below).
+
   /**
    * Get all customers from Housecall Pro
    */
@@ -637,6 +643,11 @@ export class HousecallProService {
       };
     }
   }
+
+  // ── Sync / Business Logic Methods ───────────────────────────────────────────
+  // The methods below reconcile Housecall Pro data with the local database.
+  // They may read from HCP, compare with local records, and write to the DB.
+  // Unlike the API Client Methods above, these have side effects on local state.
 
   /**
    * Get available time slots for estimators on a specific date

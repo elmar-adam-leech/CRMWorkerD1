@@ -1,6 +1,6 @@
 import type { Express, Response } from "express";
 import { storage } from "../storage";
-import type { AuthenticatedRequest } from "../auth-service";
+import type { AuthedRequest } from "../auth-service";
 import { asyncHandler } from "../utils/async-handler";
 
 // Minimal types for the Google Places API v1 responses used in this file.
@@ -18,7 +18,7 @@ interface GooglePlacesDetailsResponse {
 
 export function registerDashboardRoutes(app: Express): void {
   // Google Places API proxy — authenticated, server-side calls bypass browser referrer restrictions
-  app.get('/api/places/autocomplete', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.get('/api/places/autocomplete', asyncHandler(async (req: AuthedRequest, res: Response) => {
     const { input } = req.query as { input?: string };
     if (!input || input.trim().length < 3) {
       res.json({ suggestions: [] });
@@ -51,7 +51,7 @@ export function registerDashboardRoutes(app: Express): void {
     res.json({ suggestions: data.suggestions || [] });
   }));
 
-  app.get('/api/places/details', asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.get('/api/places/details', asyncHandler(async (req: AuthedRequest, res: Response) => {
     const { placeId } = req.query as { placeId?: string };
     if (!placeId) {
       res.status(400).json({ error: 'placeId is required' });
@@ -83,7 +83,7 @@ export function registerDashboardRoutes(app: Express): void {
   }));
 
   // Dashboard metrics route
-  app.get("/api/dashboard/metrics", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/dashboard/metrics", asyncHandler(async (req: AuthedRequest, res: Response) => {
     const { timeframe, startDate, endDate } = req.query;
 
     let start: Date | undefined;
@@ -114,9 +114,9 @@ export function registerDashboardRoutes(app: Express): void {
     }
 
     const metrics = await storage.getDashboardMetrics(
-      req.user!.contractorId,
-      req.user!.userId,
-      req.user!.role,
+      req.user.contractorId,
+      req.user.userId,
+      req.user.role,
       start,
       end
     );

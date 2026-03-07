@@ -6,7 +6,7 @@ type StatusFilterBarProps = {
   statuses: readonly string[];
   activeStatus: string;
   counts: Record<string, number | undefined>;
-  onStatusChange: (status: any) => void;
+  onStatusChange: (status: string) => void;
   formatLabel?: (status: string) => string;
 };
 

@@ -24,7 +24,7 @@ export function registerContactRoutes(app: Express): void {
     const { type, search, limit } = req.query;
     const contactType = type as 'lead' | 'customer' | 'inactive' | undefined;
     const pageLimit = Math.min(parseInt(limit as string || '100', 10), 100);
-    const result = await storage.getContactsPaginated(req.user!.contractorId, {
+    const result = await storage.getContactsPaginated(req.user.contractorId, {
       type: contactType,
       search: search as string | undefined,
       limit: pageLimit,
@@ -44,13 +44,13 @@ export function registerContactRoutes(app: Express): void {
       includeAll: includeAll === "true",
       archived: archived === "true" ? true : archived === "false" ? false : undefined,
     };
-    const paginatedContacts = await storage.getContactsPaginated(req.user!.contractorId, options);
+    const paginatedContacts = await storage.getContactsPaginated(req.user.contractorId, options);
     res.json(paginatedContacts);
   }));
 
   app.get("/api/contacts/status-counts", asyncHandler(async (req, res) => {
     const { search, type } = req.query;
-    const counts = await storage.getContactsStatusCounts(req.user!.contractorId, {
+    const counts = await storage.getContactsStatusCounts(req.user.contractorId, {
       search: search as string | undefined,
       type: type as 'lead' | 'customer' | 'inactive' | undefined
     });
@@ -59,7 +59,7 @@ export function registerContactRoutes(app: Express): void {
 
   app.get("/api/contacts/follow-ups", asyncHandler(async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit as string) || 200, 500);
-    const contacts = await storage.getContactsWithFollowUp(req.user!.contractorId, limit);
+    const contacts = await storage.getContactsWithFollowUp(req.user.contractorId, limit);
     res.json(contacts);
   }));
 
@@ -67,7 +67,7 @@ export function registerContactRoutes(app: Express): void {
     const days = Math.min(parseInt(req.query.days as string) || 30, 90);
     const since = new Date();
     since.setDate(since.getDate() - days);
-    const rows = await storage.getLeadTrend(req.user!.contractorId, since);
+    const rows = await storage.getLeadTrend(req.user.contractorId, since);
     res.json(rows);
   }));
 
@@ -83,7 +83,7 @@ export function registerContactRoutes(app: Express): void {
 
   app.get("/api/contacts/with-counts", asyncHandler(async (req, res) => {
     const { search, cursor, limit } = req.query;
-    const result = await storage.getContactsWithCounts(req.user!.contractorId, {
+    const result = await storage.getContactsWithCounts(req.user.contractorId, {
       search: search as string | undefined,
       cursor: cursor as string | undefined,
       limit: limit ? parseInt(limit as string, 10) : 50,
@@ -92,7 +92,7 @@ export function registerContactRoutes(app: Express): void {
   }));
 
   app.get("/api/contacts/:id", asyncHandler(async (req, res) => {
-    const contact = await storage.getContact(req.params.id, req.user!.contractorId);
+    const contact = await storage.getContact(req.params.id, req.user.contractorId);
     if (!contact) {
       res.status(404).json({ message: "Contact not found" });
       return;
@@ -101,7 +101,7 @@ export function registerContactRoutes(app: Express): void {
   }));
 
   app.get("/api/contacts/:contactId/leads", asyncHandler(async (req, res) => {
-    const leads = await storage.getLeadsByContact(req.params.contactId, req.user!.contractorId);
+    const leads = await storage.getLeadsByContact(req.params.contactId, req.user.contractorId);
     res.json(leads);
   }));
 
@@ -117,13 +117,13 @@ export function registerContactRoutes(app: Express): void {
       (contactData.emails && contactData.emails.length > 0)
     ) {
       const matchedId = await storage.findMatchingContact(
-        req.user!.contractorId,
+        req.user.contractorId,
         contactData.emails ?? [],
         contactData.phones ?? []
       );
 
       if (matchedId) {
-        const existing = await storage.getContact(matchedId, req.user!.contractorId);
+        const existing = await storage.getContact(matchedId, req.user.contractorId);
         if (existing) {
           const existingPhones = existing.phones ?? [];
           const newPhones = (contactData.phones ?? []).filter(p => !existingPhones.includes(p));
@@ -150,23 +150,23 @@ export function registerContactRoutes(app: Express): void {
             return;
           }
 
-          const updated = await storage.updateContact(matchedId, updatePayload, req.user!.contractorId);
+          const updated = await storage.updateContact(matchedId, updatePayload, req.user.contractorId);
           res.status(200).json(updated);
           return;
         }
       }
     }
 
-    const contact = await storage.createContact(contactData, req.user!.contractorId);
+    const contact = await storage.createContact(contactData, req.user.contractorId);
 
-    const hcpIntegrationEnabled = await storage.isIntegrationEnabled(req.user!.contractorId, 'housecall-pro');
+    const hcpIntegrationEnabled = await storage.isIntegrationEnabled(req.user.contractorId, 'housecall-pro');
     if (hcpIntegrationEnabled) {
       try {
         const nameParts = contact.name.split(' ');
         const firstName = nameParts[0] || '';
         const lastName = nameParts.slice(1).join(' ') || '';
 
-        const hcpResult = await housecallProService.createCustomer(req.user!.contractorId, {
+        const hcpResult = await housecallProService.createCustomer(req.user.contractorId, {
           first_name: firstName,
           last_name: lastName,
           email: contact.emails?.[0],
@@ -181,7 +181,7 @@ export function registerContactRoutes(app: Express): void {
             housecallProCustomerId: hcpResult.data.id,
             externalId: hcpResult.data.id,
             externalSource: 'housecall-pro',
-          }, req.user!.contractorId);
+          }, req.user.contractorId);
           log.info(`Created HCP customer: ${hcpResult.data.id} for contact: ${contact.id}`);
         } else {
           log.warn('Failed to create HCP customer', hcpResult.error);
@@ -191,14 +191,14 @@ export function registerContactRoutes(app: Express): void {
       }
     }
 
-    broadcastToContractor(req.user!.contractorId, {
+    broadcastToContractor(req.user.contractorId, {
       type: 'contact_created',
       contactId: contact.id,
       contactType: contact.type
     });
 
     if (contact.type === 'lead') {
-      workflowEngine.triggerWorkflowsForEvent('contact_created', toWorkflowEvent(contact), req.user!.contractorId).catch(error => {
+      workflowEngine.triggerWorkflowsForEvent('contact_created', toWorkflowEvent(contact), req.user.contractorId).catch(error => {
         log.error('Error triggering workflows for contact creation', error);
       });
     }
@@ -214,31 +214,31 @@ export function registerContactRoutes(app: Express): void {
     if (!updateData) return;
 
     if (updateData.status === 'scheduled') {
-      updateData.scheduledByUserId = req.user!.userId;
+      updateData.scheduledByUserId = req.user.userId;
     }
 
     const emailsChanging = Array.isArray(updateData.emails);
 
-    const contact = await storage.updateContact(req.params.id, updateData, req.user!.contractorId);
+    const contact = await storage.updateContact(req.params.id, updateData, req.user.contractorId);
     if (!contact) {
       res.status(404).json({ message: "Contact not found" });
       return;
     }
 
     if (emailsChanging) {
-      storage.unlinkOrphanedEmailActivities(contact.id, contact.emails || [], req.user!.contractorId).catch(err => {
+      storage.unlinkOrphanedEmailActivities(contact.id, contact.emails || [], req.user.contractorId).catch(err => {
         log.error('Error unlinking orphaned email activities', err);
       });
     }
 
-    broadcastToContractor(req.user!.contractorId, {
+    broadcastToContractor(req.user.contractorId, {
       type: 'contact_updated',
       contactId: contact.id,
       contactType: contact.type
     });
 
     if (contact.type === 'lead') {
-      workflowEngine.triggerWorkflowsForEvent('contact_updated', toWorkflowEvent(contact), req.user!.contractorId).catch(error => {
+      workflowEngine.triggerWorkflowsForEvent('contact_updated', toWorkflowEvent(contact), req.user.contractorId).catch(error => {
         log.error('Error triggering workflows for contact update (PUT)', error);
       });
     }
@@ -251,23 +251,23 @@ export function registerContactRoutes(app: Express): void {
     if (!updateData) return;
 
     if (updateData.status === 'scheduled') {
-      updateData.scheduledByUserId = req.user!.userId;
+      updateData.scheduledByUserId = req.user.userId;
     }
 
-    const contact = await storage.updateContact(req.params.id, updateData, req.user!.contractorId);
+    const contact = await storage.updateContact(req.params.id, updateData, req.user.contractorId);
     if (!contact) {
       res.status(404).json({ message: "Contact not found" });
       return;
     }
 
-    broadcastToContractor(req.user!.contractorId, {
+    broadcastToContractor(req.user.contractorId, {
       type: 'contact_updated',
       contactId: contact.id,
       contactType: contact.type
     });
 
     if (contact.type === 'lead') {
-      workflowEngine.triggerWorkflowsForEvent('contact_updated', toWorkflowEvent(contact), req.user!.contractorId).catch(error => {
+      workflowEngine.triggerWorkflowsForEvent('contact_updated', toWorkflowEvent(contact), req.user.contractorId).catch(error => {
         log.error('Error triggering workflows for contact update (PATCH)', error);
       });
     }
@@ -285,10 +285,10 @@ export function registerContactRoutes(app: Express): void {
 
     const updateData: Partial<UpdateContact> = { status };
     if (status === 'scheduled') {
-      updateData.scheduledByUserId = req.user!.userId;
+      updateData.scheduledByUserId = req.user.userId;
     }
 
-    const contact = await storage.updateContact(req.params.id, updateData, req.user!.contractorId);
+    const contact = await storage.updateContact(req.params.id, updateData, req.user.contractorId);
     if (!contact) {
       res.status(404).json({ message: "Contact not found" });
       return;
@@ -302,21 +302,21 @@ export function registerContactRoutes(app: Express): void {
       const activityContent = `Contact status changed to ${statusLabels[status]}`;
 
       await createActivityAndBroadcast(
-        req.user!.contractorId,
-        { type: 'status_change', title: 'Status Changed', content: activityContent, contactId: req.params.id, userId: req.user!.userId },
+        req.user.contractorId,
+        { type: 'status_change', title: 'Status Changed', content: activityContent, contactId: req.params.id, userId: req.user.userId },
         { type: 'new_activity', contactId: req.params.id }
       );
     } catch (activityError) {
       log.error('Failed to create activity for status change', activityError);
     }
 
-    broadcastToContractor(req.user!.contractorId, {
+    broadcastToContractor(req.user.contractorId, {
       type: 'contact_updated',
       contactId: contact.id,
       contactType: contact.type
     });
 
-    workflowEngine.triggerWorkflowsForEvent('contact_status_changed', toWorkflowEvent(contact), req.user!.contractorId).catch(error => {
+    workflowEngine.triggerWorkflowsForEvent('contact_status_changed', toWorkflowEvent(contact), req.user.contractorId).catch(error => {
       log.error('Error triggering workflows for contact status change', error);
     });
 
@@ -340,7 +340,7 @@ export function registerContactRoutes(app: Express): void {
     if (!parsed) return;
     const { followUpDate } = parsed;
 
-    const contact = await storage.updateContact(req.params.id, { followUpDate }, req.user!.contractorId);
+    const contact = await storage.updateContact(req.params.id, { followUpDate }, req.user.contractorId);
     if (!contact) {
       res.status(404).json({ message: "Contact not found" });
       return;
@@ -352,15 +352,15 @@ export function registerContactRoutes(app: Express): void {
         : 'Follow-up date cleared';
 
       await createActivityAndBroadcast(
-        req.user!.contractorId,
-        { type: 'follow_up', title: 'Follow-up Date Updated', content: activityContent, contactId: req.params.id, userId: req.user!.userId },
+        req.user.contractorId,
+        { type: 'follow_up', title: 'Follow-up Date Updated', content: activityContent, contactId: req.params.id, userId: req.user.userId },
         { type: 'new_activity', contactId: req.params.id }
       );
     } catch (activityError) {
       log.error('Failed to create activity for follow-up update', activityError);
     }
 
-    broadcastToContractor(req.user!.contractorId, {
+    broadcastToContractor(req.user.contractorId, {
       type: 'contact_updated',
       contactId: contact.id,
       contactType: contact.type
@@ -370,33 +370,33 @@ export function registerContactRoutes(app: Express): void {
   }));
 
   app.patch("/api/leads/:id/archive", asyncHandler(async (req, res) => {
-    const lead = await storage.archiveLead(req.params.id, req.user!.contractorId);
+    const lead = await storage.archiveLead(req.params.id, req.user.contractorId);
     if (!lead) {
       res.status(404).json({ message: "Lead not found" });
       return;
     }
-    broadcastToContractor(req.user!.contractorId, { type: 'lead_updated', leadId: req.params.id });
+    broadcastToContractor(req.user.contractorId, { type: 'lead_updated', leadId: req.params.id });
     res.json(lead);
   }));
 
   app.patch("/api/leads/:id/restore", asyncHandler(async (req, res) => {
-    const lead = await storage.restoreLead(req.params.id, req.user!.contractorId);
+    const lead = await storage.restoreLead(req.params.id, req.user.contractorId);
     if (!lead) {
       res.status(404).json({ message: "Lead not found" });
       return;
     }
-    broadcastToContractor(req.user!.contractorId, { type: 'lead_updated', leadId: req.params.id });
+    broadcastToContractor(req.user.contractorId, { type: 'lead_updated', leadId: req.params.id });
     res.json(lead);
   }));
 
   app.delete("/api/contacts/:id", requireManagerOrAdmin, asyncHandler(async (req, res) => {
-    const deleted = await storage.deleteContact(req.params.id, req.user!.contractorId);
+    const deleted = await storage.deleteContact(req.params.id, req.user.contractorId);
     if (!deleted) {
       res.status(404).json({ message: "Contact not found" });
       return;
     }
 
-    broadcastToContractor(req.user!.contractorId, {
+    broadcastToContractor(req.user.contractorId, {
       type: 'contact_deleted',
       contactId: req.params.id
     });

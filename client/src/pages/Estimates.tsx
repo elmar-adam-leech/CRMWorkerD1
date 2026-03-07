@@ -98,6 +98,15 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
   const { data: terminology } = useTerminology();
   const { data: usersData } = useUsers();
 
+  const estimateStatusOptions = useMemo(
+    () => ESTIMATE_FILTER_STATUSES.map((s) => ({ value: s, label: formatStatusLabel(s) })),
+    []
+  );
+  const estimateUserOptions = useMemo(
+    () => usersData?.map((u) => ({ value: u.id, label: u.fullName })) ?? [],
+    [usersData]
+  );
+
   const { data: detailsContact } = useQuery<Contact>({
     queryKey: ["/api/contacts", detailsModal.estimate?.contactId],
     enabled: detailsModal.isOpen && !!detailsModal.estimate?.contactId,
@@ -161,7 +170,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
   useWebSocketInvalidation([
     {
       types: ["new_estimate", "estimate_created", "estimate_updated", "estimate_deleted"],
-      queryKeys: ["/api/estimates/paginated", "/api/estimates/status-counts", "/api/estimates"],
+      queryKeys: ["/api/estimates/paginated", "/api/estimates/status-counts", "/api/estimates", "/api/estimates/follow-ups"],
     },
   ]);
 
@@ -213,7 +222,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
     }
   }, [allEstimates]);
 
-  const handleContactById = async (estimateId: string, method: "phone" | "email") => {
+  const handleContactById = useCallback(async (estimateId: string, method: "phone" | "email") => {
     const estimate = (allEstimates || []).find((e) => e.id === estimateId);
     if (!estimate) return;
 
@@ -255,22 +264,22 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
         });
       }
     }
-  };
+  }, [allEstimates, fetchContact, handleContact, queryClient, toast]);
 
-  const handleSendTextByEntity = async (estimate: EstimateCardItem) => {
+  const handleSendTextByEntity = useCallback(async (estimate: EstimateCardItem) => {
     const contact = await fetchContact(estimate.contactId);
     if (!contact) return;
     handleSendText({ id: estimate.id, name: contact.name, emails: contact.emails, phones: contact.phones }, "estimate");
-  };
+  }, [fetchContact, handleSendText]);
 
-  const handleSendEmailByEntity = async (estimate: EstimateCardItem) => {
+  const handleSendEmailByEntity = useCallback(async (estimate: EstimateCardItem) => {
     const contact = await fetchContact(estimate.contactId);
     if (!contact) return;
     handleSendEmail(
       { id: estimate.id, name: contact.name, emails: contact.emails, phones: contact.phones },
       "estimate"
     );
-  };
+  }, [fetchContact, handleSendEmail]);
 
   const handleConvertToJob = (_estimateId: string) => {
     toast({ title: "Convert to job is not yet available" });
@@ -289,6 +298,8 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/estimates/paginated"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/estimates/status-counts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/estimates/follow-ups"] });
       toast({
         title: "Estimate updated",
         description: "The estimate has been successfully updated.",
@@ -385,7 +396,10 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
     ],
     exportFilename: `estimates-export-${new Date().toISOString().split("T")[0]}.csv`,
     exportHeaders: ["Title", "Customer", "Status", "Value", "Created Date", "Expiry Date"],
-    getExportRow: (est) => [est.title, est.contactName ?? undefined, est.status, est.value ?? undefined, est.createdDate ?? undefined, est.expiryDate ?? undefined],
+    getExportRow: (est) => {
+      const e = est as EstimateListItem;
+      return [e.title, e.contactName ?? undefined, e.status, e.value ?? undefined, e.createdDate ?? undefined, e.expiryDate ?? undefined];
+    },
     entities: allEstimates,
   });
 
@@ -421,8 +435,8 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
         <FilterPanel
           filters={advancedFilters}
           onFiltersChange={setAdvancedFilters}
-          statusOptions={ESTIMATE_FILTER_STATUSES.map((s) => ({ value: s, label: formatStatusLabel(s) }))}
-          userOptions={usersData?.map((u) => ({ value: u.id, label: u.fullName })) || []}
+          statusOptions={estimateStatusOptions}
+          userOptions={estimateUserOptions}
           dateLabel="Created Date"
         />
       </div>

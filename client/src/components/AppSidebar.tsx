@@ -29,9 +29,18 @@ import { Button } from "@/components/ui/button";
 import { ContractorSwitcher } from "./TenantSwitcher";
 import { useLocation, Link } from "wouter";
 import { useTerminology } from "@/hooks/useTerminology";
+import type { TerminologySettings } from "@shared/schema";
+
+export interface SidebarContractor {
+  id: string;
+  name: string;
+  domain: string;
+  role?: string;
+  bookingSlug?: string | null;
+}
 
 // Default menu item structure (will be customized with terminology)
-const getMenuItems = (terminology?: any) => [
+const getMenuItems = (terminology?: TerminologySettings) => [
   {
     title: "Dashboard",
     url: "/",
@@ -84,7 +93,7 @@ const getMenuItems = (terminology?: any) => [
   },
 ];
 
-const getQuickActions = (terminology?: any) => [
+const getQuickActions = (terminology?: TerminologySettings) => [
   {
     title: `New ${terminology?.leadLabel || "Lead"}`,
     action: "create-lead",
@@ -110,9 +119,9 @@ type AppSidebarProps = {
     role: string;
     avatar?: string;
   };
-  contractors: any[];
-  currentContractor: any;
-  onContractorChange: (contractor: any) => void;
+  contractors: SidebarContractor[];
+  currentContractor: SidebarContractor | null;
+  onContractorChange: (contractor: SidebarContractor) => void;
   onQuickAction?: (action: string) => void;
 };
 
@@ -149,7 +158,7 @@ export function AppSidebar({
 
   return (
     <Sidebar>
-      {contractors.length > 1 && (
+      {contractors.length > 1 && currentContractor && (
         <SidebarHeader className="border-b p-4">
           <ContractorSwitcher
             contractors={contractors}

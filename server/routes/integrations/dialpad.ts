@@ -4,13 +4,13 @@ import { users, contractors } from "@shared/schema";
 import { db } from "../../db";
 import { eq, and } from "drizzle-orm";
 import { dialpadEnhancedService } from "../../dialpad-enhanced-service";
-import { requireAuth, requireManagerOrAdmin, type AuthenticatedRequest } from "../../auth-service";
+import { requireAuth, requireManagerOrAdmin, type AuthedRequest } from "../../auth-service";
 import { syncStatus } from "../../sync-status-store";
 import { asyncHandler } from "../../utils/async-handler";
 
 export function registerDialpadRoutes(app: Express): void {
   // Dialpad phone number management routes
-  app.post("/api/dialpad/sync-phone-numbers", requireManagerOrAdmin, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/dialpad/sync-phone-numbers", requireManagerOrAdmin, asyncHandler(async (req: AuthedRequest, res: Response) => {
     const isIntegrationEnabled = await storage.isIntegrationEnabled(req.user!.contractorId, 'dialpad');
     if (!isIntegrationEnabled) {
       res.status(403).json({ 
@@ -31,12 +31,12 @@ export function registerDialpadRoutes(app: Express): void {
     });
   }));
 
-  app.get("/api/dialpad/phone-numbers", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/dialpad/phone-numbers", asyncHandler(async (req: AuthedRequest, res: Response) => {
     const phoneNumbers = await storage.getDialpadPhoneNumbers(req.user!.contractorId);
     res.json(phoneNumbers);
   }));
 
-  app.get("/api/dialpad/users/available-phone-numbers", requireAuth, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/dialpad/users/available-phone-numbers", requireAuth, asyncHandler(async (req: AuthedRequest, res: Response) => {
     const action = req.query.action as 'sms' | 'call' || 'sms';
     const availableNumbers = await dialpadEnhancedService.getUserAvailablePhoneNumbers(
       req.user!.userId,
@@ -46,7 +46,7 @@ export function registerDialpadRoutes(app: Express): void {
     res.json(availableNumbers);
   }));
 
-  app.get("/api/users/:userId/phone-permissions", requireManagerOrAdmin, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/users/:userId/phone-permissions", requireManagerOrAdmin, asyncHandler(async (req: AuthedRequest, res: Response) => {
     const { userId } = req.params;
     
     const targetUser = await db.select().from(users)
@@ -74,7 +74,7 @@ export function registerDialpadRoutes(app: Express): void {
     res.json(permissionsWithDetails);
   }));
 
-  app.post("/api/dialpad/phone-numbers/:phoneNumberId/permissions", requireManagerOrAdmin, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/dialpad/phone-numbers/:phoneNumberId/permissions", requireManagerOrAdmin, asyncHandler(async (req: AuthedRequest, res: Response) => {
     const { phoneNumberId } = req.params;
     const { userId, canSendSms, canMakeCalls } = req.body;
     
@@ -105,7 +105,7 @@ export function registerDialpadRoutes(app: Express): void {
     }
   }));
 
-  app.delete("/api/dialpad/phone-numbers/:phoneNumberId/permissions/:userId", requireManagerOrAdmin, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.delete("/api/dialpad/phone-numbers/:phoneNumberId/permissions/:userId", requireManagerOrAdmin, asyncHandler(async (req: AuthedRequest, res: Response) => {
     const { phoneNumberId, userId } = req.params;
     
     const permission = await storage.getUserPhoneNumberPermission(userId, phoneNumberId);
@@ -122,7 +122,7 @@ export function registerDialpadRoutes(app: Express): void {
     }
   }));
 
-  app.put("/api/dialpad/phone-numbers/:id", requireManagerOrAdmin, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.put("/api/dialpad/phone-numbers/:id", requireManagerOrAdmin, asyncHandler(async (req: AuthedRequest, res: Response) => {
     const { id } = req.params;
     const { displayName, department } = req.body;
     
@@ -134,7 +134,7 @@ export function registerDialpadRoutes(app: Express): void {
     res.json(updatedPhoneNumber);
   }));
 
-  app.get("/api/dialpad/users", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/dialpad/users", asyncHandler(async (req: AuthedRequest, res: Response) => {
     const isIntegrationEnabled = await storage.isIntegrationEnabled(req.user!.contractorId, 'dialpad');
     if (!isIntegrationEnabled) {
       res.status(403).json({ 
@@ -149,7 +149,7 @@ export function registerDialpadRoutes(app: Express): void {
   }));
 
   // Dialpad webhook management routes
-  app.post("/api/dialpad/webhooks/create", requireManagerOrAdmin, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/dialpad/webhooks/create", requireManagerOrAdmin, asyncHandler(async (req: AuthedRequest, res: Response) => {
     const isIntegrationEnabled = await storage.isIntegrationEnabled(req.user!.contractorId, 'dialpad');
     if (!isIntegrationEnabled) {
       res.status(403).json({ 
@@ -185,7 +185,7 @@ export function registerDialpadRoutes(app: Express): void {
     });
   }));
 
-  app.get("/api/dialpad/webhooks/list", requireManagerOrAdmin, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/dialpad/webhooks/list", requireManagerOrAdmin, asyncHandler(async (req: AuthedRequest, res: Response) => {
     const isIntegrationEnabled = await storage.isIntegrationEnabled(req.user!.contractorId, 'dialpad');
     if (!isIntegrationEnabled) {
       res.status(403).json({ 
@@ -208,7 +208,7 @@ export function registerDialpadRoutes(app: Express): void {
     res.json({ webhooks: result.webhooks || [] });
   }));
 
-  app.delete("/api/dialpad/webhooks/:webhookId", requireManagerOrAdmin, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.delete("/api/dialpad/webhooks/:webhookId", requireManagerOrAdmin, asyncHandler(async (req: AuthedRequest, res: Response) => {
     const { webhookId } = req.params;
     const isIntegrationEnabled = await storage.isIntegrationEnabled(req.user!.contractorId, 'dialpad');
     
@@ -234,7 +234,7 @@ export function registerDialpadRoutes(app: Express): void {
   }));
 
   // Dialpad sync endpoint
-  app.post("/api/dialpad/sync", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/dialpad/sync", asyncHandler(async (req: AuthedRequest, res: Response) => {
     const contractorId = req.user!.contractorId;
     
     const isIntegrationEnabled = await storage.isIntegrationEnabled(contractorId, 'dialpad');
@@ -333,7 +333,7 @@ export function registerDialpadRoutes(app: Express): void {
   }));
 
   // Dialpad SMS webhook configuration endpoint
-  app.get("/api/dialpad-webhook-config", requireAuth, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/dialpad-webhook-config", requireAuth, asyncHandler(async (req: AuthedRequest, res: Response) => {
     const protocol = req.get('x-forwarded-proto') || req.protocol;
     const host = req.get('x-forwarded-host') || req.get('host');
     const tenantId = req.user!.contractorId;

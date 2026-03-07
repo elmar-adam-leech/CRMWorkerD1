@@ -1,14 +1,14 @@
 import type { Express, Response } from "express";
 import { storage } from "../../storage";
 import { housecallProService } from "../../housecall-pro-service";
-import { requireAuth, requireAdmin, type AuthenticatedRequest } from "../../auth-service";
+import { requireAuth, requireAdmin, type AuthedRequest } from "../../auth-service";
 import { syncStatus } from "../../sync-status-store";
 import { mapHcpEstimateStatus } from "../../sync/housecall-pro";
 import crypto from "crypto";
 import { asyncHandler } from "../../utils/async-handler";
 
 export function registerHcpSyncRoutes(app: Express): void {
-  app.post("/api/housecall-pro/sync", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/housecall-pro/sync", asyncHandler(async (req: AuthedRequest, res: Response) => {
     const contractorId = req.user!.contractorId;
     const syncType = (req.query.type as string) || 'all';
 
@@ -260,7 +260,7 @@ export function registerHcpSyncRoutes(app: Express): void {
     });
   }));
 
-  app.get("/api/sync-status", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/sync-status", asyncHandler(async (req: AuthedRequest, res: Response) => {
     const contractorId = req.user!.contractorId;
     const status = syncStatus.get(contractorId) || {
       isRunning: false,
@@ -278,12 +278,12 @@ export function registerHcpSyncRoutes(app: Express): void {
     });
   }));
 
-  app.get("/api/housecall-pro/sync-start-date", requireAuth, requireAdmin, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/housecall-pro/sync-start-date", requireAuth, requireAdmin, asyncHandler(async (req: AuthedRequest, res: Response) => {
     const syncStartDate = await storage.getHousecallProSyncStartDate(req.user!.contractorId);
     res.json({ syncStartDate: syncStartDate ? syncStartDate.toISOString() : null });
   }));
 
-  app.post("/api/housecall-pro/sync-start-date", requireAuth, requireAdmin, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/housecall-pro/sync-start-date", requireAuth, requireAdmin, asyncHandler(async (req: AuthedRequest, res: Response) => {
     const { syncStartDate } = req.body;
     const parsedDate = syncStartDate ? new Date(syncStartDate) : null;
     await storage.setHousecallProSyncStartDate(req.user!.contractorId, parsedDate);

@@ -3,7 +3,7 @@ import { asyncHandler } from "../utils/async-handler";
 import { parseBody } from "../utils/validate-body";
 import { storage } from "../storage";
 import { insertJobSchema, jobsPaginationQuerySchema } from "@shared/schema";
-import { requireManagerOrAdmin, type AuthenticatedRequest } from "../auth-service";
+import { requireManagerOrAdmin, type AuthedRequest } from "../auth-service";
 import { workflowEngine } from "../workflow-engine";
 import { broadcastToContractor } from "../websocket";
 import { toWorkflowEvent } from "../utils/workflow/entity-adapter";
@@ -13,25 +13,25 @@ const log = logger('JobRoutes');
 
 export function registerJobRoutes(app: Express): void {
   app.get("/api/jobs", asyncHandler(async (req, res) => {
-    const jobs = await storage.getJobs(req.user!.contractorId);
+    const jobs = await storage.getJobs(req.user.contractorId);
     res.json(jobs);
   }));
 
-  app.get("/api/jobs/paginated", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/jobs/paginated", asyncHandler(async (req: AuthedRequest, res: Response) => {
     // ZodError from .parse() propagates → global ZodError middleware → 400 response
     const validatedQuery = jobsPaginationQuerySchema.parse(req.query);
-    const paginatedJobs = await storage.getJobsPaginated(req.user!.contractorId, validatedQuery);
+    const paginatedJobs = await storage.getJobsPaginated(req.user.contractorId, validatedQuery);
     res.json(paginatedJobs);
   }));
 
   app.get("/api/jobs/status-counts", asyncHandler(async (req, res) => {
     const search = req.query.search as string;
-    const counts = await storage.getJobsStatusCounts(req.user!.contractorId, { search });
+    const counts = await storage.getJobsStatusCounts(req.user.contractorId, { search });
     res.json(counts);
   }));
 
   app.get("/api/jobs/:id", asyncHandler(async (req, res) => {
-    const job = await storage.getJob(req.params.id, req.user!.contractorId);
+    const job = await storage.getJob(req.params.id, req.user.contractorId);
     if (!job) {
       res.status(404).json({ message: "Job not found" });
       return;
@@ -44,7 +44,7 @@ export function registerJobRoutes(app: Express): void {
     if (!jobData) return;
     let job: Awaited<ReturnType<typeof storage.createJob>>;
     try {
-      job = await storage.createJob(jobData, req.user!.contractorId);
+      job = await storage.createJob(jobData, req.user.contractorId);
     } catch (err) {
       if (err instanceof Error && err.message.includes('Customer not found')) {
         res.status(400).json({ message: err.message });
@@ -54,18 +54,18 @@ export function registerJobRoutes(app: Express): void {
     }
 
     try {
-      const contact = await storage.getContact(job.contactId, req.user!.contractorId);
+      const contact = await storage.getContact(job.contactId, req.user.contractorId);
       if (contact && !contact.tags?.includes('Customer')) {
         const updatedTags = [...(contact.tags || []), 'Customer'];
-        await storage.updateContact(contact.id, { tags: updatedTags }, req.user!.contractorId);
-        broadcastToContractor(req.user!.contractorId, { type: 'contact_updated', contactId: contact.id, contactType: contact.type });
+        await storage.updateContact(contact.id, { tags: updatedTags }, req.user.contractorId);
+        broadcastToContractor(req.user.contractorId, { type: 'contact_updated', contactId: contact.id, contactType: contact.type });
       }
     } catch (tagError) {
       log.error('Failed to add Customer tag during job creation', tagError);
     }
 
-    broadcastToContractor(req.user!.contractorId, { type: 'job_created', jobId: job.id });
-    workflowEngine.triggerWorkflowsForEvent('job_created', toWorkflowEvent(job), req.user!.contractorId).catch(error => {
+    broadcastToContractor(req.user.contractorId, { type: 'job_created', jobId: job.id });
+    workflowEngine.triggerWorkflowsForEvent('job_created', toWorkflowEvent(job), req.user.contractorId).catch(error => {
       log.error('Error triggering workflows for job creation', error);
     });
 
@@ -73,7 +73,7 @@ export function registerJobRoutes(app: Express): void {
   }));
 
   app.put("/api/jobs/:id", asyncHandler(async (req, res) => {
-    const existingJob = await storage.getJob(req.params.id, req.user!.contractorId);
+    const existingJob = await storage.getJob(req.params.id, req.user.contractorId);
     if (!existingJob) {
       res.status(404).json({ message: "Job not found" });
       return;
@@ -86,19 +86,19 @@ export function registerJobRoutes(app: Express): void {
     }
     const updateData = parseBody(insertJobSchema.omit({ contractorId: true, contactId: true }).partial(), req, res);
     if (!updateData) return;
-    const job = await storage.updateJob(req.params.id, updateData, req.user!.contractorId);
+    const job = await storage.updateJob(req.params.id, updateData, req.user.contractorId);
     if (!job) {
       res.status(404).json({ message: "Job not found" });
       return;
     }
 
-    broadcastToContractor(req.user!.contractorId, { type: 'job_updated', jobId: job.id });
-    workflowEngine.triggerWorkflowsForEvent('job_updated', toWorkflowEvent(job), req.user!.contractorId).catch(error => {
+    broadcastToContractor(req.user.contractorId, { type: 'job_updated', jobId: job.id });
+    workflowEngine.triggerWorkflowsForEvent('job_updated', toWorkflowEvent(job), req.user.contractorId).catch(error => {
       log.error('Error triggering workflows for job update', error);
     });
 
     if (updateData.status) {
-      workflowEngine.triggerWorkflowsForEvent('job_status_changed', toWorkflowEvent(job), req.user!.contractorId).catch(error => {
+      workflowEngine.triggerWorkflowsForEvent('job_status_changed', toWorkflowEvent(job), req.user.contractorId).catch(error => {
         log.error('Error triggering workflows for job status change', error);
       });
     }
@@ -107,19 +107,19 @@ export function registerJobRoutes(app: Express): void {
   }));
 
   app.delete("/api/jobs/:id", requireManagerOrAdmin, asyncHandler(async (req, res) => {
-    const job = await storage.getJob(req.params.id, req.user!.contractorId);
+    const job = await storage.getJob(req.params.id, req.user.contractorId);
     if (!job) {
       res.status(404).json({ message: "Job not found" });
       return;
     }
 
-    const deleted = await storage.deleteJob(req.params.id, req.user!.contractorId);
+    const deleted = await storage.deleteJob(req.params.id, req.user.contractorId);
     if (!deleted) {
       res.status(404).json({ message: "Job not found or already deleted" });
       return;
     }
 
-    broadcastToContractor(req.user!.contractorId, { type: 'job_deleted', jobId: req.params.id });
+    broadcastToContractor(req.user.contractorId, { type: 'job_deleted', jobId: req.params.id });
     res.status(200).json({ message: "Job deleted successfully" });
   }));
 }

@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Calendar, Phone, Mail, AlertCircle, MessageSquare, FileText, User, CalendarDays, MoreHorizontal, Edit, Trash, Clock, CalendarClock } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -212,3 +213,5 @@ export function FollowUpCard({
     </Card>
   );
 }
+
+export default memo(FollowUpCard);

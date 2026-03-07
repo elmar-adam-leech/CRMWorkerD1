@@ -4,12 +4,12 @@ export interface ExecutionContext {
   contractorId: string;
   workflowCreatorId: string;
   triggerEntityType: string;
-  triggerData: any;
-  variables: Record<string, any>;
+  triggerData: Record<string, unknown>;
+  variables: Record<string, unknown>;
 }
 
 export interface StepResult {
   success: boolean;
   error?: string;
-  data?: any;
+  data?: Record<string, unknown>;
 }

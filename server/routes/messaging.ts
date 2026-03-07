@@ -8,7 +8,7 @@ import { db } from "../db";
 import { eq, and } from "drizzle-orm";
 import { dialpadService } from "../dialpad-service";
 import { gmailService } from "../gmail-service";
-import { type AuthenticatedRequest } from "../auth-service";
+import { type AuthedRequest } from "../auth-service";
 import { broadcastToContractor } from "../websocket";
 import { providerService } from "../providers/provider-service";
 
@@ -16,11 +16,11 @@ export function registerMessagingRoutes(app: Express): void {
   app.get("/api/messages", asyncHandler(async (req, res) => {
     const contactId = (req.query.contactId || req.query.leadId || req.query.customerId) as string | undefined;
     const estimateId = req.query.estimateId as string | undefined;
-    const messages = await storage.getMessages(req.user!.contractorId, contactId, estimateId);
+    const messages = await storage.getMessages(req.user.contractorId, contactId, estimateId);
     res.json(messages);
   }));
 
-  app.post("/api/messages/send-text", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/messages/send-text", asyncHandler(async (req: AuthedRequest, res: Response) => {
     const messageData = parseBody(insertMessageSchema.omit({ contractorId: true, status: true }), req, res);
     if (!messageData) return;
 
@@ -40,7 +40,7 @@ export function registerMessagingRoutes(app: Express): void {
       messageData.toNumber,
       messageData.content,
       messageData.fromNumber || undefined,
-      req.user!.contractorId
+      req.user.contractorId
     );
 
     const resolvedContactId = messageData.contactId || (req.body.leadId as string | undefined) || (req.body.customerId as string | undefined);
@@ -50,24 +50,24 @@ export function registerMessagingRoutes(app: Express): void {
         ...messageData,
         status: 'sent',
         externalMessageId: smsResponse.messageId || null,
-      }, req.user!.contractorId);
+      }, req.user.contractorId);
 
       await Promise.all([
         resolvedContactId
-          ? storage.markContactContacted(resolvedContactId, req.user!.contractorId, req.user!.userId)
+          ? storage.markContactContacted(resolvedContactId, req.user.contractorId, req.user.userId)
           : Promise.resolve(),
         storage.createActivity({
           type: 'sms',
           title: 'SMS sent',
           content: messageData.content,
           contactId: resolvedContactId || null,
-          userId: req.user!.userId,
+          userId: req.user.userId,
           externalId: smsResponse.messageId || null,
           externalSource: 'dialpad',
-        }, req.user!.contractorId),
+        }, req.user.contractorId),
       ]);
 
-      broadcastToContractor(req.user!.contractorId, {
+      broadcastToContractor(req.user.contractorId, {
         type: 'new_message',
         message: savedMessage,
         contactId: resolvedContactId || null,
@@ -87,7 +87,7 @@ export function registerMessagingRoutes(app: Express): void {
     }
   }));
 
-  app.post("/api/messages/send-email", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/messages/send-email", asyncHandler(async (req: AuthedRequest, res: Response) => {
     const emailBodySchema = z.object({
       to: z.string().email({ message: "A valid recipient email address is required" }),
       subject: z.string().min(1, { message: "Subject is required" }),
@@ -110,10 +110,10 @@ export function registerMessagingRoutes(app: Express): void {
     // Fetch user and contractor in parallel — independent queries
     const [userResult, contractorResult] = await Promise.all([
       db.select().from(users).where(and(
-        eq(users.id, req.user!.userId),
-        eq(users.contractorId, req.user!.contractorId)
+        eq(users.id, req.user.userId),
+        eq(users.contractorId, req.user.contractorId)
       )),
-      db.select().from(contractors).where(eq(contractors.id, req.user!.contractorId)),
+      db.select().from(contractors).where(eq(contractors.id, req.user.contractorId)),
     ]);
     const user = userResult[0];
     const contractor = contractorResult[0];
@@ -151,14 +151,14 @@ export function registerMessagingRoutes(app: Express): void {
         metadata: JSON.stringify(emailMetadata),
         contactId: resolvedContactId || null,
         estimateId: estimateId || null,
-        userId: req.user!.userId,
+        userId: req.user.userId,
         externalId: emailResponse.messageId || null,
         externalSource: 'gmail',
-      }, req.user!.contractorId);
+      }, req.user.contractorId);
 
       const contactIdToMark = resolvedContactId || estimateId;
       if (contactIdToMark) {
-        await storage.markContactContacted(contactIdToMark, req.user!.contractorId, req.user!.userId);
+        await storage.markContactContacted(contactIdToMark, req.user.contractorId, req.user.userId);
       }
 
       let broadcastLeadId: string | null = leadId || null;
@@ -174,7 +174,7 @@ export function registerMessagingRoutes(app: Express): void {
         broadcastLeadId = leadId;
         broadcastContactType = 'lead';
       } else if (contactId && resolvedContactId) {
-        const resolvedContact = await storage.getContact(resolvedContactId, req.user!.contractorId);
+        const resolvedContact = await storage.getContact(resolvedContactId, req.user.contractorId);
         if (resolvedContact?.type === 'customer') {
           broadcastCustomerId = resolvedContactId;
           broadcastContactType = 'customer';
@@ -184,7 +184,7 @@ export function registerMessagingRoutes(app: Express): void {
         }
       }
 
-      broadcastToContractor(req.user!.contractorId, {
+      broadcastToContractor(req.user.contractorId, {
         type: 'new_message',
         message: {
           id: activity.id,
@@ -222,7 +222,7 @@ export function registerMessagingRoutes(app: Express): void {
     }
   }));
 
-  app.post("/api/calls/initiate", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/calls/initiate", asyncHandler(async (req: AuthedRequest, res: Response) => {
     const callBodySchema = z.object({
       toNumber: z.string().min(1, { message: "Destination phone number is required" }),
       fromNumber: z.string().optional(),
@@ -244,8 +244,8 @@ export function registerMessagingRoutes(app: Express): void {
       to: toNumber,
       fromNumber: fromNumber || undefined,
       autoRecord: autoRecord || false,
-      contractorId: req.user!.contractorId,
-      userId: req.user!.userId
+      contractorId: req.user.contractorId,
+      userId: req.user.userId
     });
 
     console.log('Call response:', callResponse);
@@ -258,7 +258,7 @@ export function registerMessagingRoutes(app: Express): void {
         status: 'initiated' as const,
         customerId: customerId || null,
         leadId: leadId || null,
-        userId: req.user!.userId,
+        userId: req.user.userId,
         callUrl: callResponse.callUrl || null,
         metadata: JSON.stringify({
           autoRecord,
@@ -269,10 +269,10 @@ export function registerMessagingRoutes(app: Express): void {
         })
       };
 
-      await storage.createCall(callData, req.user!.contractorId);
+      await storage.createCall(callData, req.user.contractorId);
 
       if (resolvedContactId) {
-        await storage.markContactContacted(resolvedContactId, req.user!.contractorId, req.user!.userId);
+        await storage.markContactContacted(resolvedContactId, req.user.contractorId, req.user.userId);
       }
 
       await storage.createActivity({
@@ -280,8 +280,8 @@ export function registerMessagingRoutes(app: Express): void {
         title: 'Phone call initiated',
         content: `Call initiated to ${toNumber}${fromNumber ? ` from ${fromNumber}` : ''}`,
         contactId: resolvedContactId || null,
-        userId: req.user!.userId
-      }, req.user!.contractorId);
+        userId: req.user.userId
+      }, req.user.contractorId);
 
       res.json({
         success: true,
@@ -300,7 +300,7 @@ export function registerMessagingRoutes(app: Express): void {
   app.get("/api/calls/:callId", asyncHandler(async (req, res) => {
     const { callId } = req.params;
 
-    const callRecord = await storage.getCallByExternalId(callId, req.user!.contractorId);
+    const callRecord = await storage.getCallByExternalId(callId, req.user.contractorId);
     if (!callRecord) {
       res.status(404).json({
         success: false,
@@ -315,7 +315,7 @@ export function registerMessagingRoutes(app: Express): void {
       let legacyLeadId: string | null = null;
       let legacyCustomerId: string | null = null;
       if (callRecord.contactId) {
-        const callContact = await storage.getContact(callRecord.contactId, req.user!.contractorId);
+        const callContact = await storage.getContact(callRecord.contactId, req.user.contractorId);
         if (callContact?.type === 'customer') {
           legacyCustomerId = callRecord.contactId;
         } else {
@@ -355,7 +355,7 @@ export function registerMessagingRoutes(app: Express): void {
       offset: offset ? parseInt(offset as string) : undefined,
     };
 
-    const messages = await storage.getAllMessages(req.user!.contractorId, options);
+    const messages = await storage.getAllMessages(req.user.contractorId, options);
     res.json(messages);
   }));
 
@@ -367,13 +367,13 @@ export function registerMessagingRoutes(app: Express): void {
       status: status as 'sent' | 'delivered' | 'failed' | undefined,
     };
 
-    const conversations = await storage.getConversations(req.user!.contractorId, options);
+    const conversations = await storage.getConversations(req.user.contractorId, options);
     res.json(conversations);
   }));
 
   app.get("/api/conversations/:contactId", asyncHandler(async (req, res) => {
     const { contactId } = req.params;
-    const messages = await storage.getConversationMessages(req.user!.contractorId, contactId);
+    const messages = await storage.getConversationMessages(req.user.contractorId, contactId);
     res.json(messages);
   }));
 
@@ -385,7 +385,7 @@ export function registerMessagingRoutes(app: Express): void {
       return;
     }
 
-    const messages = await storage.getConversationMessages(req.user!.contractorId, contactId);
+    const messages = await storage.getConversationMessages(req.user.contractorId, contactId);
     res.json(messages);
   }));
 
@@ -397,11 +397,11 @@ export function registerMessagingRoutes(app: Express): void {
       return;
     }
 
-    const count = await storage.getConversationMessageCount(req.user!.contractorId, contactId);
+    const count = await storage.getConversationMessageCount(req.user.contractorId, contactId);
     res.json({ count });
   }));
 
-  app.post("/api/calls/log-personal", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.post("/api/calls/log-personal", asyncHandler(async (req: AuthedRequest, res: Response) => {
     const { contactId, phone, name } = req.body as { contactId?: string; phone?: string; name?: string };
     if (!phone) {
       res.status(400).json({ message: "phone is required" });
@@ -409,8 +409,8 @@ export function registerMessagingRoutes(app: Express): void {
     }
     const label = name ? `${name} (${phone})` : phone;
     await storage.createActivity({
-      contractorId: req.user!.contractorId,
-      userId: req.user!.userId,
+      contractorId: req.user.contractorId,
+      userId: req.user.userId,
       contactId: contactId || null,
       type: "call",
       description: `Outbound call to ${label} via personal phone`,
@@ -419,7 +419,7 @@ export function registerMessagingRoutes(app: Express): void {
   }));
 
   app.get("/api/providers", asyncHandler(async (req, res) => {
-    const tenantProviders = await storage.getTenantProviders(req.user!.contractorId);
+    const tenantProviders = await storage.getTenantProviders(req.user.contractorId);
     const availableProviders = {
       email: providerService.getAvailableProviders('email'),
       sms: providerService.getAvailableProviders('sms'),
@@ -438,7 +438,7 @@ export function registerMessagingRoutes(app: Express): void {
       res.status(400).json({ message: "Invalid provider type" });
       return;
     }
-    const result = await providerService.setTenantProvider(req.user!.contractorId, providerType as 'email' | 'sms' | 'calling', providerName);
+    const result = await providerService.setTenantProvider(req.user.contractorId, providerType as 'email' | 'sms' | 'calling', providerName);
     if (result.success) {
       res.json({ success: true, message: `${providerType} provider set to ${providerName}` });
     } else {

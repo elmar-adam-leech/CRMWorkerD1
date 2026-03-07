@@ -5,9 +5,14 @@ import { downloadCsv } from "@/lib/csv";
 
 export type BulkEntityType = "contact" | "job" | "estimate";
 
+export interface BulkEntity {
+  id: string;
+  [key: string]: unknown;
+}
+
 export interface BulkExportColumn {
   header: string;
-  getValue: (entity: any) => string | number | null | undefined;
+  getValue: (entity: BulkEntity) => string | number | null | undefined;
 }
 
 export interface UseBulkActionsOptions {
@@ -17,8 +22,8 @@ export interface UseBulkActionsOptions {
   invalidateKeys: string[][];
   exportFilename: string;
   exportHeaders: string[];
-  getExportRow: (entity: any) => (string | number | undefined)[];
-  entities: any[];
+  getExportRow: (entity: BulkEntity) => (string | number | undefined)[];
+  entities: BulkEntity[];
 }
 
 export interface UseBulkActionsResult {

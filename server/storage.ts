@@ -6,7 +6,8 @@
  *   It is composed from domain-specific implementation modules in `server/storage/`:
  *     - users.ts       → user & contractor CRUD, role management
  *     - contacts.ts    → contacts, leads, deduplication, follow-ups
- *     - jobs-estimates.ts → jobs and estimates (paginated, status counts)
+ *     - jobs.ts          → jobs (paginated, status counts, CRUD)
+ *     - estimates.ts     → estimates (paginated, status counts, CRUD, follow-ups)
  *     - messaging.ts   → messages, conversations, Dialpad sync
  *     - activities.ts  → activity log entries (notes, calls, emails, status changes)
  *     - workflows.ts   → workflow definitions, steps, and execution tracking
@@ -19,7 +20,7 @@
  * Multi-tenancy:
  *   Every method that touches tenant-specific data requires a `contractorId` parameter.
  *   NEVER call a storage method without providing the contractorId from the authenticated
- *   request (`req.user!.contractorId`). Omitting it is a data-leak security hole.
+ *   request (`req.user.contractorId`). Omitting it is a data-leak security hole.
  *
  * How to add a new storage method:
  *   1. Add the method implementation to the appropriate file in `server/storage/`.
@@ -85,7 +86,8 @@ import type {
 
 import { userMethods } from "./storage/users";
 import { contactMethods } from "./storage/contacts";
-import { jobEstimateMethods } from "./storage/jobs-estimates";
+import { jobMethods } from "./storage/jobs";
+import { estimateMethods } from "./storage/estimates";
 import { messagingMethods } from "./storage/messaging";
 import { templateMethods } from "./storage/templates";
 import { activityMethods } from "./storage/activities";
@@ -481,7 +483,8 @@ export interface IStorage {
 export const storage: IStorage = {
   ...userMethods,
   ...contactMethods,
-  ...jobEstimateMethods,
+  ...jobMethods,
+  ...estimateMethods,
   ...messagingMethods,
   ...templateMethods,
   ...activityMethods,

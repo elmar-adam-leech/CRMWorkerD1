@@ -18,7 +18,6 @@ import { AddressAutocomplete, AddressComponents } from "@/components/ui/AddressA
 import { useToast } from "@/hooks/use-toast";
 
 interface ContractorInfo {
-  id: string;
   name: string;
   bookingSlug: string;
 }

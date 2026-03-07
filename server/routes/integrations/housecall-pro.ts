@@ -1,11 +1,11 @@
 import type { Express, Response } from "express";
 import { storage } from "../../storage";
 import { housecallProService } from "../../housecall-pro-service";
-import { type AuthenticatedRequest } from "../../auth-service";
+import { type AuthedRequest } from "../../auth-service";
 import { asyncHandler } from "../../utils/async-handler";
 
 export function registerHousecallProRoutes(app: Express): void {
-  app.get("/api/housecall-pro/status", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/housecall-pro/status", asyncHandler(async (req: AuthedRequest, res: Response) => {
     const isIntegrationEnabled = await storage.isIntegrationEnabled(req.user!.contractorId, 'housecall-pro');
     if (!isIntegrationEnabled) {
       res.status(403).json({
@@ -29,7 +29,7 @@ export function registerHousecallProRoutes(app: Express): void {
     });
   }));
 
-  app.get("/api/housecall-pro/employees", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/housecall-pro/employees", asyncHandler(async (req: AuthedRequest, res: Response) => {
     const isIntegrationEnabled = await storage.isIntegrationEnabled(req.user!.contractorId, 'housecall-pro');
     if (!isIntegrationEnabled) {
       res.status(403).json({
@@ -47,7 +47,7 @@ export function registerHousecallProRoutes(app: Express): void {
     res.json(result.data);
   }));
 
-  app.get("/api/housecall-pro/availability", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/housecall-pro/availability", asyncHandler(async (req: AuthedRequest, res: Response) => {
     const isIntegrationEnabled = await storage.isIntegrationEnabled(req.user!.contractorId, 'housecall-pro');
     if (!isIntegrationEnabled) {
       res.status(403).json({
@@ -92,7 +92,7 @@ export function registerHousecallProRoutes(app: Express): void {
     res.json(result.data);
   }));
 
-  app.get("/api/housecall/employee-estimates", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  app.get("/api/housecall/employee-estimates", asyncHandler(async (req: AuthedRequest, res: Response) => {
     const { employeeId, date } = req.query;
 
     if (!employeeId || !date) {

@@ -20,7 +20,7 @@ type Contractor = {
   id: string;
   name: string;
   domain: string;
-  role: "admin" | "manager" | "user";
+  role?: string;
 };
 
 type ContractorSwitcherProps = {

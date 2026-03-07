@@ -51,7 +51,12 @@ const BUFFER_MINUTES = 30;
 // const DEFAULT_WORKING_HOURS = { start: 8, end: 17 }; // Reserved for future use
 
 export class HousecallSchedulingService {
-  
+
+  // ── Sync / Business Logic Methods ───────────────────────────────────────────
+  // The methods in this service reconcile Housecall Pro employee/scheduling data
+  // with the local database. They call housecallProService (API client) internally
+  // and write to the local DB. Side effects on local state are expected and intentional.
+
   async syncHousecallUsers(tenantId: string): Promise<{ synced: number; created: number; updated: number; errors: string[]; hcpUsersFound: number }> {
     const result = { synced: 0, created: 0, updated: 0, errors: [] as string[], hcpUsersFound: 0 };
     
@@ -219,6 +224,10 @@ export class HousecallSchedulingService {
     }
   }
   
+  // ── Query / Read Methods ─────────────────────────────────────────────────────
+  // The methods below read from the local database (no HCP API calls).
+  // They derive scheduling state from data already synced into the local DB.
+
   async getSalespeople(tenantId: string): Promise<SalespersonInfo[]> {
     const salespeople = await db.select({
       userId: userContractors.userId,

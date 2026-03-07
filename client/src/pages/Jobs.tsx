@@ -1,4 +1,5 @@
-import { useState, useMemo, useCallback } from "react";
+import { useMemo, useCallback } from "react";
+import { useEntityModals } from "@/hooks/useEntityModals";
 import { useLocation } from "wouter";
 import { JobCard } from "@/components/JobCard";
 import { CardSkeleton } from "@/components/CardSkeleton";
@@ -46,9 +47,17 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
   } = usePagePreferences({ pageKey: "jobs" });
 
   const searchQuery = externalSearch;
-  const [addModalOpen, setAddModalOpen] = useState(false);
-  const [jobDetailsModal, setJobDetailsModal] = useState<{ isOpen: boolean; job?: JobListItem }>({ isOpen: false });
-  const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; jobId?: string; jobTitle?: string }>({ isOpen: false });
+  const {
+    addModal: addModalOpen,
+    openAdd: setAddModalOpen,
+    closeAdd: closeAddModal,
+    detailsModal: jobDetailsItem,
+    openDetails: openJobDetails,
+    closeDetails: closeJobDetails,
+    deleteModal: deleteJobItem,
+    openDelete: openDeleteJob,
+    closeDelete: closeDeleteJob,
+  } = useEntityModals<JobListItem>();
 
   const { toast } = useToast();
 
@@ -63,7 +72,7 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
     { types: ["new_job", "job_created", "job_updated", "job_deleted"], queryKeys: ["/api/jobs/paginated", "/api/jobs/status-counts"] },
   ]);
 
-  useAddModalFromUrl(() => setAddModalOpen(true));
+  useAddModalFromUrl(() => setAddModalOpen());
 
   const { data: terminology } = useTerminology();
   const { data: usersData } = useUsers();
@@ -139,20 +148,16 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
       queryClient.invalidateQueries({ queryKey: ["/api/jobs/paginated"] });
       queryClient.invalidateQueries({ queryKey: ["/api/jobs/status-counts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/jobs"] });
-      setDeleteConfirm({ isOpen: false });
+      closeDeleteJob();
     },
     onError: (error: Error) => {
       toast({ title: "Failed to Delete Job", description: error.message || "Something went wrong.", variant: "destructive" });
     },
   });
 
-  const handleDeleteJob = useCallback((jobId: string, jobTitle: string) => {
-    setDeleteConfirm({ isOpen: true, jobId, jobTitle });
-  }, []);
-
   // Global keyboard shortcuts
   useGlobalShortcuts((type) => {
-    if (type === "job") setAddModalOpen(true);
+    if (type === "job") setAddModalOpen();
   });
 
   // Flatten paginated pages into a typed list. Memoized — only recomputes when
@@ -183,11 +188,16 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
 
   const handleViewDetails = useCallback((jobId: string) => {
     const job = allJobs.find((j) => j.id === jobId);
-    if (job) setJobDetailsModal({ isOpen: true, job });
-  }, [allJobs]);
+    if (job) openJobDetails(job);
+  }, [allJobs, openJobDetails]);
+
+  const handleDeleteJob = useCallback((jobId: string, _jobTitle: string) => {
+    const job = allJobs.find((j) => j.id === jobId);
+    if (job) openDeleteJob(job);
+  }, [allJobs, openDeleteJob]);
 
   const handleImportFromHousecallPro = () => {
-    setAddModalOpen(false);
+    closeAddModal();
     setImportDateOpen(true);
   };
 
@@ -204,10 +214,10 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
     ],
     exportFilename: `jobs-export-${new Date().toISOString().split("T")[0]}.csv`,
     exportHeaders: ["Title", "Customer", "Status", "Value", "Scheduled Date", "Type", "Priority", "Estimated Hours"],
-    getExportRow: (job) => [
-      job.title, job.contactName, job.status, job.value,
-      job.scheduledDate, job.type, job.priority, job.estimatedHours ?? "",
-    ],
+    getExportRow: (job) => {
+      const j = job as JobListItem;
+      return [j.title, j.contactName, j.status, j.value, j.scheduledDate, j.type, j.priority, j.estimatedHours ?? ""];
+    },
     entities: allJobs,
   });
 
@@ -230,7 +240,7 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
                 <span className="hidden sm:inline">Import from Housecall Pro</span>
               </Button>
             )}
-            <Button onClick={() => setAddModalOpen(true)} data-testid="button-add-job">
+            <Button onClick={() => setAddModalOpen()} data-testid="button-add-job">
               <Plus className="h-4 w-4 mr-2" />
               Add {jobLabel}
             </Button>
@@ -308,16 +318,16 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
               "Jobs synced from Housecall Pro will appear here automatically",
             ]}
             ctaLabel="Create Your First Job"
-            onCtaClick={() => setAddModalOpen(true)}
+            onCtaClick={() => setAddModalOpen()}
             ctaTestId="button-add-first-job"
           />
         )
       )}
 
       {/* Modals */}
-      <JobDetailsModal isOpen={jobDetailsModal.isOpen} job={jobDetailsModal.job} onClose={() => setJobDetailsModal({ isOpen: false })} />
+      <JobDetailsModal isOpen={jobDetailsItem !== null} job={jobDetailsItem ?? undefined} onClose={closeJobDetails} />
 
-      <CreateJobModal isOpen={addModalOpen} onClose={() => setAddModalOpen(false)} />
+      <CreateJobModal isOpen={addModalOpen} onClose={closeAddModal} />
 
       <HCPImportModal
         isOpen={importDateOpen}
@@ -336,11 +346,11 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
       />
 
       <DeleteConfirmDialog
-        isOpen={deleteConfirm.isOpen}
-        onOpenChange={(open) => !open && setDeleteConfirm({ isOpen: false })}
+        isOpen={deleteJobItem !== null}
+        onOpenChange={(open) => !open && closeDeleteJob()}
         title="Delete Job"
-        description={`Are you sure you want to delete "${deleteConfirm.jobTitle}"? This action cannot be undone.`}
-        onConfirm={() => deleteConfirm.jobId && deleteJobMutation.mutate(deleteConfirm.jobId)}
+        description={`Are you sure you want to delete "${deleteJobItem?.title}"? This action cannot be undone.`}
+        onConfirm={() => deleteJobItem && deleteJobMutation.mutate(deleteJobItem.id)}
         confirmTestId="button-confirm-delete-job"
       />
     </PageLayout>
