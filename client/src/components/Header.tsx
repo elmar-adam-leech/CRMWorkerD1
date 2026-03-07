@@ -55,7 +55,7 @@ export function Header({
     <>
       <header className="flex items-center justify-between gap-2 sm:gap-4 border-b bg-background px-3 sm:px-4 py-2">
         <div className="flex items-center gap-2 flex-1 min-w-0">
-          <SidebarTrigger data-testid="button-sidebar-toggle" />
+          <SidebarTrigger data-testid="button-sidebar-toggle" className="hidden sm:flex" />
           <div className="hidden sm:block flex-1 max-w-xs sm:max-w-md">
             <GlobalSearchDropdown onSearch={onSearch} />
           </div>
