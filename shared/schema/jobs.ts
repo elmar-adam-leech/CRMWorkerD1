@@ -74,15 +74,27 @@ export const jobSummarySchema = z.object({
 });
 export type JobSummary = z.infer<typeof jobSummarySchema>;
 
+// Status counts shape used in paginated responses and the standalone endpoint
+export const jobStatusCountsSchema = z.object({
+  all: z.number(),
+  scheduled: z.number(),
+  in_progress: z.number(),
+  completed: z.number(),
+  cancelled: z.number(),
+});
+export type JobStatusCounts = z.infer<typeof jobStatusCountsSchema>;
+
 // Query parameter validation schema for jobs pagination
 export const jobsPaginationQuerySchema = z.object({
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
   status: z.enum(["scheduled", "in_progress", "completed", "cancelled", "all"]).optional(),
   search: z.string().optional(),
+  dateFrom: z.string().optional(),
+  dateTo: z.string().optional(),
 });
 
-// Paginated response schema for jobs
+// Paginated response schema for jobs (statusCounts bundled to save a round trip)
 export const paginatedJobsSchema = z.object({
   data: z.array(jobSummarySchema),
   pagination: z.object({
@@ -90,5 +102,6 @@ export const paginatedJobsSchema = z.object({
     hasMore: z.boolean(),
     nextCursor: z.string().nullable(),
   }),
+  statusCounts: jobStatusCountsSchema,
 });
 export type PaginatedJobs = z.infer<typeof paginatedJobsSchema>;

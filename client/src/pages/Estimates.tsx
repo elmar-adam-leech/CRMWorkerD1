@@ -8,12 +8,12 @@ import { DeleteConfirmDialog } from "@/components/DeleteConfirmDialog";
 import { PageHeader } from "@/components/ui/page-header-v2";
 import { PageLayout } from "@/components/ui/page-layout";
 import { Plus, FileText, Download, Filter } from "lucide-react";
-import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from "@tanstack/react-query";
+import { useQuery, useInfiniteQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { formatStatusLabel, cn } from "@/lib/utils";
 import { useBulkActions } from "@/hooks/useBulkActions";
-import type { PaginatedEstimates, Contact, EstimateSummary } from "@shared/schema";
+import type { PaginatedEstimates, EstimateSummary, Contact } from "@shared/schema";
 import { useTerminologyContext } from "@/contexts/TerminologyContext";
 import { useUsers } from "@/hooks/useUsers";
 import { useCommunicationActions } from "@/hooks/useCommunicationActions";
@@ -36,6 +36,7 @@ import { FollowUpDateModal } from "@/components/FollowUpDateModal";
 import { EstimateDetailsModal, type EstimateListItem } from "@/components/EstimateDetailsModal";
 import { type EstimateCardItem } from "@/components/EstimateCard";
 import { HCPImportModal } from "@/components/HCPImportModal";
+import { useEstimateMutations } from "@/hooks/useEstimateMutations";
 
 const ESTIMATE_FILTER_STATUSES = ["sent", "pending", "approved", "rejected"] as const;
 
@@ -80,6 +81,12 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
 
   const [activeModal, setActiveModal] = useState<ActiveEstimateModal>(null);
 
+  const { updateEstimate, updateFollowUpDate, deleteEstimate } = useEstimateMutations({
+    onEditSuccess: () => setActiveModal(null),
+    onFollowUpSuccess: () => setActiveModal(null),
+    onDeleteSuccess: () => setActiveModal(null),
+  });
+
   const terminology = useTerminologyContext();
   const { data: usersData } = useUsers();
 
@@ -120,7 +127,6 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
       params.append("limit", "50");
       if (filterStatus !== "all") params.append("status", filterStatus);
       if (searchQuery) params.append("search", searchQuery);
-      if (advancedFilters.assignedTo) params.append("assignedTo", advancedFilters.assignedTo);
       if (advancedFilters.dateFrom) params.append("dateFrom", advancedFilters.dateFrom.toISOString());
       if (advancedFilters.dateTo) params.append("dateTo", advancedFilters.dateTo.toISOString());
       return (await apiRequest("GET", `/api/estimates/paginated?${params}`)).json() as Promise<PaginatedEstimates>;
@@ -132,10 +138,15 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
   const estimates = estimatesData?.pages.flatMap((page) => page.data) || [];
   const totalEstimates = estimatesData?.pages[0]?.pagination.total || 0;
 
+  // Status counts come bundled with the paginated response — no separate round trip needed.
+  // Falls back to zeros during initial load.
+  const statusCounts = estimatesData?.pages[0]?.statusCounts ?? {
+    all: 0, sent: 0, pending: 0, approved: 0, rejected: 0,
+  };
+
   const { isHousecallProConfigured, syncStartDate } = useHousecallProIntegration();
 
   const { toast } = useToast();
-  const queryClient = useQueryClient();
 
   useGlobalShortcuts((type) => {
     if (type === "estimate") setActiveModal({ type: "add" });
@@ -173,23 +184,6 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
     [estimates]
   );
 
-  const { data: statusCountsData } = useQuery<{
-    all: number;
-    sent: number;
-    pending: number;
-    approved: number;
-    rejected: number;
-  }>({
-    queryKey: ["/api/estimates/status-counts", searchQuery],
-    queryFn: async () => {
-      const params = new URLSearchParams();
-      if (searchQuery) params.append("search", searchQuery);
-      return (await apiRequest("GET", `/api/estimates/status-counts?${params}`)).json();
-    },
-  });
-
-  const statusCounts = statusCountsData || { all: 0, sent: 0, pending: 0, approved: 0, rejected: 0 };
-
   const handleAddEstimate = useCallback(() => setActiveModal({ type: "add" }), []);
 
   const handleImportFromHousecallPro = useCallback(() => setImportDateOpen(true), []);
@@ -214,13 +208,9 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
       type: method === "phone" ? "call" : "email",
       content: `${method === "phone" ? "Called" : "Emailed"} ${contact.name} regarding ${estimate.title}`,
       estimateId: estimateId,
-    })
-      .then(() => {
-        queryClient.invalidateQueries({ queryKey: ["/api/activities"] });
-      })
-      .catch((err: unknown) => {
-        console.error("[Estimates] Failed to log activity:", err);
-      });
+    }).catch((err: unknown) => {
+      console.error("[Estimates] Failed to log activity:", err);
+    });
 
     const entity = { name: contact.name, emails: contact.emails, phones: contact.phones, id: estimate.id };
 
@@ -245,7 +235,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
         });
       }
     }
-  }, [allEstimates, fetchContact, handleContact, queryClient, toast]);
+  }, [allEstimates, fetchContact, handleContact, toast]);
 
   const handleSendTextByEntity = useCallback(async (estimate: EstimateCardItem) => {
     const contact = await fetchContact(estimate.contactId);
@@ -271,79 +261,9 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
     if (estimate) setActiveModal({ type: "edit", estimate });
   }, [estimates]);
 
-  const updateEstimateMutation = useMutation({
-    mutationFn: async ({ estimateId, data }: { estimateId: string; data: EditEstimateFormValues }) => {
-      return apiRequest("PUT", `/api/estimates/${estimateId}`, data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/estimates/paginated"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/estimates/status-counts"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/estimates/follow-ups"] });
-      toast({
-        title: "Estimate updated",
-        description: "The estimate has been successfully updated.",
-      });
-      setActiveModal(null);
-    },
-    onError: (error) => {
-      toast({
-        title: "Error updating estimate",
-        description: error instanceof Error ? error.message : "Failed to update estimate. Please try again.",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const updateFollowUpDateMutation = useMutation({
-    mutationFn: async ({ estimateId, followUpDate }: { estimateId: string; followUpDate: Date | null }) => {
-      return apiRequest("PATCH", `/api/estimates/${estimateId}/follow-up`, {
-        followUpDate: followUpDate ? followUpDate.toISOString() : null,
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/estimates/paginated"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/estimates"] });
-      toast({
-        title: "Follow-up date set",
-        description: "The follow-up date has been successfully updated.",
-      });
-      setActiveModal(null);
-    },
-    onError: (error) => {
-      toast({
-        title: "Error setting follow-up date",
-        description: error instanceof Error ? error.message : "Failed to set follow-up date. Please try again.",
-        variant: "destructive",
-      });
-    },
-  });
-
   const handleSetFollowUp = (estimate: EstimateCardItem) => {
     setActiveModal({ type: "followUp", estimate });
   };
-
-  const deleteEstimateMutation = useMutation({
-    mutationFn: async (estimateId: string) => {
-      return apiRequest("DELETE", `/api/estimates/${estimateId}`);
-    },
-    onSuccess: () => {
-      setActiveModal(null);
-      toast({
-        title: "Estimate Deleted",
-        description: "Estimate has been successfully deleted.",
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/estimates/paginated"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/estimates/status-counts"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/estimates"] });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Failed to Delete Estimate",
-        description: error.message || "Something went wrong.",
-        variant: "destructive",
-      });
-    },
-  });
 
   const handleDelete = useCallback((estimateId: string) => {
     const estimate = (estimates || []).find((e) => e.id === estimateId);
@@ -353,12 +273,12 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
 
   const handleEditSave = (values: EditEstimateFormValues) => {
     if (activeModal?.type !== "edit") return;
-    updateEstimateMutation.mutate({ estimateId: activeModal.estimate.id, data: values });
+    updateEstimate.mutate({ estimateId: activeModal.estimate.id, data: values });
   };
 
   const handleFollowUpSave = (date: Date | null | undefined) => {
     if (activeModal?.type !== "followUp") return;
-    updateFollowUpDateMutation.mutate({
+    updateFollowUpDate.mutate({
       estimateId: activeModal.estimate.id,
       followUpDate: date ?? null,
     });
@@ -496,7 +416,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
             tips={[
               "Estimates help you provide formal quotes to potential customers",
               "Track estimate status from sent to approved or rejected",
-              "Convert approved estimates directly into jobs",
+              "Convert approved estimates directly into jobs automatically",
             ]}
             ctaLabel="Create Your First Estimate"
             onCtaClick={handleAddEstimate}
@@ -509,7 +429,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
         estimate={activeModal?.type === "edit" ? activeModal.estimate : undefined}
         onClose={() => setActiveModal(null)}
         onSave={handleEditSave}
-        isSaving={updateEstimateMutation.isPending}
+        isSaving={updateEstimate.isPending}
       />
 
       <CreateEstimateModal
@@ -558,7 +478,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
         onClose={() => setActiveModal(null)}
         onSave={handleFollowUpSave}
         entityName={activeModal?.type === "followUp" ? activeModal.estimate.title : undefined}
-        isSaving={updateFollowUpDateMutation.isPending}
+        isSaving={updateFollowUpDate.isPending}
       />
 
       <BulkActionToolbar
@@ -575,7 +495,7 @@ export default function Estimates({ externalSearch = "" }: { externalSearch?: st
         description={`Are you sure you want to delete "${activeModal?.type === "delete" ? activeModal.estimateTitle : "this estimate"}"? This action cannot be undone.`}
         onConfirm={() => {
           if (activeModal?.type === "delete") {
-            deleteEstimateMutation.mutate(activeModal.estimateId);
+            deleteEstimate.mutate(activeModal.estimateId);
           }
         }}
         confirmTestId="button-confirm-delete-estimate"

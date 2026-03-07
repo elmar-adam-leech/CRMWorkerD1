@@ -78,7 +78,17 @@ export const estimateSummarySchema = z.object({
 });
 export type EstimateSummary = z.infer<typeof estimateSummarySchema>;
 
-// Paginated response schema for estimates
+// Status counts shape used in paginated responses and the standalone endpoint
+export const estimateStatusCountsSchema = z.object({
+  all: z.number(),
+  sent: z.number(),
+  pending: z.number(),
+  approved: z.number(),
+  rejected: z.number(),
+});
+export type EstimateStatusCounts = z.infer<typeof estimateStatusCountsSchema>;
+
+// Paginated response schema for estimates (statusCounts bundled to save a round trip)
 export const paginatedEstimatesSchema = z.object({
   data: z.array(estimateSummarySchema),
   pagination: z.object({
@@ -86,5 +96,6 @@ export const paginatedEstimatesSchema = z.object({
     hasMore: z.boolean(),
     nextCursor: z.string().nullable(),
   }),
+  statusCounts: estimateStatusCountsSchema,
 });
 export type PaginatedEstimates = z.infer<typeof paginatedEstimatesSchema>;

@@ -183,10 +183,14 @@ export interface IStorage {
     limit?: number;
     status?: string;
     search?: string;
+    dateFrom?: string;
+    dateTo?: string;
   }): Promise<PaginatedJobs>;
   getJobsCount(contractorId: string, options?: {
     status?: string;
     search?: string;
+    dateFrom?: string;
+    dateTo?: string;
   }): Promise<number>;
   getJobsStatusCounts(contractorId: string, options?: {
     search?: string;
@@ -211,10 +215,14 @@ export interface IStorage {
     limit?: number;
     status?: string;
     search?: string;
+    dateFrom?: string;
+    dateTo?: string;
   }): Promise<PaginatedEstimates>;
   getEstimatesCount(contractorId: string, options?: {
     status?: string;
     search?: string;
+    dateFrom?: string;
+    dateTo?: string;
   }): Promise<number>;
   getEstimatesStatusCounts(contractorId: string, options?: {
     search?: string;

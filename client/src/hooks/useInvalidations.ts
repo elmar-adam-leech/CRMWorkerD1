@@ -28,7 +28,7 @@ export function invalidateContacts(contactId?: string) {
   }
 }
 
-/** Invalidate all job-related queries, plus related contact and estimate queries. */
+/** Invalidate all job-related queries. */
 export function invalidateJobs() {
   queryClient.invalidateQueries({ queryKey: ["/api/jobs/paginated"] });
   queryClient.invalidateQueries({ queryKey: ["/api/jobs/status-counts"] });
@@ -40,6 +40,7 @@ export function invalidateEstimates() {
   queryClient.invalidateQueries({ queryKey: ["/api/estimates/paginated"] });
   queryClient.invalidateQueries({ queryKey: ["/api/estimates/status-counts"] });
   queryClient.invalidateQueries({ queryKey: ["/api/estimates"] });
+  queryClient.invalidateQueries({ queryKey: ["/api/estimates/follow-ups"] });
 }
 
 /** Invalidate activity feed queries (used when notes/activities are created). */

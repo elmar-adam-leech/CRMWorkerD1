@@ -1,14 +1,12 @@
-import { useMemo, useCallback } from "react";
-import { useEntityModals } from "@/hooks/useEntityModals";
-import { useLocation } from "wouter";
+import { useState, useMemo, useCallback } from "react";
 import { JobCard } from "@/components/JobCard";
 import { CardSkeleton } from "@/components/CardSkeleton";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header-v2";
 import { PageLayout } from "@/components/ui/page-layout";
 import { Plus, Search, Briefcase, CalendarIcon } from "lucide-react";
-import { useQuery, useMutation, useInfiniteQuery } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useMutation, useInfiniteQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { formatStatusLabel } from "@/lib/utils";
 import { useBulkActions } from "@/hooks/useBulkActions";
@@ -31,13 +29,17 @@ import { CreateJobModal } from "@/components/CreateJobModal";
 import { DeleteConfirmDialog } from "@/components/DeleteConfirmDialog";
 import { StatusFilterBar } from "@/components/StatusFilterBar";
 import { LoadMoreButton } from "@/components/LoadMoreButton";
+import { invalidateJobs } from "@/hooks/useInvalidations";
 
 const JOB_STATUSES = ["scheduled", "in_progress", "completed", "cancelled"] as const;
-type JobStatus = (typeof JOB_STATUSES)[number];
-type FilterStatus = "all" | JobStatus;
+
+type ActiveJobModal =
+  | { type: "add" }
+  | { type: "details"; job: JobListItem }
+  | { type: "delete"; job: JobListItem }
+  | null;
 
 export default function Jobs({ externalSearch = "" }: { externalSearch?: string }) {
-  useLocation();
   const { isHousecallProConfigured, syncStartDate } = useHousecallProIntegration();
 
   const {
@@ -48,17 +50,8 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
   } = usePagePreferences({ pageKey: "jobs" });
 
   const searchQuery = externalSearch;
-  const {
-    addModal: addModalOpen,
-    openAdd: setAddModalOpen,
-    closeAdd: closeAddModal,
-    detailsModal: jobDetailsItem,
-    openDetails: openJobDetails,
-    closeDetails: closeJobDetails,
-    deleteModal: deleteJobItem,
-    openDelete: openDeleteJob,
-    closeDelete: closeDeleteJob,
-  } = useEntityModals<JobListItem>();
+
+  const [activeModal, setActiveModal] = useState<ActiveJobModal>(null);
 
   const { toast } = useToast();
 
@@ -76,12 +69,11 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
     { types: ["contact_updated"], queryKeys: ["/api/jobs/paginated"] },
   ]);
 
-  useAddModalFromUrl(() => setAddModalOpen());
+  useAddModalFromUrl(() => setActiveModal({ type: "add" }));
 
   const terminology = useTerminologyContext();
   const { data: usersData } = useUsers();
 
-  // Paginated jobs list
   const {
     data: jobsData,
     isLoading: jobsLoading,
@@ -105,7 +97,6 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
       params.append("limit", "50");
       if (filterStatus !== "all") params.append("status", filterStatus);
       if (searchQuery) params.append("search", searchQuery);
-      if (advancedFilters.assignedTo) params.append("assignedTo", advancedFilters.assignedTo);
       if (advancedFilters.dateFrom) params.append("dateFrom", advancedFilters.dateFrom.toISOString());
       if (advancedFilters.dateTo) params.append("dateTo", advancedFilters.dateTo.toISOString());
       const res = await apiRequest("GET", `/api/jobs/paginated?${params}`);
@@ -115,57 +106,40 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
     initialPageParam: null as string | null,
   });
 
-  // Per-status counts (search-aware)
-  const { data: statusCountsData } = useQuery<Record<FilterStatus, number>>({
-    queryKey: ["/api/jobs/status-counts", searchQuery],
-    queryFn: async () => {
-      const params = new URLSearchParams();
-      if (searchQuery) params.append("search", searchQuery);
-      const res = await apiRequest("GET", `/api/jobs/status-counts?${params}`);
-      return res.json();
-    },
-  });
-
-  const statusCounts: Record<string, number> = statusCountsData ?? {
+  // Status counts come bundled with the paginated response — no separate round trip needed.
+  // Falls back to zeros during initial load.
+  const statusCounts: Record<string, number> = jobsData?.pages[0]?.statusCounts ?? {
     all: 0, scheduled: 0, in_progress: 0, completed: 0, cancelled: 0,
   };
 
-  // Update job status
   const updateJobStatusMutation = useMutation({
     mutationFn: (data: { jobId: string; status: string }) =>
       apiRequest("PATCH", `/api/jobs/${data.jobId}/status`, { status: data.status }),
     onSuccess: () => {
       toast({ title: "Status Updated", description: "Job status has been successfully updated." });
-      queryClient.invalidateQueries({ queryKey: ["/api/jobs/paginated"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/jobs/status-counts"] });
+      invalidateJobs();
     },
     onError: (error: Error) => {
       toast({ title: "Update Failed", description: error.message || "Failed to update job status", variant: "destructive" });
     },
   });
 
-  // Delete a single job
   const deleteJobMutation = useMutation({
     mutationFn: (jobId: string) => apiRequest("DELETE", `/api/jobs/${jobId}`),
     onSuccess: () => {
       toast({ title: "Job Deleted", description: "Job has been successfully deleted." });
-      queryClient.invalidateQueries({ queryKey: ["/api/jobs/paginated"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/jobs/status-counts"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/jobs"] });
-      closeDeleteJob();
+      invalidateJobs();
+      setActiveModal(null);
     },
     onError: (error: Error) => {
       toast({ title: "Failed to Delete Job", description: error.message || "Something went wrong.", variant: "destructive" });
     },
   });
 
-  // Global keyboard shortcuts
   useGlobalShortcuts((type) => {
-    if (type === "job") setAddModalOpen();
+    if (type === "job") setActiveModal({ type: "add" });
   });
 
-  // Flatten paginated pages into a typed list. Memoized — only recomputes when
-  // jobsData changes, not on every filter/modal state update.
   const allJobs: JobListItem[] = useMemo(() =>
     jobsData?.pages.flatMap((page) =>
       (page.data || []).map((job) => ({
@@ -184,28 +158,25 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
 
   const totalJobs = jobsData?.pages[0]?.pagination.total ?? 0;
 
-  // ----- Event handlers -----
-
   const handleStatusChange = useCallback((jobId: string, newStatus: string) => {
     updateJobStatusMutation.mutate({ jobId, status: newStatus });
   }, [updateJobStatusMutation]);
 
   const handleViewDetails = useCallback((jobId: string) => {
     const job = allJobs.find((j) => j.id === jobId);
-    if (job) openJobDetails(job);
-  }, [allJobs, openJobDetails]);
+    if (job) setActiveModal({ type: "details", job });
+  }, [allJobs]);
 
-  const handleDeleteJob = useCallback((jobId: string, _jobTitle: string) => {
+  const handleDeleteJob = useCallback((jobId: string, _jobTitle?: string) => {
     const job = allJobs.find((j) => j.id === jobId);
-    if (job) openDeleteJob(job);
-  }, [allJobs, openDeleteJob]);
+    if (job) setActiveModal({ type: "delete", job });
+  }, [allJobs]);
 
   const handleImportFromHousecallPro = () => {
-    closeAddModal();
+    setActiveModal(null);
     setImportDateOpen(true);
   };
 
-  // ----- Bulk action handlers -----
   const { selectedIds, toggleItem } = useBulkSelection();
 
   const { handleBulkDelete, handleBulkStatusChange, handleBulkExport } = useBulkActions({
@@ -226,8 +197,6 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
     entities: allJobs,
   });
 
-  // ----- Render -----
-
   const jobLabel = terminology?.jobLabel || "Job";
   const jobsLabel = terminology?.jobsLabel || "Jobs";
   const isFiltered = !!(searchQuery || filterStatus !== "all");
@@ -245,7 +214,7 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
                 <span className="hidden sm:inline">Import from Housecall Pro</span>
               </Button>
             )}
-            <Button onClick={() => setAddModalOpen()} data-testid="button-add-job">
+            <Button onClick={() => setActiveModal({ type: "add" })} data-testid="button-add-job">
               <Plus className="h-4 w-4 mr-2" />
               Add {jobLabel}
             </Button>
@@ -253,7 +222,6 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
         }
       />
 
-      {/* Filters */}
       <div className="flex flex-col gap-4">
         <StatusFilterBar
           statuses={JOB_STATUSES}
@@ -271,14 +239,12 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
         />
       </div>
 
-      {/* Result count */}
       {allJobs.length > 0 && (
         <div className="text-sm text-muted-foreground">
           Showing {allJobs.length} of {totalJobs} {jobsLabel.toLowerCase()}
         </div>
       )}
 
-      {/* Jobs list */}
       <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
         {jobsLoading
           ? Array.from({ length: 6 }).map((_, i) => <CardSkeleton key={`skeleton-${i}`} />)
@@ -308,7 +274,6 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
         testId="button-load-more-jobs"
       />
 
-      {/* Empty states */}
       {allJobs.length === 0 && !jobsLoading && (
         isFiltered ? (
           <EmptyState
@@ -332,16 +297,22 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
               "Jobs synced from Housecall Pro will appear here automatically",
             ]}
             ctaLabel="Create Your First Job"
-            onCtaClick={() => setAddModalOpen()}
+            onCtaClick={() => setActiveModal({ type: "add" })}
             ctaTestId="button-add-first-job"
           />
         )
       )}
 
-      {/* Modals */}
-      <JobDetailsModal isOpen={jobDetailsItem !== null} job={jobDetailsItem ?? undefined} onClose={closeJobDetails} />
+      <JobDetailsModal
+        isOpen={activeModal?.type === "details"}
+        job={activeModal?.type === "details" ? activeModal.job : undefined}
+        onClose={() => setActiveModal(null)}
+      />
 
-      <CreateJobModal isOpen={addModalOpen} onClose={closeAddModal} />
+      <CreateJobModal
+        isOpen={activeModal?.type === "add"}
+        onClose={() => setActiveModal(null)}
+      />
 
       <HCPImportModal
         isOpen={importDateOpen}
@@ -360,11 +331,15 @@ export default function Jobs({ externalSearch = "" }: { externalSearch?: string 
       />
 
       <DeleteConfirmDialog
-        isOpen={deleteJobItem !== null}
-        onOpenChange={(open) => !open && closeDeleteJob()}
+        isOpen={activeModal?.type === "delete"}
+        onOpenChange={(open) => { if (!open) setActiveModal(null); }}
         title="Delete Job"
-        description={`Are you sure you want to delete "${deleteJobItem?.title}"? This action cannot be undone.`}
-        onConfirm={() => deleteJobItem && deleteJobMutation.mutate(deleteJobItem.id)}
+        description={`Are you sure you want to delete "${activeModal?.type === "delete" ? activeModal.job.title : "this job"}"? This action cannot be undone.`}
+        onConfirm={() => {
+          if (activeModal?.type === "delete") {
+            deleteJobMutation.mutate(activeModal.job.id);
+          }
+        }}
         confirmTestId="button-confirm-delete-job"
       />
     </PageLayout>

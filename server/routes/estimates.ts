@@ -21,11 +21,13 @@ export function registerEstimateRoutes(app: Express): void {
   }));
 
   app.get("/api/estimates/paginated", asyncHandler(async (req, res) => {
-    const cursor = req.query.cursor as string;
+    const cursor = req.query.cursor as string | undefined;
     const limit = parseInt(req.query.limit as string) || 50;
-    const status = req.query.status as string;
-    const search = req.query.search as string;
-    const result = await storage.getEstimatesPaginated(req.user.contractorId, { cursor, limit, status, search });
+    const status = req.query.status as string | undefined;
+    const search = req.query.search as string | undefined;
+    const dateFrom = req.query.dateFrom as string | undefined;
+    const dateTo = req.query.dateTo as string | undefined;
+    const result = await storage.getEstimatesPaginated(req.user.contractorId, { cursor, limit, status, search, dateFrom, dateTo });
     res.json(result);
   }));
 

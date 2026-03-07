@@ -4,13 +4,22 @@ import {
   estimateStatusEnum,
 } from "@shared/schema";
 import { db } from "../db";
-import { eq, and, or, desc, gt, ilike, sql, count } from "drizzle-orm";
+import { eq, and, or, desc, gt, gte, lte, ilike, sql, count } from "drizzle-orm";
 import type { UpdateEstimate } from "../storage-types";
 import { maybeDeleteOrphanContact } from "./contacts";
+
+type EstimateStatusCounts = {
+  all: number;
+  sent: number;
+  pending: number;
+  approved: number;
+  rejected: number;
+};
 
 type PaginatedEstimates = {
   data: Record<string, unknown>[];
   pagination: { total: number; hasMore: boolean; nextCursor: string | null };
+  statusCounts: EstimateStatusCounts;
 };
 
 async function getEstimates(contractorId: string): Promise<Estimate[]> {
@@ -54,6 +63,8 @@ async function getEstimatesPaginated(contractorId: string, options: {
   limit?: number;
   status?: string;
   search?: string;
+  dateFrom?: string;
+  dateTo?: string;
 } = {}): Promise<PaginatedEstimates> {
   const limit = Math.min(options.limit || 50, 100);
   const conditions = [eq(estimates.contractorId, contractorId)];
@@ -70,8 +81,14 @@ async function getEstimatesPaginated(contractorId: string, options: {
       ilike(contacts.name, `%${options.search}%`)
     )!);
   }
+  if (options.dateFrom) {
+    conditions.push(gte(estimates.createdAt, new Date(options.dateFrom)));
+  }
+  if (options.dateTo) {
+    conditions.push(lte(estimates.createdAt, new Date(options.dateTo)));
+  }
 
-  const [estimatesData, total] = await Promise.all([
+  const [estimatesData, total, statusCounts] = await Promise.all([
     db.select({
       id: estimates.id,
       title: estimates.title,
@@ -88,7 +105,8 @@ async function getEstimatesPaginated(contractorId: string, options: {
     .where(and(...conditions))
     .orderBy(desc(estimates.createdAt))
     .limit(limit + 1),
-    getEstimatesCount(contractorId, { status: options.status, search: options.search }),
+    getEstimatesCount(contractorId, { status: options.status, search: options.search, dateFrom: options.dateFrom, dateTo: options.dateTo }),
+    getEstimatesStatusCounts(contractorId, { search: options.search }),
   ]);
 
   const hasMore = estimatesData.length > limit;
@@ -98,12 +116,14 @@ async function getEstimatesPaginated(contractorId: string, options: {
     ? estimatesData[estimatesData.length - 1].createdAt.toISOString()
     : null;
 
-  return { data: estimatesData, pagination: { total, hasMore, nextCursor } };
+  return { data: estimatesData, pagination: { total, hasMore, nextCursor }, statusCounts };
 }
 
 async function getEstimatesCount(contractorId: string, options: {
   status?: string;
   search?: string;
+  dateFrom?: string;
+  dateTo?: string;
 } = {}): Promise<number> {
   const conditions = [eq(estimates.contractorId, contractorId)];
   if (options.status) conditions.push(eq(estimates.status, options.status as typeof estimateStatusEnum.enumValues[number]));
@@ -112,6 +132,12 @@ async function getEstimatesCount(contractorId: string, options: {
       ilike(estimates.title, `%${options.search}%`),
       ilike(contacts.name, `%${options.search}%`)
     )!);
+  }
+  if (options.dateFrom) {
+    conditions.push(gte(estimates.createdAt, new Date(options.dateFrom)));
+  }
+  if (options.dateTo) {
+    conditions.push(lte(estimates.createdAt, new Date(options.dateTo)));
   }
   const result = await db.select({ count: count() })
     .from(estimates)
@@ -122,7 +148,7 @@ async function getEstimatesCount(contractorId: string, options: {
 
 async function getEstimatesStatusCounts(contractorId: string, options: {
   search?: string;
-} = {}): Promise<{ all: number; sent: number; pending: number; approved: number; rejected: number }> {
+} = {}): Promise<EstimateStatusCounts> {
   const baseConditions = [eq(estimates.contractorId, contractorId)];
   if (options.search) {
     baseConditions.push(or(

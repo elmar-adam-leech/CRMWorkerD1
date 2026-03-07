@@ -1,16 +1,25 @@
 import {
   type Job, type InsertJob,
-  jobs, contacts, messages, calls,
+  jobs, estimates, contacts, messages, calls,
   jobStatusEnum,
 } from "@shared/schema";
 import { db } from "../db";
-import { eq, and, or, desc, lte, ilike, sql, count } from "drizzle-orm";
+import { eq, and, or, desc, lte, gte, ilike, sql, count } from "drizzle-orm";
 import type { UpdateJob } from "../storage-types";
 import { maybeDeleteOrphanContact } from "./contacts";
+
+type JobStatusCounts = {
+  all: number;
+  scheduled: number;
+  in_progress: number;
+  completed: number;
+  cancelled: number;
+};
 
 type PaginatedJobs = {
   data: Record<string, unknown>[];
   pagination: { total: number; hasMore: boolean; nextCursor: string | null };
+  statusCounts: JobStatusCounts;
 };
 
 const GET_JOBS_LIMIT = 500;
@@ -24,6 +33,8 @@ async function getJobsPaginated(contractorId: string, options: {
   limit?: number;
   status?: string;
   search?: string;
+  dateFrom?: string;
+  dateTo?: string;
 } = {}): Promise<PaginatedJobs> {
   const limit = Math.min(options.limit || 50, 100);
   const conditions = [eq(jobs.contractorId, contractorId)];
@@ -40,8 +51,14 @@ async function getJobsPaginated(contractorId: string, options: {
       ilike(contacts.name, `%${options.search}%`)
     )!);
   }
+  if (options.dateFrom) {
+    conditions.push(gte(jobs.scheduledDate, new Date(options.dateFrom)));
+  }
+  if (options.dateTo) {
+    conditions.push(lte(jobs.scheduledDate, new Date(options.dateTo)));
+  }
 
-  const [jobsData, total] = await Promise.all([
+  const [jobsData, total, statusCounts] = await Promise.all([
     db.select({
       id: jobs.id,
       title: jobs.title,
@@ -61,7 +78,8 @@ async function getJobsPaginated(contractorId: string, options: {
     .where(and(...conditions))
     .orderBy(desc(jobs.createdAt))
     .limit(limit + 1),
-    getJobsCount(contractorId, { status: options.status, search: options.search }),
+    getJobsCount(contractorId, { status: options.status, search: options.search, dateFrom: options.dateFrom, dateTo: options.dateTo }),
+    getJobsStatusCounts(contractorId, { search: options.search }),
   ]);
 
   const hasMore = jobsData.length > limit;
@@ -74,12 +92,15 @@ async function getJobsPaginated(contractorId: string, options: {
   return {
     data: jobsData.map(job => ({ ...job, contactName: job.contactName || 'Unknown Contact' })),
     pagination: { total, hasMore, nextCursor },
+    statusCounts,
   };
 }
 
 async function getJobsCount(contractorId: string, options: {
   status?: string;
   search?: string;
+  dateFrom?: string;
+  dateTo?: string;
 } = {}): Promise<number> {
   const conditions = [eq(jobs.contractorId, contractorId)];
   if (options.status && options.status !== 'all') {
@@ -91,6 +112,12 @@ async function getJobsCount(contractorId: string, options: {
       ilike(contacts.name, `%${options.search}%`)
     )!);
   }
+  if (options.dateFrom) {
+    conditions.push(gte(jobs.scheduledDate, new Date(options.dateFrom)));
+  }
+  if (options.dateTo) {
+    conditions.push(lte(jobs.scheduledDate, new Date(options.dateTo)));
+  }
   const result = await db.select({ count: sql`count(*)` })
     .from(jobs)
     .leftJoin(contacts, eq(jobs.contactId, contacts.id))
@@ -100,7 +127,7 @@ async function getJobsCount(contractorId: string, options: {
 
 async function getJobsStatusCounts(contractorId: string, options: {
   search?: string;
-} = {}): Promise<{ all: number; scheduled: number; in_progress: number; completed: number; cancelled: number }> {
+} = {}): Promise<JobStatusCounts> {
   const baseConditions = [eq(jobs.contractorId, contractorId)];
   if (options.search) {
     baseConditions.push(or(
