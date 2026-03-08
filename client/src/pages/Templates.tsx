@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -20,6 +21,46 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Template } from "@shared/schema";
 import { useCurrentUser, isStrictAdmin } from "@/hooks/useCurrentUser";
+
+const TEMPLATE_VARIABLES = [
+  {
+    group: "Contact",
+    vars: [
+      { key: "contact.name", label: "Name" },
+      { key: "contact.emails", label: "Email" },
+      { key: "contact.phones", label: "Phone" },
+      { key: "contact.address", label: "Address" },
+    ],
+  },
+  {
+    group: "Lead",
+    vars: [
+      { key: "name", label: "Lead Name" },
+      { key: "status", label: "Status" },
+      { key: "source", label: "Source" },
+      { key: "followUpDate", label: "Follow-up Date" },
+      { key: "notes", label: "Notes" },
+    ],
+  },
+  {
+    group: "Job",
+    vars: [
+      { key: "title", label: "Job Title" },
+      { key: "status", label: "Status" },
+      { key: "scheduledDate", label: "Scheduled Date" },
+      { key: "value", label: "Value" },
+    ],
+  },
+  {
+    group: "Estimate",
+    vars: [
+      { key: "title", label: "Estimate Title" },
+      { key: "amount", label: "Amount" },
+      { key: "status", label: "Status" },
+      { key: "validUntil", label: "Valid Until" },
+    ],
+  },
+];
 
 const templateFormSchema = z.object({
   title: z.string().min(1, "Title is required"),
@@ -163,6 +204,27 @@ export default function Templates() {
 
   const { data: currentUser } = useCurrentUser();
   const isAdmin = isStrictAdmin(currentUser?.user?.role);
+
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const insertVariable = (key: string) => {
+    const textarea = textareaRef.current;
+    const snippet = `{{${key}}}`;
+    if (!textarea) {
+      form.setValue("content", form.getValues("content") + snippet, { shouldDirty: true });
+      return;
+    }
+    const start = textarea.selectionStart ?? textarea.value.length;
+    const end = textarea.selectionEnd ?? start;
+    const current = form.getValues("content");
+    form.setValue("content", current.slice(0, start) + snippet + current.slice(end), { shouldDirty: true, shouldValidate: true });
+    requestAnimationFrame(() => {
+      const newPos = start + snippet.length;
+      textarea.selectionStart = newPos;
+      textarea.selectionEnd = newPos;
+      textarea.focus();
+    });
+  };
 
   const handleOpenModal = (mode: "create" | "edit", template?: Template) => {
     if (mode === "edit" && template) {
@@ -478,17 +540,63 @@ export default function Templates() {
                 name="content"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Content</FormLabel>
+                    <div className="flex items-center justify-between gap-2">
+                      <FormLabel>Content</FormLabel>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-7 gap-1 text-xs"
+                            data-testid="button-insert-variable"
+                          >
+                            <Plus className="h-3 w-3" />
+                            Insert Variable
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent align="end" className="w-64 p-2">
+                          <p className="text-xs font-medium text-muted-foreground px-1 pb-2">
+                            Click a variable to insert it at the cursor
+                          </p>
+                          <div className="space-y-3">
+                            {TEMPLATE_VARIABLES.map((group) => (
+                              <div key={group.group}>
+                                <p className="text-xs font-semibold text-foreground px-1 pb-1">{group.group}</p>
+                                <div className="space-y-0.5">
+                                  {group.vars.map((v) => (
+                                    <button
+                                      key={v.key}
+                                      type="button"
+                                      onClick={() => insertVariable(v.key)}
+                                      className="w-full flex items-center justify-between rounded px-2 py-1.5 text-sm hover-elevate"
+                                      data-testid={`variable-${v.key}`}
+                                    >
+                                      <span>{v.label}</span>
+                                      <code className="text-xs text-muted-foreground font-mono">{`{{${v.key}}}`}</code>
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
                     <FormControl>
                       <Textarea
                         placeholder="Enter template content..."
                         rows={6}
                         {...field}
+                        ref={(el) => {
+                          field.ref(el);
+                          textareaRef.current = el;
+                        }}
                         data-testid="textarea-template-content"
                       />
                     </FormControl>
                     <FormDescription>
-                      You can use variables like {"{"}customerName{"}"}, {"{"}companyName{"}"}, etc.
+                      Variables are replaced with real values when sent. Format: <code className="text-xs font-mono">{`{{variableName}}`}</code>
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
