@@ -6,6 +6,7 @@ import { eq, and } from "drizzle-orm";
 import { requireAuth, requireManagerOrAdmin, requireAdmin, type AuthenticatedRequest } from "../../auth-service";
 import { CredentialService } from "../../credential-service";
 import { asyncHandler } from "../../utils/async-handler";
+import crypto from "crypto";
 
 export function registerHcpSchedulingRoutes(app: Express): void {
   app.post("/api/scheduling/sync-users", requireAuth, requireAdmin, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
@@ -126,20 +127,34 @@ export function registerHcpSchedulingRoutes(app: Express): void {
     const contractorId = req.user.contractorId;
     const protocol = (req.headers['x-forwarded-proto'] as string) || req.protocol;
     const host = (req.headers['x-forwarded-host'] as string) || req.get('host');
-    const webhookUrl = `${protocol}://${host}/api/webhooks/${contractorId}/housecall-pro`;
+    const baseWebhookUrl = `${protocol}://${host}/api/webhooks/${contractorId}/housecall-pro`;
+
+    // Ensure a URL token exists for this contractor. HCP does not provide a signing
+    // secret, so we authenticate incoming webhook requests via a token embedded in
+    // the URL instead. The token is generated once and stored as a credential.
+    let urlToken: string | undefined;
+    try {
+      urlToken = await CredentialService.getCredential(contractorId, 'housecallpro', 'webhook_url_token') || undefined;
+    } catch (_) { /* not yet generated */ }
+    if (!urlToken) {
+      urlToken = crypto.randomBytes(32).toString('hex');
+      await CredentialService.setCredential(contractorId, 'housecallpro', 'webhook_url_token', urlToken);
+    }
+
+    const webhookUrl = `${baseWebhookUrl}?token=${urlToken}`;
+
     let secretConfigured = false;
     try {
       const secret = await CredentialService.getCredential(contractorId, 'housecallpro', 'webhook_secret');
       secretConfigured = !!(secret && secret.trim());
     } catch (err) {
-      // CredentialService throws when no credential exists yet — that's expected on
-      // first setup. Log unexpected errors (e.g., DB timeouts) without crashing.
       const msg = err instanceof Error ? err.message : String(err);
       if (!msg.includes('not found') && !msg.includes('No rows') && !msg.includes('no result')) {
         console.warn('[hcp-scheduling] Unexpected error fetching webhook secret:', msg);
       }
     }
-    res.json({ webhookUrl, secretConfigured });
+
+    res.json({ webhookUrl, secretConfigured, urlTokenConfigured: true });
   }));
 
   app.post("/api/integrations/housecall-pro/webhook-secret", requireAuth, requireManagerOrAdmin, asyncHandler(async (req: AuthenticatedRequest, res: Response) => {

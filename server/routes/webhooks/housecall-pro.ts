@@ -30,42 +30,74 @@ export function registerHousecallProWebhookRoutes(app: Express): void {
         return;
       }
       
-      const signature = (req.headers['x-housecall-pro-signature'] || req.headers['x-housecall-signature']) as string;
+      const signature = (req.headers['x-housecall-pro-signature'] || req.headers['x-housecall-signature']) as string | undefined;
       
-      // Each contractor must have their own webhook secret configured through
-      // the Housecall Pro integration setup flow. There is intentionally no
-      // fallback to a shared environment variable: a single leaked global secret
-      // would compromise signature validation for every tenant simultaneously.
+      // Auth strategy (evaluated in order):
+      //   1. HMAC signing secret — if the contractor has one configured, verify it.
+      //      HCP does not currently offer signing secrets to all plans, so this is
+      //      an optional enhancement for the future.
+      //   2. URL token — a random token auto-generated on first settings page load and
+      //      embedded in the webhook URL as `?token=<secret>`. HCP sends it back with
+      //      every request as part of the URL. This is the primary auth mechanism.
+      // Both are stored per-contractor so no global secret can be leaked.
       let webhookSecret: string | undefined;
+      let urlToken: string | undefined;
       try {
         webhookSecret = await CredentialService.getCredential(contractorId, 'housecallpro', 'webhook_secret') || undefined;
-      } catch (err) {
-        log.error('Failed to load webhook secret for contractor', { contractorId, err });
-      }
+      } catch (_) { /* not yet configured */ }
+      try {
+        urlToken = await CredentialService.getCredential(contractorId, 'housecallpro', 'webhook_url_token') || undefined;
+      } catch (_) { /* not yet generated */ }
 
-      if (!webhookSecret) {
-        log.error('No webhook secret configured for contractor — rejecting request', { contractorId });
-        res.status(401).json({ message: "Webhook not configured for this contractor" });
-        return;
-      }
-      
-      if (!signature) {
-        log.error('Missing webhook signature', { contractorId });
-        res.status(401).json({ message: "Missing signature" });
-        return;
-      }
-      
       const rawBody = req.body as Buffer;
-      const expectedSignature = crypto
-        .createHmac('sha256', webhookSecret)
-        .update(rawBody)
-        .digest('hex');
-      
-      const providedSignature = signature.replace('sha256=', '');
-      
-      if (!crypto.timingSafeEqual(Buffer.from(expectedSignature, 'hex'), Buffer.from(providedSignature, 'hex'))) {
-        log.error('Invalid webhook signature', { contractorId });
-        res.status(401).json({ message: "Invalid signature" });
+
+      if (webhookSecret) {
+        // HMAC path — verify the signature header
+        if (!signature) {
+          log.error('Missing webhook signature (HMAC secret configured)', { contractorId });
+          res.status(401).json({ message: "Missing signature" });
+          return;
+        }
+        const expectedSignature = crypto
+          .createHmac('sha256', webhookSecret)
+          .update(rawBody)
+          .digest('hex');
+        const providedSignature = signature.replace('sha256=', '');
+        try {
+          if (!crypto.timingSafeEqual(Buffer.from(expectedSignature, 'hex'), Buffer.from(providedSignature, 'hex'))) {
+            log.error('Invalid webhook signature', { contractorId });
+            res.status(401).json({ message: "Invalid signature" });
+            return;
+          }
+        } catch {
+          log.error('Signature comparison failed (length mismatch)', { contractorId });
+          res.status(401).json({ message: "Invalid signature" });
+          return;
+        }
+      } else if (urlToken) {
+        // URL token path — verify the ?token= query parameter
+        const providedToken = req.query.token as string | undefined;
+        if (!providedToken) {
+          log.error('Missing token query parameter', { contractorId });
+          res.status(401).json({ message: "Missing token" });
+          return;
+        }
+        try {
+          const tokenBuf = Buffer.from(urlToken, 'hex');
+          const providedBuf = Buffer.from(providedToken, 'hex');
+          if (tokenBuf.length !== providedBuf.length || !crypto.timingSafeEqual(tokenBuf, providedBuf)) {
+            log.error('Invalid URL token', { contractorId });
+            res.status(401).json({ message: "Invalid token" });
+            return;
+          }
+        } catch {
+          log.error('Token comparison failed', { contractorId });
+          res.status(401).json({ message: "Invalid token" });
+          return;
+        }
+      } else {
+        log.error('No webhook auth configured for contractor — rejecting request', { contractorId });
+        res.status(401).json({ message: "Webhook not configured for this contractor" });
         return;
       }
       

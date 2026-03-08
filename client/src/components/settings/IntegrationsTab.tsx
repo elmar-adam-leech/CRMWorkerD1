@@ -38,7 +38,7 @@ interface Integration {
 
 interface IntegrationsTabProps {
   integrations: IntegrationData[];
-  hcpWebhookConfig: { webhookUrl: string; secretConfigured: boolean } | undefined;
+  hcpWebhookConfig: { webhookUrl: string; secretConfigured: boolean; urlTokenConfigured?: boolean } | undefined;
   providerData: {
     configured: Array<{ providerType: string; emailProvider?: string; smsProvider?: string; callingProvider?: string; isActive: boolean }>;
   } | undefined;
@@ -263,7 +263,7 @@ export function IntegrationsTab({ integrations, hcpWebhookConfig, providerData }
                   {integration.name === 'housecall-pro' && integration.isEnabled && hcpWebhookConfig && (
                     <div className="pt-3 border-t space-y-3">
                       <p className="text-sm font-medium">Webhook Integration</p>
-                      <p className="text-xs text-muted-foreground">Paste this URL into Housecall Pro under My Apps &rarr; Webhooks to enable real-time workflow triggers for jobs, estimates, and customers.</p>
+                      <p className="text-xs text-muted-foreground">Paste this URL into Housecall Pro under My Apps &rarr; Webhooks to receive real-time updates for jobs, estimates, and customers. A security token is already embedded in the URL.</p>
                       <div className="flex items-center gap-2">
                         <code className="flex-1 text-xs bg-muted px-3 py-2 rounded-md truncate">{hcpWebhookConfig.webhookUrl}</code>
                         <Button size="icon" variant="outline" onClick={() => navigator.clipboard.writeText(hcpWebhookConfig.webhookUrl)} data-testid="button-copy-hcp-webhook-url"><Copy className="h-4 w-4" /></Button>
@@ -272,11 +272,13 @@ export function IntegrationsTab({ integrations, hcpWebhookConfig, providerData }
                         <div className="flex items-center gap-2 text-sm">
                           {hcpWebhookConfig.secretConfigured
                             ? <><CheckCircle className="h-4 w-4 text-green-600" /><span>Signing secret configured</span></>
-                            : <><AlertTriangle className="h-4 w-4 text-yellow-600" /><span>Signing secret not set</span></>
+                            : hcpWebhookConfig.urlTokenConfigured
+                              ? <><CheckCircle className="h-4 w-4 text-green-600" /><span>Webhook ready</span></>
+                              : <><AlertTriangle className="h-4 w-4 text-yellow-600" /><span>Not configured</span></>
                           }
                         </div>
                         <Button variant="outline" size="sm" onClick={() => setHcpSecretDialogOpen(true)} data-testid="button-configure-hcp-webhook-secret">
-                          {hcpWebhookConfig.secretConfigured ? 'Update Secret' : 'Set Secret'}
+                          Advanced: Signing Secret
                         </Button>
                       </div>
                     </div>
@@ -329,13 +331,13 @@ export function IntegrationsTab({ integrations, hcpWebhookConfig, providerData }
       <Dialog open={hcpSecretDialogOpen} onOpenChange={setHcpSecretDialogOpen}>
         <DialogContent data-testid="dialog-hcp-webhook-secret">
           <DialogHeader>
-            <DialogTitle>Housecall Pro Webhook Signing Secret</DialogTitle>
-            <DialogDescription>Find this in Housecall Pro under My Apps &rarr; Webhooks &rarr; your webhook entry &rarr; Signing Secret.</DialogDescription>
+            <DialogTitle>Advanced: Webhook Signing Secret</DialogTitle>
+            <DialogDescription>Optional. Housecall Pro does not currently provide signing secrets on most plans — your webhook URL already includes a security token. If your HCP plan adds signing secret support, paste it here for stronger HMAC verification.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="hcp-secret">Signing Secret</Label>
-              <Input id="hcp-secret" data-testid="input-hcp-webhook-secret" type="password" placeholder="Paste secret from Housecall Pro..." value={hcpSecretInput} onChange={e => setHcpSecretInput(e.target.value)} />
+              <Label htmlFor="hcp-secret">Signing Secret (optional)</Label>
+              <Input id="hcp-secret" data-testid="input-hcp-webhook-secret" type="password" placeholder="Paste signing secret from Housecall Pro..." value={hcpSecretInput} onChange={e => setHcpSecretInput(e.target.value)} />
             </div>
           </div>
           <DialogFooter>

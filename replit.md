@@ -55,6 +55,15 @@ The backend is built with Node.js and Express.js, providing a RESTful API with c
 ### Frontend WebSocket Invalidation Fix
 - Fixed event type mismatch: `server/routes/email-sync.ts` was broadcasting `type: 'activity'` but the frontend subscribes to `'new_activity'`. This caused the activity timeline to stay stale after Gmail sync. Corrected to `'new_activity'`.
 
+### HCP Webhook — URL Token Auth
+- HCP does not provide a signing secret on most plans, so the previous HMAC-only auth blocked all incoming webhook requests with 401.
+- New approach: `GET /api/integrations/housecall-pro/webhook-config` auto-generates a 32-byte hex URL token (`webhook_url_token` credential) on first call and embeds it in the webhook URL as `?token=<secret>`. HCP sends it back with every request.
+- The webhook endpoint (`POST /api/webhooks/:contractorId/housecall-pro`) now has a two-tier auth path: if a signing secret is configured → HMAC verification (backward compat); otherwise → URL token comparison via `crypto.timingSafeEqual`. Both are stored per-contractor.
+- Settings UI updated: status indicator shows green "Webhook ready" once the URL token exists; "Set Secret" button renamed to "Advanced: Signing Secret" with an updated description making clear it's optional.
+
+### HCP Estimate Follow-Up Fix
+- Removed the HCP read-only guard from `PATCH /api/estimates/:id/follow-up`. Follow-up dates are CRM-only metadata with no HCP equivalent. The guard remains on `PUT /api/estimates/:id` to protect actual estimate fields.
+
 ## Running TODO List
 See `TODO.md` at the repo root for the prioritized list of open improvements, security items, performance work, and technical debt. Update it whenever you find new issues or complete existing ones.
 
