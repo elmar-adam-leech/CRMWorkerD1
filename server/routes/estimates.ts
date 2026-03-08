@@ -212,12 +212,6 @@ export function registerEstimateRoutes(app: Express): void {
       res.status(404).json({ message: "Estimate not found" });
       return;
     }
-    if (existingEstimate.externalSource === 'housecall-pro') {
-      res.status(403).json({
-        message: "Cannot edit Housecall Pro estimates - they are read-only for tracking lead value."
-      });
-      return;
-    }
     const followUpSchema = z.object({
       followUpDate: z.string().nullable().optional().transform((val, ctx) => {
         if (!val) return null;
