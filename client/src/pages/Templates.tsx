@@ -21,6 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Template } from "@shared/schema";
 import { useCurrentUser, isStrictAdmin } from "@/hooks/useCurrentUser";
+import { DeleteConfirmDialog } from "@/components/DeleteConfirmDialog";
 
 const TEMPLATE_VARIABLES = [
   {
@@ -78,6 +79,12 @@ export default function Templates() {
     template?: Template;
     mode: "create" | "edit";
   }>({ isOpen: false, mode: "create" });
+
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    isOpen: boolean;
+    templateId?: string;
+    templateTitle?: string;
+  }>({ isOpen: false });
   
   const { toast } = useToast();
 
@@ -251,9 +258,8 @@ export default function Templates() {
   };
 
   const handleDeleteTemplate = (id: string) => {
-    if (window.confirm("Are you sure you want to delete this template?")) {
-      deleteTemplateMutation.mutate(id);
-    }
+    const template = templates.find(t => t.id === id);
+    setDeleteConfirm({ isOpen: true, templateId: id, templateTitle: template?.title });
   };
 
   // Filter templates based on search and type
@@ -618,6 +624,17 @@ export default function Templates() {
           </Form>
         </DialogContent>
       </Dialog>
+
+      <DeleteConfirmDialog
+        isOpen={deleteConfirm.isOpen}
+        onOpenChange={(open) => setDeleteConfirm(prev => ({ ...prev, isOpen: open }))}
+        title="Delete Template"
+        description={`Are you sure you want to delete "${deleteConfirm.templateTitle}"? This action cannot be undone.`}
+        onConfirm={() => {
+          if (deleteConfirm.templateId) deleteTemplateMutation.mutate(deleteConfirm.templateId);
+        }}
+        confirmTestId="button-confirm-delete-template"
+      />
     </PageLayout>
   );
 }
