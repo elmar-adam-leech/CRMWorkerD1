@@ -480,6 +480,7 @@ export interface IStorage {
   getWorkflowExecutions(workflowId: string, contractorId: string, limit?: number): Promise<WorkflowExecution[]>;
   getWorkflowExecution(id: string, contractorId: string): Promise<WorkflowExecution | undefined>;
   getRecentWorkflowExecutions(contractorId: string, limit?: number): Promise<WorkflowExecution[]>;
+  getStaleRunningExecutions(olderThan: Date): Promise<WorkflowExecution[]>;
   createWorkflowExecution(execution: Omit<InsertWorkflowExecution, 'contractorId'>, contractorId: string): Promise<WorkflowExecution>;
   updateWorkflowExecution(id: string, execution: UpdateWorkflowExecution, contractorId: string): Promise<WorkflowExecution | undefined>;
   

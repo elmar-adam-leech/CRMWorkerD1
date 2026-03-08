@@ -23,7 +23,7 @@ import { storage } from "./storage";
 import type { WorkflowStep } from "@shared/schema";
 import { broadcastToContractor } from "./websocket";
 import { extractVariablesFromEntity } from "./utils/workflow/variable-extractor";
-import { replaceVariablesInObject } from "./utils/workflow/variable-replacer";
+import { replaceVariablesInObject, getNestedValue } from "./utils/workflow/variable-replacer";
 import { getWorkflowStepsCached } from "./services/cache";
 import { logger } from "./utils/logger";
 
@@ -237,54 +237,75 @@ export class WorkflowEngine {
    *   - Bound helper functions (`replaceVariables`, `updateEntityStatus`) for handlers
    *     that need template interpolation or entity mutation.
    *
-   * Unknown action types log a warning and return `{ success: true }` so a single
-   * mis-configured step doesn't abort the whole workflow silently.
+   * A per-step timeout (30 s for most steps, 60 s for AI steps) is enforced via
+   * Promise.race so that a hung 3rd-party call never blocks the whole execution chain.
+   *
+   * Unknown action types return a failure result — a misconfigured step should not be
+   * treated as a success because downstream steps may depend on this step's output.
    *
    * @param step    - The WorkflowStep row from the database.
    * @param context - The live execution context (mutated across step groups to pass data forward).
    */
   private async executeStep(step: WorkflowStep, context: ExecutionContext): Promise<StepResult> {
     log.debug(`Executing step ${step.stepOrder}: ${step.actionType}`);
+
+    const isAiStep = step.actionType === 'ai_generate_content' || step.actionType === 'ai_analyze';
+    const timeoutMs = isAiStep ? 60_000 : 30_000;
+
+    const timeoutPromise: Promise<StepResult> = new Promise(resolve =>
+      setTimeout(() => resolve({ success: false, error: `Step timed out after ${timeoutMs / 1000}s` }), timeoutMs)
+    );
+
     try {
       const config = step.actionConfig ? JSON.parse(step.actionConfig) : {};
       const params = this.extractConfig(config);
 
+      let stepPromise: Promise<StepResult>;
+
       switch (step.actionType) {
         case 'send_email':
-          return await handleSendEmail(params, context, this.replaceVariables.bind(this), this.updateEntityStatus.bind(this));
+          stepPromise = handleSendEmail(params, context, this.replaceVariables.bind(this), this.updateEntityStatus.bind(this));
+          break;
 
         case 'send_sms':
-          return await handleSendSMS(params, context, this.replaceVariables.bind(this), this.updateEntityStatus.bind(this));
+          stepPromise = handleSendSMS(params, context, this.replaceVariables.bind(this), this.updateEntityStatus.bind(this));
+          break;
 
         case 'create_notification':
-          return await handleCreateNotification(params, context, this.replaceVariables.bind(this));
+          stepPromise = handleCreateNotification(params, context, this.replaceVariables.bind(this));
+          break;
 
         case 'update_entity':
-          return await handleUpdateEntity(params, context);
+          stepPromise = handleUpdateEntity(params, context);
+          break;
 
         case 'assign_user':
-          return await handleAssignUser(params, context);
+          stepPromise = handleAssignUser(params, context);
+          break;
 
         case 'ai_generate_content':
-          return await handleAiGenerateContent(params, context, this.replaceVariables.bind(this));
+          stepPromise = handleAiGenerateContent(params, context, this.replaceVariables.bind(this));
+          break;
 
         case 'ai_analyze':
-          return await handleAiAnalyze(params, context);
+          stepPromise = handleAiAnalyze(params, context);
+          break;
 
         case 'conditional_branch':
-          return await handleEvaluateCondition(step, params, context, this.getFieldValue.bind(this));
+          stepPromise = handleEvaluateCondition(step, params, context, this.getFieldValue.bind(this));
+          break;
 
         case 'delay':
         case 'wait_until':
-          return await handleDelay(step, params);
+          stepPromise = handleDelay(step, params);
+          break;
 
         default:
           log.warn(`Unknown action type: ${step.actionType}`);
-          // Return failure so the execution is logged as failed rather than silently
-          // succeeding. A misconfigured step should not be treated as a success because
-          // downstream steps may depend on this step's output.
           return { success: false, error: `Unknown action type: ${step.actionType}` };
       }
+
+      return await Promise.race([stepPromise, timeoutPromise]);
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
@@ -305,6 +326,9 @@ export class WorkflowEngine {
    *   trigger.<field>    — field directly on the trigger entity
    *   variable.<name>    — named context variable
    *   <entity>.<field>   — dot-path walk through context.variables (e.g. "lead.status")
+   *
+   * The dot-path traversal delegates to the shared getNestedValue utility so
+   * path-walking logic lives in exactly one place.
    */
   private getFieldValue(field: string, context: ExecutionContext): unknown {
     if (!field) return undefined;
@@ -314,16 +338,7 @@ export class WorkflowEngine {
     if (field.startsWith('variable.')) {
       return context.variables[field.substring(9)];
     }
-    const parts = field.split('.');
-    let cursor: unknown = context.variables;
-    for (const part of parts) {
-      if (cursor && typeof cursor === 'object' && part in (cursor as object)) {
-        cursor = (cursor as Record<string, unknown>)[part];
-      } else {
-        return undefined;
-      }
-    }
-    return cursor;
+    return getNestedValue(context.variables, field);
   }
 
   /**
@@ -441,9 +456,17 @@ export class WorkflowEngine {
       // Fetch only active + approved workflows in SQL — no JS filter needed
       const candidateWorkflows = await storage.getActiveApprovedWorkflows(contractorId);
 
+      // Pre-parse triggerConfig for every workflow ONCE, outside the filter.
+      // JSON.parse inside a .filter() would repeat the parse on every iteration
+      // for every event trigger — wasteful when a contractor has many workflows.
+      type ParsedWorkflow = { workflow: typeof candidateWorkflows[number]; triggerConfig: Record<string, unknown> };
+      const parsedWorkflows: ParsedWorkflow[] = candidateWorkflows.map(workflow => ({
+        workflow,
+        triggerConfig: workflow.triggerConfig ? JSON.parse(workflow.triggerConfig) : {},
+      }));
+
       // Filter workflows that match this trigger
-      const matchingWorkflows = candidateWorkflows.filter(workflow => {
-        const triggerConfig = workflow.triggerConfig ? JSON.parse(workflow.triggerConfig) : {};
+      const matchingWorkflows = parsedWorkflows.filter(({ workflow, triggerConfig }) => {
 
         // Support both schema variants:
         // New: { entity: 'lead', event: 'created' }
@@ -494,7 +517,7 @@ export class WorkflowEngine {
         if (enriched) enrichedData = enriched as Record<string, unknown>;
       }
 
-      for (const workflow of matchingWorkflows) {
+      for (const { workflow } of matchingWorkflows) {
         try {
           const triggerData = enrichedData;
 
@@ -518,6 +541,53 @@ export class WorkflowEngine {
       }
     } catch (error) {
       log.error('Error in triggerWorkflowsForEvent', error);
+    }
+  }
+
+  /**
+   * Recover zombie workflow executions left behind by a previous server crash or restart.
+   *
+   * The `delay` and `wait_until` actions rely on in-memory `setTimeout` calls.
+   * If the server restarts while a delay is active, those executions stay in
+   * "running" status indefinitely in the database because no process ever
+   * resumes them.
+   *
+   * This method should be called once at server startup. It marks all "running"
+   * executions that were created more than `staleThresholdMinutes` ago as
+   * "failed" with a clear reason.
+   *
+   * @param staleThresholdMinutes - Executions older than this (default 15 min) are considered stale.
+   */
+  async recoverZombieExecutions(staleThresholdMinutes = 15): Promise<void> {
+    try {
+      const olderThan = new Date(Date.now() - staleThresholdMinutes * 60 * 1000);
+      const stale = await storage.getStaleRunningExecutions(olderThan);
+
+      if (stale.length === 0) {
+        log.info('Zombie execution recovery: no stale executions found');
+        return;
+      }
+
+      log.warn(`Zombie execution recovery: marking ${stale.length} stale execution(s) as failed`);
+
+      for (const execution of stale) {
+        try {
+          await storage.updateWorkflowExecution(
+            execution.id,
+            {
+              status: 'failed',
+              errorMessage: 'Server restarted while execution was in progress (delay or wait action was active)',
+              completedAt: new Date(),
+            },
+            execution.contractorId
+          );
+          log.info(`Marked zombie execution ${execution.id} (workflow ${execution.workflowId}) as failed`);
+        } catch (err) {
+          log.error(`Failed to mark zombie execution ${execution.id}`, err);
+        }
+      }
+    } catch (error) {
+      log.error('Error during zombie execution recovery', error);
     }
   }
 }

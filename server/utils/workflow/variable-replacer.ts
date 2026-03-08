@@ -77,6 +77,29 @@ export function replaceVariablesInObject(obj: unknown, variables: Record<string,
 }
 
 /**
+ * Traverse a dot-separated path through an arbitrary object.
+ * Returns the value at the path, or `undefined` if any segment is missing.
+ *
+ * Example: getNestedValue({ lead: { name: 'Alice' } }, 'lead.name') → 'Alice'
+ *
+ * @param obj  - Root object to traverse (typically `context.variables`)
+ * @param path - Dot-separated field path (e.g. "lead.status", "job.contact.name")
+ */
+export function getNestedValue(obj: unknown, path: string): unknown {
+  if (!path) return undefined;
+  const parts = path.split('.');
+  let cursor: unknown = obj;
+  for (const part of parts) {
+    if (cursor && typeof cursor === 'object' && part in (cursor as object)) {
+      cursor = (cursor as Record<string, unknown>)[part];
+    } else {
+      return undefined;
+    }
+  }
+  return cursor;
+}
+
+/**
  * Extract all variable placeholders from a string
  * @param template - String that may contain {{placeholder}} variables
  * @returns Array of unique variable paths found

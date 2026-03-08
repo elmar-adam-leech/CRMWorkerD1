@@ -109,7 +109,7 @@ export function registerEmailSyncRoutes(app: Express): void {
 
       if (matchingContact) {
         broadcastToContractor(req.user.contractorId, {
-          type: 'activity',
+          type: 'new_activity',
           contactId: matchingContact.id,
           ...(matchingLead ? { leadId: matchingLead.id } : {}),
           ...(matchingCustomer ? { customerId: matchingCustomer.id } : {}),

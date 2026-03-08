@@ -7,6 +7,7 @@ import { providerService } from "./providers/provider-service";
 import { syncScheduler } from "./sync-scheduler";
 import { messageCleanupService } from "./services/message-cleanup";
 import { AuthService } from "./auth-service";
+import { workflowEngine } from "./workflow-engine";
 
 const app = express();
 // Content Security Policy — permissive-but-defined baseline.
@@ -68,6 +69,13 @@ app.use((req, res, next) => {
   const providers = providerService; // This triggers singleton initialization and provider registration
   log(`Provider system initialized with ${providers.getAvailableProviders('email').length} email, ${providers.getAvailableProviders('sms').length} SMS, ${providers.getAvailableProviders('calling').length} calling providers`);
   
+  // Recover any workflow executions that were stuck in "running" status from a previous
+  // server crash or restart (zombie executions caused by in-memory delay actions).
+  log("Running zombie workflow execution recovery...");
+  workflowEngine.recoverZombieExecutions().catch(err =>
+    log(`Zombie recovery error: ${err instanceof Error ? err.message : String(err)}`)
+  );
+
   // Start the sync scheduler for daily syncs
   log("Starting sync scheduler...");
   syncScheduler.start();

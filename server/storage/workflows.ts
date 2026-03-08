@@ -6,7 +6,7 @@ import {
   workflowApprovalStatusEnum,
 } from "@shared/schema";
 import { db } from "../db";
-import { eq, and, desc, asc } from "drizzle-orm";
+import { eq, and, desc, asc, lt } from "drizzle-orm";
 import type { UpdateWorkflow, UpdateWorkflowStep, UpdateWorkflowExecution } from "../storage-types";
 
 async function getWorkflows(contractorId: string, approvalStatus?: string): Promise<Workflow[]> {
@@ -158,6 +158,20 @@ async function getRecentWorkflowExecutions(contractorId: string, limit: number =
   return await db.select().from(workflowExecutions).where(eq(workflowExecutions.contractorId, contractorId)).orderBy(desc(workflowExecutions.createdAt)).limit(limit);
 }
 
+/**
+ * Return all executions that are still "running" but were started before the
+ * given cutoff timestamp. These are zombie executions left behind when the
+ * server restarted while a delay/wait action was in progress.
+ *
+ * @param olderThan - Only include executions created before this Date
+ */
+async function getStaleRunningExecutions(olderThan: Date): Promise<WorkflowExecution[]> {
+  return await db.select().from(workflowExecutions).where(and(
+    eq(workflowExecutions.status, 'running'),
+    lt(workflowExecutions.createdAt, olderThan)
+  )).limit(500);
+}
+
 async function createWorkflowExecution(execution: Omit<InsertWorkflowExecution, 'contractorId'>, contractorId: string): Promise<WorkflowExecution> {
   const result = await db.insert(workflowExecutions).values({ ...execution, contractorId }).returning();
   return result[0];
@@ -206,6 +220,7 @@ export const workflowMethods = {
   getWorkflowExecutions,
   getWorkflowExecution,
   getRecentWorkflowExecutions,
+  getStaleRunningExecutions,
   createWorkflowExecution,
   updateWorkflowExecution,
   getEstimateWithContact,

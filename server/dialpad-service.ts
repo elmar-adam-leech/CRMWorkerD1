@@ -60,6 +60,22 @@ interface DialpadApiResponse<T> {
 }
 
 import { credentialService } from './credential-service';
+import { normalizePhoneNumber } from './utils/phone-normalizer';
+import { withRetry } from './utils/retry';
+
+/**
+ * Wraps a fetch call and throws on retryable HTTP errors (429, 5xx) so that
+ * `withRetry` can transparently retry transient Dialpad API failures.
+ * 4xx errors (except 429) are not retried — they indicate a caller mistake.
+ */
+async function dialpadFetch(url: string, init: RequestInit): Promise<Response> {
+  const response = await fetch(url, init);
+  if (response.status === 429 || response.status >= 500) {
+    const body = await response.text();
+    throw new Error(`Dialpad API error ${response.status}: ${body}`);
+  }
+  return response;
+}
 
 export class DialpadService {
   /**
@@ -89,21 +105,13 @@ export class DialpadService {
     };
   }
 
-  // Phone number formatting to match your working script
-  private formatPhoneNumber(phone: string): string {
-    const digits = phone.toString().replace(/\D/g, '');
-    if (digits.length === 10) return '+1' + digits;
-    if (digits.length === 11 && digits.startsWith('1')) return '+' + digits;
-    return phone.toString().trim().startsWith('+') ? phone : phone;
-  }
-
   async sendText(toNumber: string, message: string, fromNumber?: string, tenantId?: string): Promise<DialpadResponse> {
     try {
       const { apiKey, baseUrl } = await this.getCredentials(tenantId);
       
-      // Format phone numbers like your working script
-      const formattedToNumber = this.formatPhoneNumber(toNumber);
-      const formattedFromNumber = fromNumber ? this.formatPhoneNumber(fromNumber) : undefined;
+      // Normalize to E.164 using the shared phone normalizer utility
+      const formattedToNumber = normalizePhoneNumber(toNumber);
+      const formattedFromNumber = fromNumber ? normalizePhoneNumber(fromNumber) : undefined;
       
       const payload: DialpadMessage = {
         to_numbers: [formattedToNumber],
@@ -180,14 +188,17 @@ export class DialpadService {
   async getCompanyNumbers(tenantId: string): Promise<DialpadPhoneNumber[]> {
     try {
       const { apiKey, baseUrl } = await this.getCredentials(tenantId);
-      
-      const response = await fetch(`${baseUrl}/v2/numbers?limit=1000`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-      });
+
+      const response = await withRetry(
+        () => dialpadFetch(`${baseUrl}/v2/numbers?limit=1000`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+        }),
+        'Dialpad getCompanyNumbers'
+      );
 
       if (response.ok) {
         const result = await response.json();
@@ -248,14 +259,17 @@ export class DialpadService {
   async getCompanyUsers(tenantId: string): Promise<DialpadUser[]> {
     try {
       const { apiKey, baseUrl } = await this.getCredentials(tenantId);
-      
-      const response = await fetch(`${baseUrl}/v2/users?state=active&limit=100`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-      });
+
+      const response = await withRetry(
+        () => dialpadFetch(`${baseUrl}/v2/users?state=active&limit=100`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+        }),
+        'Dialpad getCompanyUsers'
+      );
 
       if (response.ok) {
         const result = await response.json();
@@ -302,14 +316,17 @@ export class DialpadService {
   async getDepartments(tenantId: string): Promise<DialpadDepartment[]> {
     try {
       const { apiKey, baseUrl } = await this.getCredentials(tenantId);
-      
-      const response = await fetch(`${baseUrl}/departments`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-      });
+
+      const response = await withRetry(
+        () => dialpadFetch(`${baseUrl}/departments`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+        }),
+        'Dialpad getDepartments'
+      );
 
       if (!response.ok) {
         console.error('Dialpad Get Departments API Error:', response.status, await response.text());

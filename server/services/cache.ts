@@ -128,17 +128,18 @@ export const cacheInvalidation = {
   },
 };
 
-// Cache workflow steps for 60 seconds.
+// Cache workflow steps for 5 minutes.
 // Workflow steps are fetched on every execution but rarely change mid-run.
-// The 60-second TTL is short enough that step edits take effect quickly
-// without hammering the DB on high-volume trigger events.
+// Manual cache invalidation via `invalidateWorkflowStepsCache` is called by
+// all step-modifying routes, so a 5-minute TTL is safe and reduces DB load
+// by ~5x compared to the previous 60-second TTL.
 export const getWorkflowStepsCached = memoizee(
   async (workflowId: string) => {
     return storage.getWorkflowSteps(workflowId);
   },
   {
     promise: true,
-    maxAge: 60 * 1000, // 60 seconds
+    maxAge: 5 * 60 * 1000, // 5 minutes
     max: 500,
     normalizer: (args) => args[0],
   }
@@ -188,6 +189,10 @@ export const getCacheStats = () => {
     users: {
       size: getUserCached.length,
       maxAge: '3 minutes',
+    },
+    workflowSteps: {
+      size: getWorkflowStepsCached.length,
+      maxAge: '5 minutes',
     },
   };
 };

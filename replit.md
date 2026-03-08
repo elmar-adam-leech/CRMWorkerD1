@@ -34,6 +34,27 @@ The backend is built with Node.js and Express.js, providing a RESTful API with c
 - **Contacts Page** (`/contacts`): Grid view of all contacts with lead/estimate/job counts. Click-to-open side sheet shows full contact details, record counts, quick-links to linked records, and a "Delete Contact Permanently" button. Delete removes all associated leads, estimates, jobs, messages, calls, and activities. Search supported.
 - **Smart Delete**: Deleting a lead/estimate/job checks if the contact has any remaining records; if not, the contact is also deleted (orphan cleanup). `deleteContact` fully removes messages and calls rows (no null-ref orphans).
 
+## Performance & Reliability Improvements (March 2026)
+
+### Zombie Workflow Execution Recovery
+- On every server startup, `workflowEngine.recoverZombieExecutions()` runs once and marks any workflow execution stuck in "running" status (older than 15 min) as "failed" with a clear reason. This prevents the DB table from accumulating zombie rows caused by server restarts during in-memory `setTimeout` delays.
+- Added `storage.getStaleRunningExecutions(olderThan: Date)` to query cross-tenant running executions for recovery.
+
+### Workflow Engine Improvements
+- **Per-step timeout**: Each workflow step is now wrapped in `Promise.race` with a timeout — 30s for standard steps, 60s for AI steps. A hung API call no longer blocks the entire execution chain.
+- **JSON parsing optimization**: `triggerConfig` is now parsed once per workflow *before* the filter loop in `triggerWorkflowsForEvent`, not once per filter iteration (previously O(N×M) parses, now O(N)).
+- **Eliminated duplicate path traversal**: `getFieldValue` in `WorkflowEngine` now delegates dot-path traversal to the shared `getNestedValue` utility from `variable-replacer.ts` instead of duplicating the traversal logic inline.
+
+### Cache TTL
+- `getWorkflowStepsCached` TTL increased from 60s → 5 minutes. Manual invalidation via `invalidateWorkflowStepsCache(workflowId)` is called on all step-mutation routes, making the longer TTL safe.
+
+### Dialpad Service Retry Logic
+- Read-only Dialpad API calls (`getCompanyNumbers`, `getCompanyUsers`, `getDepartments`) now use the shared `withRetry` + `dialpadFetch` pattern that throws on 429/5xx and retries up to 3 times with exponential backoff. Write operations (sendText, sendCall) are intentionally NOT retried to prevent duplicate message sends.
+- Replaced inline `formatPhoneNumber` method in `DialpadService` with the shared `normalizePhoneNumber` utility from `server/utils/phone-normalizer.ts`.
+
+### Frontend WebSocket Invalidation Fix
+- Fixed event type mismatch: `server/routes/email-sync.ts` was broadcasting `type: 'activity'` but the frontend subscribes to `'new_activity'`. This caused the activity timeline to stay stale after Gmail sync. Corrected to `'new_activity'`.
+
 ## Running TODO List
 See `TODO.md` at the repo root for the prioritized list of open improvements, security items, performance work, and technical debt. Update it whenever you find new issues or complete existing ones.
 
