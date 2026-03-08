@@ -39,7 +39,7 @@ export function registerTemplateRoutes(app: Express): void {
   }));
 
   app.post("/api/templates", asyncHandler(async (req, res) => {
-    const templateData = parseBody(insertTemplateSchema.omit({ contractorId: true }), req, res);
+    const templateData = parseBody(insertTemplateSchema.omit({ contractorId: true, createdBy: true }), req, res);
     if (!templateData) return;
 
     const dataWithUser = {
@@ -52,7 +52,7 @@ export function registerTemplateRoutes(app: Express): void {
   }));
 
   app.put("/api/templates/:id", requireManagerOrAdmin, asyncHandler(async (req, res) => {
-    const updateData = parseBody(insertTemplateSchema.omit({ contractorId: true }).partial(), req, res);
+    const updateData = parseBody(insertTemplateSchema.omit({ contractorId: true, createdBy: true }).partial(), req, res);
     if (!updateData) return;
 
     const template = await storage.updateTemplate(req.params.id, updateData, req.user.contractorId);

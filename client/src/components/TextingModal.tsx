@@ -156,6 +156,11 @@ export function TextingModal({
   // Centralized template variable substitution helper
   const applyTemplateSubstitution = (content: string, variables: { customerName: string; companyName: string }) => {
     let result = content;
+    // Double-brace format (new variable picker)
+    result = result.replace(/\{\{contact\.name\}\}/g, variables.customerName);
+    result = result.replace(/\{\{name\}\}/g, variables.customerName);
+    result = result.replace(/\{\{title\}\}/g, variables.customerName);
+    // Legacy single-brace format (backward compat)
     result = result.replace(/\{customerName\}/g, variables.customerName);
     result = result.replace(/\{companyName\}/g, variables.companyName);
     return result;
@@ -284,7 +289,7 @@ export function TextingModal({
             />
             {selectedTemplate && (
               <div className="text-xs text-muted-foreground">
-                Variables like {"{"}customerName{"}"} and {"{"}companyName{"}"} are automatically replaced.
+                Variables like {"{{"}contact.name{"}}"} are automatically replaced with real values when sent.
               </div>
             )}
           </div>
