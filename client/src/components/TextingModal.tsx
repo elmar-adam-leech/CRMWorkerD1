@@ -168,7 +168,7 @@ export function TextingModal({
 
   // Handle template selection
   const handleTemplateSelect = (templateId: string) => {
-    if (!templateId) {
+    if (!templateId || templateId === "__none__") {
       setSelectedTemplate("");
       return;
     }
@@ -254,7 +254,7 @@ export function TextingModal({
                   <SelectValue placeholder="Choose a template..." />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="" data-testid="select-no-template">
+                  <SelectItem value="__none__" data-testid="select-no-template">
                     <div className="flex items-center gap-2">
                       <X className="h-4 w-4" />
                       No template
